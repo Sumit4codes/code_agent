@@ -23,9 +23,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +64,7 @@ import com.codeagent.feature.chat.components.ChatInputBar
 import com.codeagent.feature.chat.components.EmptyChatState
 import com.codeagent.feature.chat.components.MessageItem
 import com.codeagent.feature.chat.components.PendingChangesBanner
+import com.codeagent.feature.chat.components.SessionHistorySheet
 import com.codeagent.feature.chat.components.StreamingBubble
 import kotlinx.coroutines.launch
 
@@ -74,6 +77,7 @@ fun ChatScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var inputText by remember { mutableStateOf("") }
+    var showHistorySheet by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val scaffoldState = rememberTopAppBarState()
@@ -156,11 +160,13 @@ fun ChatScreen(
                             }
                         }
 
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
-                                text = "CodeAgent",
+                                text = state.sessionTitle.ifBlank { "CodeAgent" },
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -192,6 +198,29 @@ fun ChatScreen(
                                     color = if (state.isStreaming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+                    }
+                },
+                actions = {
+                    if (state.projectUri != null) {
+                        IconButton(
+                            onClick = { viewModel.startNewSession() },
+                            enabled = !state.isStreaming
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "New Chat",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = { showHistorySheet = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = "Chat History",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
                 },
@@ -311,6 +340,27 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showHistorySheet) {
+        SessionHistorySheet(
+            sessions = state.sessions,
+            currentSessionId = state.sessionId,
+            projectName = state.projectName,
+            onDismiss = { showHistorySheet = false },
+            onSelectSession = { session ->
+                viewModel.switchSession(session.id)
+            },
+            onNewSession = {
+                viewModel.startNewSession()
+            },
+            onRenameSession = { sessionId, newTitle ->
+                viewModel.renameSession(sessionId, newTitle)
+            },
+            onDeleteSession = { sessionId ->
+                viewModel.deleteSession(sessionId)
+            }
+        )
     }
 }
 
