@@ -1,0 +1,544 @@
+You are a principal Android engineer, AI agent architect, and security-conscious product builder.
+
+Your task is to design and build an Android-native AI coding agent inspired by OpenCode. The working name is "OpenCode Android", but do not use OpenCode branding, logos, or proprietary assets. Treat this as a clean-room implementation with similar capabilities.
+
+PRODUCT GOAL
+
+Build a production-quality Android app that lets a user open a code project, chat with an AI coding agent, let the agent understand the repository, propose code changes, show diffs, and apply changes safely.
+
+The app should feel like a mobile coding agent workspace: chat + file explorer + code editor + diff review + agent activity log.
+
+CORE PRINCIPLES
+
+1. Security first
+   - No API keys in code.
+   - Store secrets using Android Keystore or EncryptedSharedPreferences.
+   - Only access files inside user-selected project folders.
+   - Do not request root.
+   - Do not silently execute shell commands.
+   - Any destructive operation requires explicit user confirmation.
+
+2. Android-first design
+   - Use Android Storage Access Framework for project access.
+   - Do not rely on MANAGE_EXTERNAL_STORAGE unless absolutely unavoidable and clearly documented.
+   - Handle process death, rotation, dark mode, and low-memory situations.
+   - Keep the app usable on phones and tablets.
+
+3. Agent reliability
+   - The agent must show its planned tool calls.
+   - File edits must be previewed as diffs before applying.
+   - The user can approve or reject each change.
+   - If an operation is impossible due to Android limitations, fail gracefully and explain why.
+
+4. Clean architecture
+   - Kotlin only.
+   - Jetpack Compose UI.
+   - Modular Android project.
+   - Clear separation between AI provider layer, agent orchestration, file system tools, and UI.
+
+TECH STACK
+
+Use these unless you find a strong technical reason not to:
+
+- Kotlin
+- Jetpack Compose
+- Material 3
+- Android Gradle Plugin
+- Min SDK 26 or later
+- Target latest stable Android SDK
+- Coroutines and Flow
+- Hilt for dependency injection
+- Room for local persistence
+- DataStore for preferences
+- OkHttp + SSE for streaming LLM responses
+- kotlinx.serialization or Moshi for JSON
+- WorkManager for background indexing
+- JGit for basic Git operations, optional
+- A code editor component such as sora-editor, CodeView, or a carefully chosen WebView-based editor
+- Coil for image loading if needed
+
+If you choose a library, explain why and ensure it has a permissive or compatible license.
+
+MVP FEATURES
+
+Build the following in this priority order:
+
+1. Project opening
+   - Let the user choose a project folder using Storage Access Framework.
+   - Persist folder permission across app launches.
+   - Show project name and path in the UI.
+   - Allow switching between recently opened projects.
+
+2. File explorer
+   - Tree view of files and folders.
+   - Lazy loading for large projects.
+   - Ignore hidden/system/build directories by default.
+   - Respect .gitignore if possible.
+   - Tap file to open read-only code viewer.
+
+3. Code viewer/editor
+   - Syntax highlighting for common languages.
+   - Line numbers.
+   - Read-only mode for MVP.
+   - Optional basic manual editing later.
+   - Handle large files safely without freezing UI.
+
+4. AI chat
+   - Chat interface with streaming responses.
+   - Markdown rendering.
+   - Code block rendering with copy button.
+   - Stop/cancel generation button.
+   - Session history saved locally.
+   - Multiple sessions per project.
+
+5. AI provider abstraction
+   Create a provider interface supporting at least:
+   - OpenAI-compatible API
+   - Anthropic API
+   - Optional local/Ollama-compatible endpoint later
+
+   Provider settings should include:
+   - API key
+   - Base URL
+   - Model name
+   - Temperature
+   - Max tokens
+   - System prompt override
+
+   Do not hardcode provider-specific behavior into UI code.
+
+6. Repository context builder
+   The agent should be able to gather context from the opened project.
+
+   MVP context tools:
+   - List files
+   - Read selected file
+   - Search text across project
+   - Get currently opened file
+   - Get selected files
+   - Get project summary
+
+   Context rules:
+   - Do not send binary files.
+   - Do not send huge files without truncation.
+   - Respect ignore rules.
+   - Estimate token usage before sending.
+   - Warn if context is too large.
+   - Allow user to manually attach files.
+
+7. Agent tool system
+   Implement a tool-calling loop.
+
+   Required tools for MVP:
+   - list_files
+   - read_file
+   - search_code
+   - get_file_summary
+   - propose_file_edit
+   - create_file
+   - rename_file, optional
+   - delete_file, only with confirmation
+
+   Tool behavior:
+   - Each tool must have a typed request and response.
+   - The UI must show tool calls and tool results.
+   - File-modifying tools must not apply immediately.
+   - File-modifying tools create pending changes for user approval.
+
+8. Diff review flow
+   When the agent proposes file changes:
+   - Show file name.
+   - Show unified diff.
+   - Highlight additions and deletions.
+   - Allow approve/reject per file.
+   - Allow apply all/reject all.
+   - Do not overwrite files without approval.
+   - Keep an undo or backup snapshot for applied changes.
+
+9. Session persistence
+   Store locally:
+   - Projects
+   - Chat sessions
+   - Messages
+   - Tool calls
+   - Pending edits
+   - Applied edits
+   - Provider settings, excluding plaintext API keys
+
+10. Settings screen
+   Settings should include:
+   - Provider selection
+   - API key
+   - Model
+   - Base URL
+   - Temperature
+   - Max output tokens
+   - Context budget
+   - Theme
+   - File ignore patterns
+   - Developer logs toggle
+
+11. Safety and permissions
+   - Use SAF URI permissions.
+   - Validate all file paths.
+   - Prevent path traversal outside selected project root.
+   - Block writes to hidden/system folders unless explicitly chosen.
+   - Do not execute binaries or shell commands in MVP.
+   - Add a disabled-by-default advanced command execution module for later.
+
+OPTIONAL ADVANCED FEATURES
+
+Implement these only after MVP is stable:
+
+1. Terminal/command execution
+   - Optional power-user mode.
+   - Must be disabled by default.
+   - Command execution should happen through a safe integration such as Termux or a sandboxed process if possible.
+   - Every command requires explicit approval.
+   - Support command output streaming.
+   - Maintain allowlist/blocklist.
+   - Block dangerous commands by default.
+   - If Android cannot support this reliably, create an interface and document the limitation.
+
+2. Git integration
+   - git status
+   - git diff
+   - git add
+   - git commit
+   - branch view
+   - push/pull via HTTPS or SSH, optional
+   - Use JGit where possible.
+
+3. Better code understanding
+   - Tree-sitter or language-aware parsing.
+   - Symbol search.
+   - Function/class outline.
+   - Dependency graph.
+   - Embeddings-based semantic search, optional.
+
+4. LSP support
+   - Diagnostics
+   - Hover docs
+   - Go to definition
+   - Autocomplete
+   Only attempt if stable libraries exist.
+
+5. Local model support
+   - Ollama-compatible local endpoint.
+   - llama.cpp server endpoint.
+   - Custom OpenAI-compatible endpoint.
+
+ARCHITECTURE REQUIREMENTS
+
+Create a modular Android project similar to:
+
+app/
+core/common/
+core/ui/
+core/ai/
+core/agent/
+core/files/
+core/git/
+core/terminal/
+feature/projects/
+feature/chat/
+feature/editor/
+feature/settings/
+
+Layers:
+
+1. UI layer
+   - Compose screens
+   - ViewModels
+   - UI state as immutable data classes
+   - Unidirectional data flow
+
+2. Domain layer
+   - Use cases for project opening, chat, context retrieval, file editing, diff approval.
+
+3. Data layer
+   - Repositories for files, sessions, settings, AI providers.
+   - Room DAOs.
+   - SAF document access abstraction.
+
+4. Agent layer
+   - AgentOrchestrator
+   - ToolRegistry
+   - ToolExecutor
+   - ProviderClient
+   - ContextBuilder
+   - MessageHistoryManager
+   - PendingChangeManager
+
+AI PROVIDER INTERFACE
+
+Create an interface similar to:
+
+interface AiProvider {
+    suspend fun streamChat(request: ChatRequest): Flow<ChatStreamEvent>
+    suspend fun listModels(): List<ModelInfo>
+}
+
+ChatRequest should include:
+- messages
+- model
+- temperature
+- maxTokens
+- tools
+- stopSequences
+
+ChatStreamEvent should support:
+- text delta
+- tool call start
+- tool call arguments delta
+- tool call complete
+- usage info
+- error
+- done
+
+AGENT LOOP
+
+Implement this flow:
+
+1. User sends message.
+2. ContextBuilder collects relevant repository info.
+3. AgentOrchestrator sends request to AiProvider.
+4. If model returns text, show text.
+5. If model returns tool call:
+   - Validate tool name and arguments.
+   - Show tool call in UI.
+   - Execute safe tools.
+   - For file-changing tools, create PendingChange.
+   - Return tool result to model.
+6. Repeat until model gives final answer or hits max tool iterations.
+7. Save final result and tool trace.
+
+Safety limits:
+- Max tool iterations per request.
+- Max tokens per file.
+- Max files per context.
+- Max total context tokens.
+- Timeout for tool execution.
+
+FILE SYSTEM REQUIREMENTS
+
+Create a ProjectFileSystem abstraction.
+
+It must support:
+- list children
+- read text file
+- write text file
+- create file
+- create directory
+- delete file/folder
+- move/rename
+- exists
+- file size
+- last modified
+- mime/type inference
+- ignore rule matching
+
+All operations must:
+- Run off the main thread.
+- Be cancelable where appropriate.
+- Return typed results.
+- Not crash on missing permissions.
+
+DIFF ENGINE
+
+Implement a diff engine that can:
+- Compare original file content with proposed content.
+- Generate unified diff.
+- Generate line-based diff for Compose UI.
+- Apply approved changes atomically.
+- Reject partial/invalid edits safely.
+- Preserve newline style where possible.
+
+UI REQUIREMENTS
+
+Main screens:
+
+1. Project list
+   - Recent projects
+   - Open project button
+   - Project metadata
+
+2. Workspace
+   - Chat pane
+   - File tree drawer or panel
+   - Editor pane
+   - Agent activity panel
+   - Responsive layout for phone/tablet
+
+3. Chat screen
+   - Message bubbles
+   - Streaming text
+   - Markdown/code rendering
+   - Tool call chips/cards
+   - Attach file button
+   - Model/provider indicator
+   - Retry failed message
+
+4. Diff review screen
+   - File list with pending changes
+   - Diff viewer
+   - Approve/reject buttons
+   - Apply all
+   - Reject all
+
+5. Settings
+   - Provider
+   - Model
+   - API key
+   - Context limits
+   - Ignore patterns
+   - Theme
+   - Experimental features
+
+UX DETAILS
+
+- Dark mode by default optional.
+- Loading indicators for long operations.
+- Empty states.
+- Error banners/toasts.
+- Confirmation dialogs for destructive actions.
+- Cancel buttons for long AI/tool operations.
+- Keyboard-friendly where possible.
+- Accessibility labels.
+
+TESTING REQUIREMENTS
+
+Include:
+
+1. Unit tests
+   - Path safety
+   - Ignore rules
+   - Context builder truncation
+   - Diff generation
+   - Diff application
+   - Tool argument parsing
+   - Provider request serialization
+
+2. Fake implementations
+   - FakeAiProvider
+   - FakeFileSystem
+   - In-memory repositories
+
+3. UI tests
+   - Open project flow
+   - Send message flow
+   - Approve diff flow
+   - Settings validation
+
+4. Build quality
+   - App compiles
+   - Lint passes with reasonable warnings
+   - No hardcoded secrets
+   - No blocked main-thread I/O
+
+DELIVERABLES
+
+Produce:
+
+1. Android Studio project.
+2. README with:
+   - Project overview
+   - Build instructions
+   - Architecture
+   - Security notes
+   - Android limitations
+   - Future roadmap
+3. Sample configuration file or onboarding instructions.
+4. Debug APK build task.
+5. Basic CI workflow if possible.
+6. Short decision log explaining major technical choices.
+
+IMPLEMENTATION ORDER
+
+Work in this order:
+
+Milestone 1: App scaffold
+- Gradle setup
+- Modules
+- Navigation
+- Material 3 theme
+- Basic screens
+
+Milestone 2: Project access
+- SAF folder picker
+- Persist permissions
+- File tree
+- Read-only file viewer
+
+Milestone 3: AI chat
+- Settings screen
+- Encrypted API key storage
+- Provider client
+- Streaming chat UI
+
+Milestone 4: Context system
+- Project context builder
+- File attachment
+- Search tool
+- Context limits
+
+Milestone 5: Agent tools
+- Tool registry
+- Tool executor
+- Tool call UI
+- Propose edit tool
+
+Milestone 6: Diff approval
+- Pending changes
+- Diff viewer
+- Apply/reject flow
+- Backup/undo
+
+Milestone 7: Persistence and polish
+- Room storage
+- Session history
+- Error handling
+- Empty states
+- Performance improvements
+
+DEFINITION OF DONE
+
+The app is considered done when:
+
+- It builds without errors.
+- User can open a project folder.
+- User can browse files.
+- User can open a code file.
+- User can configure an AI provider securely.
+- User can chat with the AI.
+- The AI can read repository context.
+- The AI can propose file edits.
+- The user sees a diff.
+- The user can approve or reject the diff.
+- Approved edits are written safely.
+- Sessions persist after app restart.
+- No API keys are stored in plaintext.
+- No file operation can escape the selected project root.
+- The app does not crash on rotation or process death during normal chat flow.
+
+HANDLING PLATFORM LIMITATIONS
+
+If a requested feature is impossible on Android without root or external tools:
+
+1. Do not hack around security restrictions.
+2. Implement a safe fallback.
+3. Clearly document the limitation.
+4. Create an interface for future integration with Termux, proot, or a desktop companion.
+
+FINAL INSTRUCTIONS
+
+Start by producing:
+
+1. A concise implementation plan.
+2. A module/file structure.
+3. A list of key libraries and why they are chosen.
+4. Any blocking questions, maximum 5.
+
+If there are no blocking questions, proceed to scaffold the project and implement Milestone 1.
+
+Do not output a massive unstructured dump of code. Work milestone by milestone, keep the project buildable, and explain important decisions as you go.
