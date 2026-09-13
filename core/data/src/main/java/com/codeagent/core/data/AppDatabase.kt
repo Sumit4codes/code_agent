@@ -51,6 +51,12 @@ interface SessionDao {
 
     @androidx.room.Delete
     suspend fun delete(session: SessionEntity)
+
+    @androidx.room.Query("DELETE FROM sessions WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @androidx.room.Query("UPDATE sessions SET title = :title, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateTitle(id: String, title: String, updatedAt: Long = System.currentTimeMillis())
 }
 
 @androidx.room.Dao

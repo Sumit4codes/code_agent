@@ -18,6 +18,7 @@ import android.util.Log
 import com.codeagent.core.data.SettingsRepository
 import com.codeagent.core.files.SafProjectFileSystem
 import com.codeagent.core.model.ChangeStatus
+import com.codeagent.core.model.ChatSession
 import com.codeagent.core.model.Message
 import com.codeagent.core.model.MessageRole
 import com.codeagent.core.model.PendingChange
@@ -40,6 +41,8 @@ import javax.inject.Inject
 
 data class ChatState(
     val sessionId: String? = null,
+    val sessionTitle: String = "",
+    val sessions: List<ChatSession> = emptyList(),
     val messages: List<Message> = emptyList(),
     val isStreaming: Boolean = false,
     val streamingText: String = "",
@@ -69,6 +72,7 @@ class ChatViewModel @Inject constructor(
 
     private var chatHistory: List<ChatMessage> = emptyList()
     private var agentJob: Job? = null
+    private var sessionsJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -90,6 +94,24 @@ class ChatViewModel @Inject constructor(
             projectName = name,
             projectId = projectId
         )
+
+        // Observe all sessions for this project
+        sessionsJob?.cancel()
+        sessionsJob = viewModelScope.launch {
+            sessionDao.getByProject(projectId).collect { entities ->
+                _state.value = _state.value.copy(
+                    sessions = entities.map { entity ->
+                        ChatSession(
+                            id = entity.id,
+                            projectId = entity.projectId,
+                            title = entity.title,
+                            createdAt = entity.createdAt,
+                            updatedAt = entity.updatedAt
+                        )
+                    }
+                )
+            }
+        }
 
         // Try to restore last session for this project, or create new
         viewModelScope.launch {
@@ -115,8 +137,10 @@ class ChatViewModel @Inject constructor(
 
     private suspend fun createNewSession(treeUri: Uri, name: String, projectId: String) {
         val sessionId = java.util.UUID.randomUUID().toString()
+        val title = "New Chat"
         _state.value = _state.value.copy(
             sessionId = sessionId,
+            sessionTitle = title,
             messages = emptyList(),
             pendingChanges = emptyList(),
             error = null
@@ -126,7 +150,7 @@ class ChatViewModel @Inject constructor(
             SessionEntity(
                 id = sessionId,
                 projectId = projectId,
-                title = "Chat with $name",
+                title = title,
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis()
             )
@@ -134,8 +158,11 @@ class ChatViewModel @Inject constructor(
     }
 
     private suspend fun restoreSession(sessionId: String, treeUri: Uri, name: String, projectId: String) {
+        val sessionEntity = sessionDao.getById(sessionId)
+        val title = sessionEntity?.title ?: "Chat with $name"
         _state.value = _state.value.copy(
             sessionId = sessionId,
+            sessionTitle = title,
             messages = emptyList(),
             pendingChanges = emptyList(),
             error = null
@@ -205,6 +232,21 @@ class ChatViewModel @Inject constructor(
             content = text,
             timestamp = System.currentTimeMillis()
         )
+
+        val isFirstMessage = _state.value.messages.isEmpty()
+        val currentTitle = _state.value.sessionTitle
+        val generatedTitle = text.trim().lines().firstOrNull()?.take(40)?.trimEnd() ?: "New Chat"
+        val shouldAutoTitle = isFirstMessage && (currentTitle.isBlank() || currentTitle == "New Chat" || currentTitle.startsWith("Chat with "))
+        val activeTitle = if (shouldAutoTitle) generatedTitle else currentTitle.ifBlank { "New Chat" }
+
+        if (shouldAutoTitle) {
+            _state.value = _state.value.copy(sessionTitle = activeTitle)
+            _state.value.sessionId?.let { sid ->
+                viewModelScope.launch {
+                    sessionDao.updateTitle(sid, activeTitle)
+                }
+            }
+        }
 
         _state.value = _state.value.copy(
             messages = _state.value.messages + userMsg,
@@ -281,16 +323,12 @@ class ChatViewModel @Inject constructor(
                     persistMessage(msg)
                 }
 
-                // Update session timestamp
+                // Update session timestamp and title
                 _state.value.sessionId?.let { sid ->
-                    sessionDao.upsert(
-                        SessionEntity(
-                            id = sid,
-                            projectId = _state.value.projectId,
-                            title = "Chat with ${_state.value.projectName}",
-                            createdAt = sessionDao.getById(sid)?.createdAt ?: System.currentTimeMillis(),
-                            updatedAt = System.currentTimeMillis()
-                        )
+                    sessionDao.updateTitle(
+                        id = sid,
+                        title = _state.value.sessionTitle.ifBlank { "Chat with ${_state.value.projectName}" },
+                        updatedAt = System.currentTimeMillis()
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -361,6 +399,56 @@ class ChatViewModel @Inject constructor(
 
     fun clearError() {
         _state.value = _state.value.copy(error = null)
+    }
+
+    fun startNewSession() {
+        val treeUri = _state.value.projectUri ?: return
+        val name = _state.value.projectName
+        val projectId = _state.value.projectId
+        cancelGeneration()
+        viewModelScope.launch {
+            createNewSession(treeUri, name, projectId)
+        }
+    }
+
+    fun switchSession(sessionId: String) {
+        if (sessionId == _state.value.sessionId) return
+        val treeUri = _state.value.projectUri ?: return
+        val name = _state.value.projectName
+        val projectId = _state.value.projectId
+        cancelGeneration()
+        viewModelScope.launch {
+            restoreSession(sessionId, treeUri, name, projectId)
+        }
+    }
+
+    fun renameSession(sessionId: String, newTitle: String) {
+        val trimmed = newTitle.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            sessionDao.updateTitle(sessionId, trimmed)
+            if (_state.value.sessionId == sessionId) {
+                _state.value = _state.value.copy(sessionTitle = trimmed)
+            }
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch {
+            val isCurrent = _state.value.sessionId == sessionId
+            sessionDao.deleteById(sessionId)
+            if (isCurrent) {
+                val remaining = _state.value.sessions.filter { it.id != sessionId }
+                if (remaining.isNotEmpty()) {
+                    val next = remaining.first()
+                    val treeUri = _state.value.projectUri ?: return@launch
+                    restoreSession(next.id, treeUri, _state.value.projectName, _state.value.projectId)
+                } else {
+                    val treeUri = _state.value.projectUri ?: return@launch
+                    createNewSession(treeUri, _state.value.projectName, _state.value.projectId)
+                }
+            }
+        }
     }
 
     private fun persistMessage(message: Message) {
