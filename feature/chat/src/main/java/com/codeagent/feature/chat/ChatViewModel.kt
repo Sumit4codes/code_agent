@@ -221,6 +221,9 @@ class ChatViewModel @Inject constructor(
                 val activeConfig = settingsRepository.getActiveProvider()
                 val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
 
+                val streamBuffer = StringBuilder()
+                var lastDeltaTime = 0L
+
                 val result = agentOrchestrator.run(
                     userMessage = text,
                     context = AgentContext(
@@ -231,9 +234,14 @@ class ChatViewModel @Inject constructor(
                     model = currentModel,
                     systemPrompt = "You are a helpful coding assistant working within the project '${_state.value.projectName}'. Use the available tools to read, search, and edit files. When proposing file edits, always show the complete new file content. Be concise and accurate.",
                     onDelta = { delta ->
-                        _state.value = _state.value.copy(
-                            streamingText = _state.value.streamingText + delta
-                        )
+                        streamBuffer.append(delta)
+                        val now = System.currentTimeMillis()
+                        if (now - lastDeltaTime >= 60L) {
+                            lastDeltaTime = now
+                            _state.value = _state.value.copy(
+                                streamingText = streamBuffer.toString()
+                            )
+                        }
                     }
                 )
 
@@ -288,12 +296,14 @@ class ChatViewModel @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 _state.value = _state.value.copy(
                     isStreaming = false,
+                    streamingText = "",
                     error = "Generation cancelled"
                 )
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Error running agent", e)
                 _state.value = _state.value.copy(
                     isStreaming = false,
+                    streamingText = "",
                     error = "Agent error: ${e.message ?: "Unknown error"}"
                 )
             }
