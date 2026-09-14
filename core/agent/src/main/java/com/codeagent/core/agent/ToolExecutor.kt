@@ -212,7 +212,14 @@ class ToolExecutor @Inject constructor() {
 
     private suspend fun executeProposeEdit(fs: ProjectFileSystem, args: JsonObject): ToolResult {
         val relPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
-        val newContent = argString(args, "content") ?: return ToolResult(false, "Missing 'content' argument")
+        val newContent = argString(args, "content")
+            ?: argString(args, "new_content")
+            ?: argString(args, "replacement")
+            ?: return ToolResult(false, "Missing 'content' argument")
+        val oldContent = argString(args, "old_content")
+            ?: argString(args, "target")
+            ?: argString(args, "target_content")
+            ?: argString(args, "search")
 
         if (!PathSafety.isValidRelativePath(relPath)) {
             return ToolResult(false, "Invalid path: $relPath")
@@ -224,13 +231,25 @@ class ToolExecutor @Inject constructor() {
 
         val originalContent = fs.readTextFile(fileUri) ?: ""
 
+        val resolveResult = EditResolver.resolveEdit(
+            originalContent = originalContent,
+            newContent = newContent,
+            oldContent = oldContent
+        )
+
+        if (!resolveResult.success) {
+            return ToolResult(false, resolveResult.errorMessage ?: "Failed to resolve edit")
+        }
+
+        val proposedContent = resolveResult.proposedContent
+
         val change = PendingChange(
             id = java.util.UUID.randomUUID().toString(),
             sessionId = "",
             filePath = relPath,
             changeType = ChangeType.EDIT,
             originalContent = originalContent,
-            proposedContent = newContent,
+            proposedContent = proposedContent,
             createdAt = System.currentTimeMillis()
         )
 

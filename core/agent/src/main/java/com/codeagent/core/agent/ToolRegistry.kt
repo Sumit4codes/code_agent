@@ -82,11 +82,12 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = "propose_file_edit",
-                description = "Propose an edit to an existing file. The change will be shown as a diff for user approval before applying.",
+                description = "Propose an edit to an existing file. For partial edits, provide 'old_content' (the exact text to replace) and 'content' (the replacement text). For whole-file changes, provide 'content' with the entire file. The change will be shown as a diff for user approval before applying.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "path" to PropertyDef("string", "Relative file path from project root."),
-                        "content" to PropertyDef("string", "The complete new content for the file.")
+                        "content" to PropertyDef("string", "The replacement content. If old_content is specified, this replaces only old_content. If old_content is omitted, this must be the COMPLETE file content."),
+                        "old_content" to PropertyDef("string", "Optional. The exact existing block of text from the file to replace. Highly recommended for targeted edits to avoid modifying or deleting unchanged code.")
                     ),
                     required = listOf("path", "content")
                 )

@@ -266,6 +266,21 @@ class ChatViewModel @Inject constructor(
                 val streamBuffer = StringBuilder()
                 var lastDeltaTime = 0L
 
+                val effectiveSystemPrompt = buildString {
+                    append("You are an expert coding assistant working within the project '${_state.value.projectName}'.\n")
+                    append("Use the available tools to inspect and modify files.\n\n")
+                    append("FILE EDITING RULES:\n")
+                    append("1. Always use `read_file` to read the file before editing it.\n")
+                    append("2. When calling `propose_file_edit`:\n")
+                    append("   - For partial/targeted edits, specify `old_content` with the exact code snippet to replace, and `content` with the replacement code. This preserves all surrounding code.\n")
+                    append("   - If `old_content` is omitted, `content` MUST be the 100% complete new file content including all unchanged lines. NEVER truncate unchanged code or use placeholders like '// ... existing code ...'.\n")
+                    append("3. Always preserve existing code structure and indentation.\n")
+                    val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
+                    if (custom != null) {
+                        append("\nUser Instructions:\n$custom\n")
+                    }
+                }
+
                 val result = agentOrchestrator.run(
                     userMessage = text,
                     context = AgentContext(
@@ -274,7 +289,7 @@ class ChatViewModel @Inject constructor(
                         history = chatHistory
                     ),
                     model = currentModel,
-                    systemPrompt = "You are a helpful coding assistant working within the project '${_state.value.projectName}'. Use the available tools to read, search, and edit files. When proposing file edits, always show the complete new file content. Be concise and accurate.",
+                    systemPrompt = effectiveSystemPrompt,
                     onDelta = { delta ->
                         streamBuffer.append(delta)
                         val now = System.currentTimeMillis()

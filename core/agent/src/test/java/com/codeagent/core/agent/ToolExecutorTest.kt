@@ -111,6 +111,39 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun `execute propose_file_edit with old_content replaces target section`() = runTest {
+        val original = "fun foo() {\n    val a = 1\n    val b = 2\n}"
+        fs.putFile("foo.kt", original)
+
+        val result = executor.execute(
+            "propose_file_edit",
+            """{"path":"foo.kt","old_content":"val a = 1","content":"val a = 100"}"""
+        )
+        assertTrue(result.success)
+        assertNotNull(result.pendingChange)
+        assertEquals("fun foo() {\n    val a = 100\n    val b = 2\n}", result.pendingChange?.proposedContent)
+    }
+
+    @Test
+    fun `execute propose_file_edit preserves code when given a snippet without old_content`() = runTest {
+        val original = "fun run() {\n    var i = 0\n    while (i < 5) {\n        i++\n    }\n    return i\n}"
+        fs.putFile("loop.kt", original)
+
+        val snippet = "    while (i < 5) {\n        // comment\n        i++\n    }"
+        val escapedSnippet = snippet.replace("\n", "\\n").replace("\"", "\\\"")
+
+        val result = executor.execute(
+            "propose_file_edit",
+            """{"path":"loop.kt","content":"$escapedSnippet"}"""
+        )
+        assertTrue(result.success)
+        val proposed = result.pendingChange?.proposedContent ?: ""
+        assertTrue(proposed.contains("fun run() {"))
+        assertTrue(proposed.contains("// comment"))
+        assertTrue(proposed.contains("return i"))
+    }
+
+    @Test
     fun `execute create_file creates CREATE pending change`() = runTest {
         val result = executor.execute(
             "create_file",
