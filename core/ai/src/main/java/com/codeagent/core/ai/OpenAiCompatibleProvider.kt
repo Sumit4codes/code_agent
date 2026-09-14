@@ -2,6 +2,7 @@ package com.codeagent.core.ai
 
 import com.codeagent.core.ai.ChatMessage.Role
 import com.codeagent.core.ai.ChatStreamEvent.*
+import com.codeagent.core.model.ToolNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -95,7 +96,8 @@ class OpenAiCompatibleProvider(
                                 val tcArgs = tcFunction?.get("arguments")?.jsonPrimitive?.contentOrNull
 
                                 if (tcId != null && tcName != null) {
-                                    trySend(ToolCallStart(tcId, tcName))
+                                    val cleanName = ToolNames.normalize(tcName)
+                                    trySend(ToolCallStart(tcId, cleanName))
                                 }
                                 if (tcArgs != null) {
                                     trySend(ToolCallArgsDelta(tcId ?: "", tcArgs))

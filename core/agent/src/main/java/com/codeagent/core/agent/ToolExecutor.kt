@@ -5,6 +5,7 @@ import com.codeagent.core.files.ProjectFileSystem
 import com.codeagent.core.files.PathSafety
 import com.codeagent.core.model.PendingChange
 import com.codeagent.core.model.ChangeType
+import com.codeagent.core.model.ToolNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -48,14 +49,15 @@ class ToolExecutor @Inject constructor() {
             return@withContext ToolResult(false, "Invalid JSON arguments: $argumentsJson")
         }
 
-        when (name) {
-            "list_files" -> executeListFiles(fs, args)
-            "read_file" -> executeReadFile(fs, args)
-            "search_code" -> executeSearchCode(fs, args)
-            "get_file_summary" -> executeGetFileSummary(fs, args)
-            "propose_file_edit" -> executeProposeEdit(fs, args)
-            "create_file" -> executeCreateFile(fs, args)
-            "delete_file" -> executeDeleteFile(fs, args)
+        val cleanName = ToolNames.normalize(name)
+        when (cleanName) {
+            ToolNames.LIST_FILES -> executeListFiles(fs, args)
+            ToolNames.READ_FILE -> executeReadFile(fs, args)
+            ToolNames.SEARCH_CODE -> executeSearchCode(fs, args)
+            ToolNames.GET_FILE_SUMMARY -> executeGetFileSummary(fs, args)
+            ToolNames.PROPOSE_FILE_EDIT -> executeProposeEdit(fs, args)
+            ToolNames.CREATE_FILE -> executeCreateFile(fs, args)
+            ToolNames.DELETE_FILE -> executeDeleteFile(fs, args)
             else -> ToolResult(false, "Unknown tool: $name")
         }
     }

@@ -168,4 +168,20 @@ class ToolExecutorTest {
         assertEquals(ChangeType.DELETE, result.pendingChange?.changeType)
         assertEquals("bye", result.pendingChange?.originalContent)
     }
+
+    @Test
+    fun `execute tool with Harmony channel commentary suffix normalizes and executes successfully`() = runTest {
+        fs.putFile("keyboard_firmware.c.txt", "delay_ms(1); // allow signals to settle")
+
+        val result = executor.execute(
+            "propose_file_edit<|channel|>commentary",
+            """{"path":"keyboard_firmware.c.txt","old_content":"delay_ms(1); // allow signals to settle","content":"delay_ms(10000); // allow signals to settle (10 s pause)"}"""
+        )
+        assertTrue(result.success)
+        assertNotNull(result.pendingChange)
+        assertEquals(
+            "delay_ms(10000); // allow signals to settle (10 s pause)",
+            result.pendingChange?.proposedContent
+        )
+    }
 }

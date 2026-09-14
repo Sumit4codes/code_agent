@@ -31,4 +31,42 @@ object ToolNames {
     const val CREATE_FILE = "create_file"
     const val RENAME_FILE = "rename_file"
     const val DELETE_FILE = "delete_file"
+
+    val ALL = listOf(
+        LIST_FILES,
+        READ_FILE,
+        SEARCH_CODE,
+        GET_FILE_SUMMARY,
+        PROPOSE_FILE_EDIT,
+        CREATE_FILE,
+        RENAME_FILE,
+        DELETE_FILE
+    )
+
+    fun normalize(rawName: String?): String {
+        if (rawName == null) return ""
+        val trimmed = rawName.trim().removeSurrounding("`").removeSurrounding("\"")
+        if (trimmed in ALL) return trimmed
+
+        // Strip Harmony / special token channel markers (e.g. <|channel|>commentary, <|call|>, etc.)
+        var cleaned = trimmed.replace(Regex("""<\|.*?\|>.*$"""), "")
+            .replace(Regex("""<\|.*?\|>"""), "")
+            .trim()
+
+        if (cleaned in ALL) return cleaned
+
+        // Strip prefixes/suffixes like "functions." or "tools:" or ":commentary"
+        cleaned = cleaned.substringBefore(":").substringAfterLast(".").trim()
+        if (cleaned in ALL) return cleaned
+
+        // Fallback: match known tools by containment (e.g. "propose_file_edit<|channel|>commentary" contains "propose_file_edit")
+        val lower = trimmed.lowercase()
+        for (tool in ALL) {
+            if (lower.contains(tool)) {
+                return tool
+            }
+        }
+
+        return cleaned.ifBlank { trimmed }
+    }
 }

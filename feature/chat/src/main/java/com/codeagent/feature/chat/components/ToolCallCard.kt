@@ -352,7 +352,7 @@ private fun CodeBlockSection(
 
 private data class ToolInfo(val title: String, val icon: ImageVector)
 
-private fun getToolInfo(name: String): ToolInfo = when (name) {
+private fun getToolInfo(name: String): ToolInfo = when (ToolNames.normalize(name)) {
     ToolNames.LIST_FILES -> ToolInfo("List Files", Icons.Default.FolderOpen)
     ToolNames.READ_FILE -> ToolInfo("Read File", Icons.Default.Description)
     ToolNames.SEARCH_CODE -> ToolInfo("Search Code", Icons.Default.Search)

@@ -5,6 +5,7 @@ import com.codeagent.core.ai.ChatMessage
 import com.codeagent.core.ai.ChatStreamEvent
 import com.codeagent.core.ai.ChatRequest
 import com.codeagent.core.model.PendingChange
+import com.codeagent.core.model.ToolNames
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
@@ -90,13 +91,13 @@ class AgentOrchestrator @Inject constructor(
                                 toolCalls.add(
                                     com.codeagent.core.ai.ToolCall(
                                         id = currentToolCallId!!,
-                                        name = currentToolCallName!!,
+                                        name = ToolNames.normalize(currentToolCallName!!),
                                         arguments = currentToolCallArgs.toString()
                                     )
                                 )
                             }
                             currentToolCallId = event.id
-                            currentToolCallName = event.name
+                            currentToolCallName = ToolNames.normalize(event.name)
                             currentToolCallArgs = StringBuilder()
                         }
                         is ChatStreamEvent.ToolCallArgsDelta -> {
@@ -134,7 +135,7 @@ class AgentOrchestrator @Inject constructor(
                 toolCalls.add(
                     com.codeagent.core.ai.ToolCall(
                         id = currentToolCallId!!,
-                        name = currentToolCallName!!,
+                        name = ToolNames.normalize(currentToolCallName!!),
                         arguments = currentToolCallArgs.toString()
                     )
                 )
@@ -156,7 +157,8 @@ class AgentOrchestrator @Inject constructor(
 
             // Execute tool calls and add results
             for (tc in toolCalls) {
-                val result = toolExecutor.execute(tc.name, tc.arguments)
+                val cleanName = ToolNames.normalize(tc.name)
+                val result = toolExecutor.execute(cleanName, tc.arguments)
 
                 if (result.pendingChange != null) {
                     allPendingChanges.add(result.pendingChange.copy(sessionId = context.sessionId))

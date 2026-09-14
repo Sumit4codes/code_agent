@@ -4,6 +4,8 @@ import com.codeagent.core.ai.ToolSpec
 import com.codeagent.core.ai.ToolParameters
 import com.codeagent.core.ai.PropertyDef
 
+import com.codeagent.core.model.ToolNames
+
 object ToolRegistry {
 
     data class RegisteredTool(
@@ -17,11 +19,11 @@ object ToolRegistry {
         tools[spec.name] = RegisteredTool(spec, readOnly)
     }
 
-    fun get(name: String): RegisteredTool? = tools[name]
+    fun get(name: String): RegisteredTool? = tools[name] ?: tools[ToolNames.normalize(name)]
 
     fun allSpecs(): List<ToolSpec> = tools.values.map { it.spec }
 
-    fun isReadOnly(name: String): Boolean = tools[name]?.readOnly ?: true
+    fun isReadOnly(name: String): Boolean = tools[name]?.readOnly ?: tools[ToolNames.normalize(name)]?.readOnly ?: true
 
     fun populateDefaults() {
         register(
