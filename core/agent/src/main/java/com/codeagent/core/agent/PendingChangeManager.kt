@@ -59,9 +59,15 @@ class PendingChangeManager @Inject constructor(
                     val parentUri = resolveOrCreateParent(fs, rootUri, change.filePath)
                         ?: return Result.failure(IllegalArgumentException("Cannot resolve or create parent directory for: ${change.filePath}"))
                     val fileName = change.filePath.substringAfterLast("/")
-                    val newUri = fs.createFile(parentUri, fileName, "text/plain")
-                        ?: return Result.failure(IllegalArgumentException("Failed to create file: ${change.filePath}"))
-                    fs.writeTextFile(newUri, change.proposedContent ?: "")
+                    val existingUri = fs.resolveRelativeUri(rootUri, change.filePath)
+                    val targetUri = if (existingUri != null) {
+                        existingUri
+                    } else {
+                        val mimeType = mimeTypeForFileName(fileName)
+                        fs.createFile(parentUri, fileName, mimeType)
+                            ?: return Result.failure(IllegalArgumentException("Failed to create file: ${change.filePath}"))
+                    }
+                    fs.writeTextFile(targetUri, change.proposedContent ?: "")
                     pendingChangeDao.updateStatus(change.id, ChangeStatus.APPLIED.name)
                     Result.success("Created ${change.filePath}")
                 }
@@ -135,3 +141,16 @@ private fun PendingChangeEntity.toModel() = PendingChange(
     createdAt = createdAt,
     status = ChangeStatus.valueOf(status)
 )
+
+private fun mimeTypeForFileName(fileName: String): String {
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "json" -> "application/json"
+        "xml" -> "application/xml"
+        "html", "htm" -> "text/html"
+        "css" -> "text/css"
+        "csv" -> "text/csv"
+        "js", "mjs" -> "application/javascript"
+        else -> "text/plain"
+    }
+}

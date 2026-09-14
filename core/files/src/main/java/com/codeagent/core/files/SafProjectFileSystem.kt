@@ -70,13 +70,15 @@ class SafProjectFileSystem(
     override suspend fun createFile(parentUri: Uri, name: String, mimeType: String): Uri? =
         withContext(dispatchers.io) {
             try {
+                val docUri = ensureDocumentUri(parentUri)
                 DocumentsContract.createDocument(
                     context.contentResolver,
-                    parentUri,
+                    docUri,
                     mimeType,
                     name
                 )
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.e("SafProjectFileSystem", "Failed to create file $name in $parentUri", e)
                 null
             }
         }
@@ -84,28 +86,33 @@ class SafProjectFileSystem(
     override suspend fun createDirectory(parentUri: Uri, name: String): Uri? =
         withContext(dispatchers.io) {
             try {
+                val docUri = ensureDocumentUri(parentUri)
                 DocumentsContract.createDocument(
                     context.contentResolver,
-                    parentUri,
+                    docUri,
                     Document.MIME_TYPE_DIR,
                     name
                 )
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.e("SafProjectFileSystem", "Failed to create directory $name in $parentUri", e)
                 null
             }
         }
 
     override suspend fun deleteFile(uri: Uri): Boolean = withContext(dispatchers.io) {
         try {
-            DocumentsContract.deleteDocument(context.contentResolver, uri)
-        } catch (_: Exception) {
+            val docUri = ensureDocumentUri(uri)
+            DocumentsContract.deleteDocument(context.contentResolver, docUri)
+        } catch (e: Exception) {
+            android.util.Log.e("SafProjectFileSystem", "Failed to delete document $uri", e)
             false
         }
     }
 
     override suspend fun exists(uri: Uri): Boolean = withContext(dispatchers.io) {
         try {
-            context.contentResolver.query(uri, arrayOf(Document.COLUMN_DOCUMENT_ID), null, null, null)
+            val docUri = ensureDocumentUri(uri)
+            context.contentResolver.query(docUri, arrayOf(Document.COLUMN_DOCUMENT_ID), null, null, null)
                 ?.use { it.moveToFirst() } == true
         } catch (_: Exception) {
             false
@@ -114,7 +121,8 @@ class SafProjectFileSystem(
 
     override suspend fun fileSize(uri: Uri): Long? = withContext(dispatchers.io) {
         try {
-            context.contentResolver.query(uri, arrayOf(Document.COLUMN_SIZE), null, null, null)
+            val docUri = ensureDocumentUri(uri)
+            context.contentResolver.query(docUri, arrayOf(Document.COLUMN_SIZE), null, null, null)
                 ?.use { if (it.moveToFirst()) it.getLong(0) else null }
         } catch (_: Exception) {
             null
@@ -123,10 +131,20 @@ class SafProjectFileSystem(
 
     override suspend fun lastModified(uri: Uri): Long? = withContext(dispatchers.io) {
         try {
-            context.contentResolver.query(uri, arrayOf(Document.COLUMN_LAST_MODIFIED), null, null, null)
+            val docUri = ensureDocumentUri(uri)
+            context.contentResolver.query(docUri, arrayOf(Document.COLUMN_LAST_MODIFIED), null, null, null)
                 ?.use { if (it.moveToFirst()) it.getLong(0) else null }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun ensureDocumentUri(uri: Uri): Uri {
+        return if (DocumentsContract.isDocumentUri(context, uri)) {
+            uri
+        } else {
+            val docId = DocumentsContract.getTreeDocumentId(uri)
+            DocumentsContract.buildDocumentUriUsingTree(uri, docId)
         }
     }
 
