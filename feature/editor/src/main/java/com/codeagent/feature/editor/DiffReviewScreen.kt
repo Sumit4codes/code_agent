@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,11 +28,22 @@ fun DiffReviewScreen(
     onApprove: (PendingChange) -> Unit,
     onReject: (PendingChange) -> Unit,
     onApproveAll: () -> Unit,
-    onRejectAll: () -> Unit
+    onRejectAll: () -> Unit,
+    onNavigateBack: (() -> Unit)? = null
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (onNavigateBack != null) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    }
+                },
                 title = { Text("Pending Changes (${pendingChanges.size})") },
                 actions = {
                     if (pendingChanges.isNotEmpty()) {

@@ -32,7 +32,8 @@ import com.codeagent.core.files.FileNode
 @Composable
 fun EditorScreen(
     projectId: String = "",
-    viewModel: EditorViewModel = hiltViewModel()
+    viewModel: EditorViewModel = hiltViewModel(),
+    onNavigateBack: (() -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -45,6 +46,16 @@ fun EditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (onNavigateBack != null) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    }
+                },
                 title = { Text(state.projectName.ifBlank { "Files" }) }
             )
         }

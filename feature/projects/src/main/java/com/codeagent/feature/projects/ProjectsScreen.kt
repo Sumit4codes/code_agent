@@ -103,28 +103,38 @@ private fun ProjectItem(
     onChat: () -> Unit
 ) {
     Card(
+        onClick = onChat,
         modifier = Modifier.fillMaxWidth()
     ) {
         ListItem(
-            headlineContent = { Text(project.name) },
+            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+            headlineContent = {
+                Text(project.name, style = MaterialTheme.typography.titleMedium)
+            },
             leadingContent = {
-                Icon(Icons.Default.Folder, contentDescription = null)
+                FilledTonalIconButton(onClick = onChat) {
+                    Icon(
+                        Icons.Default.Chat,
+                        contentDescription = "Chat with ${project.name}",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             },
             supportingContent = {
                 Text(
                     project.treeUri.removePrefix("content://com.android.externalstorage.documents/tree/"),
                     maxLines = 1,
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
             trailingContent = {
-                Row {
-                    IconButton(onClick = onBrowse) {
-                        Icon(Icons.Default.Folder, contentDescription = "Browse files")
-                    }
-                    IconButton(onClick = onChat) {
-                        Icon(Icons.Default.Chat, contentDescription = "Chat")
-                    }
+                IconButton(onClick = onBrowse) {
+                    Icon(
+                        Icons.Default.Folder,
+                        contentDescription = "Browse files",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         )

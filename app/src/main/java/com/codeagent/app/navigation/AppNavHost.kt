@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -47,33 +46,41 @@ fun AppNavHost(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val isTopLevelRoute = currentRoute == Routes.PROJECTS || currentRoute == Routes.SETTINGS
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                    label = { Text("Projects") },
-                    selected = currentRoute == Routes.PROJECTS,
-                    onClick = { navController.navigate(Routes.PROJECTS) { popUpTo(Routes.PROJECTS) } }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Chat, contentDescription = null) },
-                    label = { Text("Chat") },
-                    selected = currentRoute?.startsWith(Routes.CHAT) == true || currentRoute?.startsWith(Routes.DIFF_REVIEW) == true,
-                    onClick = {
-                        navController.navigate(Routes.CHAT + "/none") {
-                            popUpTo(Routes.PROJECTS) { saveState = true }
-                            restoreState = true
+            if (isTopLevelRoute) {
+                NavigationBar {
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                        label = { Text("Projects") },
+                        selected = currentRoute == Routes.PROJECTS,
+                        onClick = {
+                            if (currentRoute != Routes.PROJECTS) {
+                                navController.navigate(Routes.PROJECTS) {
+                                    popUpTo(Routes.PROJECTS) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
                         }
-                    }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Settings") },
-                    selected = currentRoute == Routes.SETTINGS,
-                    onClick = { navController.navigate(Routes.SETTINGS) }
-                )
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        label = { Text("Settings") },
+                        selected = currentRoute == Routes.SETTINGS,
+                        onClick = {
+                            if (currentRoute != Routes.SETTINGS) {
+                                navController.navigate(Routes.SETTINGS) {
+                                    popUpTo(Routes.PROJECTS) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        }
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -101,7 +108,10 @@ fun AppNavHost(
                 )
             ) { backStackEntry ->
                 val projectId = backStackEntry.arguments?.getString("projectId") ?: ""
-                EditorScreen(projectId = projectId)
+                EditorScreen(
+                    projectId = projectId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
             composable(
                 route = "${Routes.CHAT}/{projectId}",
@@ -118,7 +128,8 @@ fun AppNavHost(
                     onReviewDiffs = {
                         val sid = chatState.sessionId ?: "active"
                         navController.navigate("${Routes.DIFF_REVIEW}/$sid")
-                    }
+                    },
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable(
@@ -145,7 +156,8 @@ fun AppNavHost(
                     onApprove = { chatViewModel.approveChange(it) },
                     onReject = { chatViewModel.rejectChange(it) },
                     onApproveAll = { chatViewModel.approveAllChanges() },
-                    onRejectAll = { chatViewModel.rejectAllChanges() }
+                    onRejectAll = { chatViewModel.rejectAllChanges() },
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable(Routes.SETTINGS) {
