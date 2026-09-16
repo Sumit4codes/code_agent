@@ -107,6 +107,21 @@ class EditorViewModel @Inject constructor(
         }
     }
 
+    fun closeFile() {
+        _state.value = _state.value.copy(
+            selectedFile = null,
+            fileContent = null,
+            error = null
+        )
+    }
+
+    fun refresh() {
+        val current = _state.value.breadcrumbs.lastOrNull()
+        if (current != null) {
+            loadDirectory(current.uri)
+        }
+    }
+
     private fun loadDirectory(uri: Uri) {
         viewModelScope.launch {
             try {
