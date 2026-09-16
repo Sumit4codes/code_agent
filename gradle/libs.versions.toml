@@ -50,6 +50,7 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 diffutils = { group = "io.github.java-diff-utils", name = "java-diff-utils", version.ref = "diffutils" }
 markdown-renderer = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3", version.ref = "markdown" }
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version = "6.9.0.202403050737-r" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesTest" }
 

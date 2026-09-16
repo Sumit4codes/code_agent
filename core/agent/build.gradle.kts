@@ -30,6 +30,8 @@ dependencies {
     implementation(project(":core:ai"))
     implementation(project(":core:files"))
     implementation(project(":core:data"))
+    implementation(project(":core:git"))
+    implementation(project(":core:terminal"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.hilt.android)

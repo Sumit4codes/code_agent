@@ -123,6 +123,19 @@ object ToolRegistry {
             ),
             readOnly = false
         )
+        register(
+            ToolSpec(
+                name = ToolNames.EXECUTE_COMMAND,
+                description = "Execute a shell or git command in the workspace directory. Supported commands include git (status, diff, log, branch, checkout, add, commit), ls, cat, head, tail, wc, grep, find, mkdir, touch, pwd, echo, and system commands.",
+                parameters = ToolParameters(
+                    properties = mapOf(
+                        "command" to PropertyDef("string", "The shell command line to execute (e.g. 'git status', 'ls -la', 'grep TODO .', 'cat build.gradle.kts').")
+                    ),
+                    required = listOf("command")
+                )
+            ),
+            readOnly = false
+        )
     }
 
     init {

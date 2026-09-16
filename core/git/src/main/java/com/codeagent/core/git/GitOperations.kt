@@ -1,9 +1,11 @@
 package com.codeagent.core.git
 
-interface GitOperations {
-    suspend fun status(projectUri: String): GitStatus?
-    suspend fun diff(projectUri: String): String?
-}
+import java.io.File
+
+data class GitCommandResult(
+    val output: String,
+    val exitCode: Int
+)
 
 data class GitStatus(
     val branch: String,
@@ -11,3 +13,21 @@ data class GitStatus(
     val staged: List<String>,
     val untracked: List<String>
 )
+
+interface GitOperations {
+    suspend fun executeGit(workDir: File, args: List<String>): GitCommandResult
+    suspend fun isGitRepo(workDir: File): Boolean
+    suspend fun initRepo(workDir: File): GitCommandResult
+    suspend fun status(workDir: File): GitCommandResult
+    suspend fun diff(workDir: File, cached: Boolean = false): GitCommandResult
+    suspend fun log(workDir: File, maxCount: Int = 10): GitCommandResult
+    suspend fun branch(workDir: File): GitCommandResult
+    suspend fun add(workDir: File, filePattern: String = "."): GitCommandResult
+    suspend fun commit(
+        workDir: File,
+        message: String,
+        authorName: String = "CodeAgent",
+        authorEmail: String = "agent@codeagent.local"
+    ): GitCommandResult
+    suspend fun checkout(workDir: File, target: String, createNewBranch: Boolean = false): GitCommandResult
+}

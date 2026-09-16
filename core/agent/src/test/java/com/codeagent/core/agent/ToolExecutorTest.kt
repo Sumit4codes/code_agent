@@ -184,4 +184,20 @@ class ToolExecutorTest {
             result.pendingChange?.proposedContent
         )
     }
+
+    @Test
+    fun `execute execute_command runs virtual shell command`() = runTest {
+        fs.putFile("README.md", "# My Project\nLine 2")
+        val result = executor.execute("execute_command", """{"command":"cat README.md"}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("# My Project"))
+    }
+
+    @Test
+    fun `execute execute_command with ls flags`() = runTest {
+        fs.putFile("main.py", "print('hello')")
+        val result = executor.execute("execute_command", """{"command":"ls -la"}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("main.py"))
+    }
 }

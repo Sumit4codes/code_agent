@@ -361,6 +361,7 @@ private fun getToolInfo(name: String): ToolInfo = when (ToolNames.normalize(name
     ToolNames.CREATE_FILE -> ToolInfo("Create File", Icons.AutoMirrored.Filled.NoteAdd)
     ToolNames.RENAME_FILE -> ToolInfo("Rename File", Icons.Default.DriveFileRenameOutline)
     ToolNames.DELETE_FILE -> ToolInfo("Delete File", Icons.Outlined.Delete)
+    ToolNames.EXECUTE_COMMAND -> ToolInfo("Run Command", Icons.Default.Terminal)
     else -> ToolInfo(name.replace('_', ' ').replaceFirstChar { it.uppercase() }, Icons.Default.Terminal)
 }
 
@@ -369,6 +370,7 @@ private fun extractArgSummary(arguments: String): String {
     return try {
         val json = Json.parseToJsonElement(arguments).jsonObject
         when {
+            json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
             json.containsKey("path") -> json["path"]?.jsonPrimitive?.content ?: ""
             json.containsKey("query") -> "\"${json["query"]?.jsonPrimitive?.content ?: ""}\""
             json.containsKey("dirPath") -> json["dirPath"]?.jsonPrimitive?.content ?: ""

@@ -31,6 +31,7 @@ object ToolNames {
     const val CREATE_FILE = "create_file"
     const val RENAME_FILE = "rename_file"
     const val DELETE_FILE = "delete_file"
+    const val EXECUTE_COMMAND = "execute_command"
 
     val ALL = listOf(
         LIST_FILES,
@@ -40,7 +41,8 @@ object ToolNames {
         PROPOSE_FILE_EDIT,
         CREATE_FILE,
         RENAME_FILE,
-        DELETE_FILE
+        DELETE_FILE,
+        EXECUTE_COMMAND
     )
 
     fun normalize(rawName: String?): String {

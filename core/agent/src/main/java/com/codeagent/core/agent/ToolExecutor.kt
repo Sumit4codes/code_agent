@@ -6,12 +6,17 @@ import com.codeagent.core.files.PathSafety
 import com.codeagent.core.model.PendingChange
 import com.codeagent.core.model.ChangeType
 import com.codeagent.core.model.ToolNames
+import com.codeagent.core.terminal.TerminalExecutor
+import com.codeagent.core.terminal.DefaultTerminalExecutor
+import com.codeagent.core.terminal.TerminalResult
+import com.codeagent.core.git.JGitOperations
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,19 +27,25 @@ data class ToolResult(
 )
 
 @Singleton
-class ToolExecutor @Inject constructor() {
+class ToolExecutor @Inject constructor(
+    private val terminalExecutor: TerminalExecutor
+) {
+    // Secondary constructor for lightweight instantiations or tests
+    constructor() : this(DefaultTerminalExecutor(JGitOperations()))
 
     private var fileSystem: ProjectFileSystem? = null
     private var projectRootUri: Uri? = null
 
-    fun bind(fileSystem: ProjectFileSystem, rootUri: Uri) {
+    fun bind(fileSystem: ProjectFileSystem, rootUri: Uri, localWorkDir: File? = null) {
         this.fileSystem = fileSystem
         this.projectRootUri = rootUri
+        terminalExecutor.bind(fileSystem, rootUri, localWorkDir)
     }
 
     fun unbind() {
         this.fileSystem = null
         this.projectRootUri = null
+        terminalExecutor.unbind()
     }
 
     suspend fun execute(name: String, argumentsJson: String): ToolResult = withContext(Dispatchers.IO) {
@@ -58,6 +69,7 @@ class ToolExecutor @Inject constructor() {
             ToolNames.PROPOSE_FILE_EDIT -> executeProposeEdit(fs, args)
             ToolNames.CREATE_FILE -> executeCreateFile(fs, args)
             ToolNames.DELETE_FILE -> executeDeleteFile(fs, args)
+            ToolNames.EXECUTE_COMMAND -> executeCommand(args)
             else -> ToolResult(false, "Unknown tool: $name")
         }
     }
@@ -343,6 +355,15 @@ class ToolExecutor @Inject constructor() {
             "sql" -> "SQL"
             "gradle", "gradle.kts" -> "Gradle"
             else -> "Unknown ($ext)"
+        }
+    }
+
+    private suspend fun executeCommand(args: JsonObject): ToolResult {
+        val command = argString(args, "command") ?: return ToolResult(false, "Missing 'command' argument")
+        return when (val res = terminalExecutor.execute(command)) {
+            is TerminalResult.Success -> ToolResult(true, if (res.output.isEmpty()) "(command executed successfully with exit code 0)" else res.output)
+            is TerminalResult.Error -> ToolResult(false, res.message)
+            is TerminalResult.Disabled -> ToolResult(false, "Terminal execution is disabled")
         }
     }
 }
