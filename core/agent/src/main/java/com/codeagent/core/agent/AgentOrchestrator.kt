@@ -22,6 +22,30 @@ data class AgentRunResult(
     val totalTokens: Int
 )
 
+sealed class AgentEvent {
+    data class TextDelta(val text: String) : AgentEvent()
+    data class ToolCallStart(
+        val toolCallId: String,
+        val toolName: String,
+        val arguments: String
+    ) : AgentEvent()
+    data class ToolCallOutputChunk(
+        val toolCallId: String,
+        val chunk: String
+    ) : AgentEvent()
+    data class ToolCallComplete(
+        val toolCallId: String,
+        val toolName: String,
+        val arguments: String,
+        val output: String,
+        val success: Boolean,
+        val durationMs: Long
+    ) : AgentEvent()
+    data class MessageAdded(
+        val message: ChatMessage
+    ) : AgentEvent()
+}
+
 @Singleton
 class AgentOrchestrator @Inject constructor(
     private val aiProvider: AiProvider,
@@ -42,6 +66,7 @@ class AgentOrchestrator @Inject constructor(
         temperature: Float = 0.7f,
         maxTokens: Int = 4096,
         systemPrompt: String? = null,
+        onEvent: ((AgentEvent) -> Unit)? = null,
         onDelta: ((String) -> Unit)? = null
     ): AgentRunResult = mutex.withLock {
         val history = context.history.toMutableList()
@@ -84,6 +109,7 @@ class AgentOrchestrator @Inject constructor(
                         is ChatStreamEvent.TextDelta -> {
                             currentContent.append(event.text)
                             onDelta?.invoke(event.text)
+                            onEvent?.invoke(AgentEvent.TextDelta(event.text))
                         }
                         is ChatStreamEvent.ToolCallStart -> {
                             // Flush any previous tool call being accumulated
@@ -127,6 +153,7 @@ class AgentOrchestrator @Inject constructor(
                 )
                 messages.add(errorMsg)
                 newMessages.add(errorMsg)
+                onEvent?.invoke(AgentEvent.MessageAdded(errorMsg))
                 break
             }
 
@@ -151,6 +178,7 @@ class AgentOrchestrator @Inject constructor(
             )
             messages.add(assistantMessage)
             newMessages.add(assistantMessage)
+            onEvent?.invoke(AgentEvent.MessageAdded(assistantMessage))
 
             // If no tool calls, the agent is done
             if (toolCalls.isEmpty()) break
@@ -158,7 +186,25 @@ class AgentOrchestrator @Inject constructor(
             // Execute tool calls and add results
             for (tc in toolCalls) {
                 val cleanName = ToolNames.normalize(tc.name)
-                val result = toolExecutor.execute(cleanName, tc.arguments)
+                val startTime = System.currentTimeMillis()
+                onEvent?.invoke(AgentEvent.ToolCallStart(tc.id, cleanName, tc.arguments))
+
+                val result = toolExecutor.execute(cleanName, tc.arguments, onOutput = { chunk ->
+                    onEvent?.invoke(AgentEvent.ToolCallOutputChunk(tc.id, chunk))
+                })
+                val duration = System.currentTimeMillis() - startTime
+                val toolOutput = if (result.success) result.output else "Error: ${result.output}"
+
+                onEvent?.invoke(
+                    AgentEvent.ToolCallComplete(
+                        toolCallId = tc.id,
+                        toolName = cleanName,
+                        arguments = tc.arguments,
+                        output = toolOutput,
+                        success = result.success,
+                        durationMs = duration
+                    )
+                )
 
                 if (result.pendingChange != null) {
                     allPendingChanges.add(result.pendingChange.copy(sessionId = context.sessionId))
@@ -166,11 +212,12 @@ class AgentOrchestrator @Inject constructor(
 
                 val toolMsg = ChatMessage(
                     role = ChatMessage.Role.TOOL,
-                    content = if (result.success) result.output else "Error: ${result.output}",
+                    content = toolOutput,
                     toolCallId = tc.id
                 )
                 messages.add(toolMsg)
                 newMessages.add(toolMsg)
+                onEvent?.invoke(AgentEvent.MessageAdded(toolMsg))
             }
         }
 
@@ -181,6 +228,7 @@ class AgentOrchestrator @Inject constructor(
             )
             messages.add(maxMsg)
             newMessages.add(maxMsg)
+            onEvent?.invoke(AgentEvent.MessageAdded(maxMsg))
         }
 
         AgentRunResult(

@@ -40,8 +40,26 @@ data class ToolCallData(
     val id: String,
     val name: String,
     val arguments: String,
-    val result: String? = null
+    val result: String? = null,
+    val success: Boolean? = null,
+    val durationMs: Long? = null
 )
+
+@Serializable
+data class ActiveToolExecution(
+    val id: String,
+    val name: String,
+    val arguments: String,
+    val status: ToolExecutionStatus = ToolExecutionStatus.RUNNING,
+    val output: String = "",
+    val startTime: Long = System.currentTimeMillis(),
+    val durationMs: Long? = null
+)
+
+@Serializable
+enum class ToolExecutionStatus {
+    RUNNING, SUCCESS, ERROR
+}
 
 @Serializable
 data class PendingChange(

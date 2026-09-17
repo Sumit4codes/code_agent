@@ -180,7 +180,20 @@ fun ToolCallCard(
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
 
-                    if (toolCall.arguments.isNotBlank()) {
+                    val isCommand = ToolNames.normalize(toolCall.name) == ToolNames.EXECUTE_COMMAND
+
+                    if (isCommand) {
+                        val cmd = try {
+                            val json = Json.parseToJsonElement(toolCall.arguments).jsonObject
+                            json["command"]?.jsonPrimitive?.content ?: toolCall.arguments
+                        } catch (_: Exception) {
+                            toolCall.arguments
+                        }
+                        CodeBlockSection(
+                            title = "Command Line",
+                            content = "$ $cmd"
+                        )
+                    } else if (toolCall.arguments.isNotBlank()) {
                         CodeBlockSection(
                             title = "Arguments",
                             content = toolCall.arguments
@@ -191,7 +204,7 @@ fun ToolCallCard(
                     if (callResult != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         CodeBlockSection(
-                            title = "Result",
+                            title = if (isCommand) "Terminal Output" else "Result",
                             content = callResult
                         )
                     }

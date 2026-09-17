@@ -41,7 +41,7 @@ class DefaultTerminalExecutor @Inject constructor(
         this.localWorkDir = null
     }
 
-    override suspend fun execute(command: String): TerminalResult = withContext(Dispatchers.IO) {
+    override suspend fun execute(command: String, onOutput: ((String) -> Unit)?): TerminalResult = withContext(Dispatchers.IO) {
         if (!isEnabled) {
             return@withContext TerminalResult.Disabled
         }
@@ -55,7 +55,9 @@ class DefaultTerminalExecutor @Inject constructor(
         val localDir = localWorkDir
 
         if (fs == null && localDir == null) {
-            return@withContext TerminalResult.Error("No active project workspace bound to terminal.", 1)
+            val err = "No active project workspace bound to terminal."
+            onOutput?.invoke(err)
+            return@withContext TerminalResult.Error(err, 1)
         }
 
         val parsed = CommandParser.parse(trimmed) ?: return@withContext TerminalResult.Success("", 0)
@@ -65,13 +67,18 @@ class DefaultTerminalExecutor @Inject constructor(
         if (exe == "git") {
             if (localDir != null && localDir.exists()) {
                 val gitRes = gitOperations.executeGit(localDir, parsed.rawArgs)
+                if (gitRes.output.isNotEmpty()) {
+                    onOutput?.invoke(gitRes.output)
+                }
                 return@withContext if (gitRes.exitCode == 0) {
                     TerminalResult.Success(gitRes.output, 0)
                 } else {
                     TerminalResult.Error(gitRes.output, gitRes.exitCode)
                 }
             } else {
-                return@withContext TerminalResult.Error("Git operations require a local directory workspace.", 128)
+                val err = "Git operations require a local directory workspace."
+                onOutput?.invoke(err)
+                return@withContext TerminalResult.Error(err, 128)
             }
         }
 
@@ -79,19 +86,27 @@ class DefaultTerminalExecutor @Inject constructor(
         val virtualCommands = setOf("ls", "cat", "head", "tail", "wc", "grep", "find", "pwd", "echo", "mkdir", "touch")
         if (exe in virtualCommands && fs != null && rootUri != null) {
             val shell = VirtualShell(fs, rootUri, localDir?.name ?: "")
-            return@withContext shell.execute(parsed)
+            val res = shell.execute(parsed)
+            when (res) {
+                is TerminalResult.Success -> if (res.output.isNotEmpty()) onOutput?.invoke(res.output)
+                is TerminalResult.Error -> onOutput?.invoke(res.message)
+                else -> {}
+            }
+            return@withContext res
         }
 
         // 3. If local POSIX dir exists, fallback to ProcessBuilder (/system/bin/sh) with timeout
         if (localDir != null && localDir.exists()) {
-            return@withContext executeProcess(trimmed, localDir)
+            return@withContext executeProcess(trimmed, localDir, onOutput)
         }
 
         // 4. Command not recognized in virtual shell
-        TerminalResult.Error("sh: $exe: command not found (virtual commands available: ls, cat, head, tail, wc, grep, find, pwd, echo, mkdir, touch, git)", 127)
+        val notFound = "sh: $exe: command not found (virtual commands available: ls, cat, head, tail, wc, grep, find, pwd, echo, mkdir, touch, git)"
+        onOutput?.invoke(notFound)
+        TerminalResult.Error(notFound, 127)
     }
 
-    private suspend fun executeProcess(command: String, workingDir: File): TerminalResult = withContext(Dispatchers.IO) {
+    private suspend fun executeProcess(command: String, workingDir: File, onOutput: ((String) -> Unit)?): TerminalResult = withContext(Dispatchers.IO) {
         try {
             val result = withTimeoutOrNull(15_000L) {
                 val pb = ProcessBuilder("/system/bin/sh", "-c", command)
@@ -112,12 +127,15 @@ class DefaultTerminalExecutor @Inject constructor(
                 var line = reader.readLine()
                 while (line != null && charCount < maxChars) {
                     output.append(line).append("\n")
+                    onOutput?.invoke(line)
                     charCount += line.length + 1
                     line = reader.readLine()
                 }
 
                 if (charCount >= maxChars) {
-                    output.append("\n[... Output truncated at 64KB ...]\n")
+                    val trunc = "\n[... Output truncated at 64KB ...]\n"
+                    output.append(trunc)
+                    onOutput?.invoke(trunc)
                 }
 
                 val exitCode = process.waitFor()
@@ -130,9 +148,15 @@ class DefaultTerminalExecutor @Inject constructor(
                 }
             }
 
-            result ?: TerminalResult.Error("Command timed out after 15 seconds.", 124)
+            result ?: run {
+                val timeoutMsg = "Command timed out after 15 seconds."
+                onOutput?.invoke(timeoutMsg)
+                TerminalResult.Error(timeoutMsg, 124)
+            }
         } catch (e: Exception) {
-            TerminalResult.Error("Failed to execute process: ${e.message}", 1)
+            val errMsg = "Failed to execute process: ${e.message}"
+            onOutput?.invoke(errMsg)
+            TerminalResult.Error(errMsg, 1)
         }
     }
 }

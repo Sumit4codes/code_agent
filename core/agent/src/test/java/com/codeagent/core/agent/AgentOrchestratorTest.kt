@@ -147,4 +147,49 @@ class AgentOrchestratorTest {
         assertEquals(ChangeType.EDIT, pending.changeType)
         assertEquals("fun new() {}", pending.proposedContent)
     }
+
+    @Test
+    fun `onEvent receives ToolCallStart and ToolCallComplete events in real time`() = runTest {
+        fs.putFile("info.txt", "Version 1.0.0")
+
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.ToolCallComplete(
+                    ToolCall("c-info", "read_file", """{"path":"info.txt"}""")
+                ),
+                ChatStreamEvent.Done
+            )
+        )
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Version is 1.0.0"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        val events = mutableListOf<AgentEvent>()
+        val context = AgentContext(sessionId = "s-test", projectId = "p1")
+
+        orchestrator.run(
+            userMessage = "Check version",
+            context = context,
+            model = "test-model",
+            onEvent = { events.add(it) }
+        )
+
+        val toolStarts = events.filterIsInstance<AgentEvent.ToolCallStart>()
+        val toolCompletes = events.filterIsInstance<AgentEvent.ToolCallComplete>()
+        val messageAddeds = events.filterIsInstance<AgentEvent.MessageAdded>()
+
+        assertEquals(1, toolStarts.size)
+        assertEquals("c-info", toolStarts[0].toolCallId)
+        assertEquals("read_file", toolStarts[0].toolName)
+
+        assertEquals(1, toolCompletes.size)
+        assertEquals("c-info", toolCompletes[0].toolCallId)
+        assertTrue(toolCompletes[0].success)
+        assertTrue(toolCompletes[0].output.contains("Version 1.0.0"))
+
+        assertTrue(messageAddeds.isNotEmpty())
+    }
 }

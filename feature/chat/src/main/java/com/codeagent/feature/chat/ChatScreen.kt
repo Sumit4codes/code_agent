@@ -315,6 +315,7 @@ fun ChatScreen(
                             item(key = "streaming_bubble") {
                                 StreamingBubble(
                                     streamingText = state.streamingText,
+                                    activeTool = state.activeTool,
                                     modelName = state.model
                                 )
                             }

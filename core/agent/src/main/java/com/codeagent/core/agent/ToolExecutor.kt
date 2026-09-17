@@ -48,7 +48,11 @@ class ToolExecutor @Inject constructor(
         terminalExecutor.unbind()
     }
 
-    suspend fun execute(name: String, argumentsJson: String): ToolResult = withContext(Dispatchers.IO) {
+    suspend fun execute(
+        name: String,
+        argumentsJson: String,
+        onOutput: ((String) -> Unit)? = null
+    ): ToolResult = withContext(Dispatchers.IO) {
         val fs = fileSystem
         if (fs == null) {
             return@withContext ToolResult(false, "No project is open. Please open a project first.")
@@ -69,7 +73,7 @@ class ToolExecutor @Inject constructor(
             ToolNames.PROPOSE_FILE_EDIT -> executeProposeEdit(fs, args)
             ToolNames.CREATE_FILE -> executeCreateFile(fs, args)
             ToolNames.DELETE_FILE -> executeDeleteFile(fs, args)
-            ToolNames.EXECUTE_COMMAND -> executeCommand(args)
+            ToolNames.EXECUTE_COMMAND -> executeCommand(args, onOutput)
             else -> ToolResult(false, "Unknown tool: $name")
         }
     }
@@ -358,9 +362,9 @@ class ToolExecutor @Inject constructor(
         }
     }
 
-    private suspend fun executeCommand(args: JsonObject): ToolResult {
+    private suspend fun executeCommand(args: JsonObject, onOutput: ((String) -> Unit)? = null): ToolResult {
         val command = argString(args, "command") ?: return ToolResult(false, "Missing 'command' argument")
-        return when (val res = terminalExecutor.execute(command)) {
+        return when (val res = terminalExecutor.execute(command, onOutput)) {
             is TerminalResult.Success -> ToolResult(true, if (res.output.isEmpty()) "(command executed successfully with exit code 0)" else res.output)
             is TerminalResult.Error -> ToolResult(false, res.message)
             is TerminalResult.Disabled -> ToolResult(false, "Terminal execution is disabled")

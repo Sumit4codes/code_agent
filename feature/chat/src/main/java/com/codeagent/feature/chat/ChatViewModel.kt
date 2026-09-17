@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codeagent.core.agent.AgentContext
+import com.codeagent.core.agent.AgentEvent
 import com.codeagent.core.agent.AgentOrchestrator
 import com.codeagent.core.agent.PendingChangeManager
 import com.codeagent.core.agent.ToolExecutor
@@ -17,12 +18,14 @@ import com.codeagent.core.data.SessionEntity
 import android.util.Log
 import com.codeagent.core.data.SettingsRepository
 import com.codeagent.core.files.SafProjectFileSystem
+import com.codeagent.core.model.ActiveToolExecution
 import com.codeagent.core.model.ChangeStatus
 import com.codeagent.core.model.ChatSession
 import com.codeagent.core.model.Message
 import com.codeagent.core.model.MessageRole
 import com.codeagent.core.model.PendingChange
 import com.codeagent.core.model.ToolCallData
+import com.codeagent.core.model.ToolExecutionStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -46,6 +49,7 @@ data class ChatState(
     val messages: List<Message> = emptyList(),
     val isStreaming: Boolean = false,
     val streamingText: String = "",
+    val activeTool: ActiveToolExecution? = null,
     val pendingChanges: List<PendingChange> = emptyList(),
     val error: String? = null,
     val model: String = "gpt-4o",
@@ -184,8 +188,24 @@ class ChatViewModel @Inject constructor(
             )
         }
 
+        // Link tool results into preceding assistant tool calls
+        val toolResultsById = restoredMessages.filter { it.role == MessageRole.TOOL && it.toolCallId != null }
+            .associate { it.toolCallId!! to it.content }
+
+        val linkedMessages = restoredMessages.map { msg ->
+            if (msg.role == MessageRole.ASSISTANT && msg.toolCalls.isNotEmpty()) {
+                msg.copy(
+                    toolCalls = msg.toolCalls.map { tc ->
+                        if (tc.result == null && toolResultsById.containsKey(tc.id)) {
+                            tc.copy(result = toolResultsById[tc.id])
+                        } else tc
+                    }
+                )
+            } else msg
+        }
+
         // Rebuild chat history from persisted messages
-        chatHistory = restoredMessages.map { msg ->
+        chatHistory = linkedMessages.map { msg ->
             ChatMessage(
                 role = when (msg.role) {
                     MessageRole.SYSTEM -> ChatMessage.Role.SYSTEM
@@ -217,7 +237,7 @@ class ChatViewModel @Inject constructor(
         }
 
         _state.value = _state.value.copy(
-            messages = restoredMessages,
+            messages = linkedMessages,
             pendingChanges = restoredPending
         )
     }
@@ -252,6 +272,7 @@ class ChatViewModel @Inject constructor(
             messages = _state.value.messages + userMsg,
             isStreaming = true,
             streamingText = "",
+            activeTool = null,
             error = null
         )
 
@@ -268,7 +289,7 @@ class ChatViewModel @Inject constructor(
 
                 val effectiveSystemPrompt = buildString {
                     append("You are an expert coding assistant working within the project '${_state.value.projectName}'.\n")
-                    append("Use the available tools to inspect and modify files.\n\n")
+                    append("Use the available tools to inspect, execute commands, and modify files.\n\n")
                     append("FILE EDITING RULES:\n")
                     append("1. Always use `read_file` to read the file before editing it.\n")
                     append("2. When calling `propose_file_edit`:\n")
@@ -290,36 +311,103 @@ class ChatViewModel @Inject constructor(
                     ),
                     model = currentModel,
                     systemPrompt = effectiveSystemPrompt,
-                    onDelta = { delta ->
-                        streamBuffer.append(delta)
-                        val now = System.currentTimeMillis()
-                        if (now - lastDeltaTime >= 60L) {
-                            lastDeltaTime = now
-                            _state.value = _state.value.copy(
-                                streamingText = streamBuffer.toString()
-                            )
+                    onEvent = { event ->
+                        when (event) {
+                            is AgentEvent.TextDelta -> {
+                                streamBuffer.append(event.text)
+                                val now = System.currentTimeMillis()
+                                if (now - lastDeltaTime >= 40L) {
+                                    lastDeltaTime = now
+                                    _state.value = _state.value.copy(
+                                        streamingText = streamBuffer.toString()
+                                    )
+                                }
+                            }
+                            is AgentEvent.ToolCallStart -> {
+                                streamBuffer.clear()
+                                _state.value = _state.value.copy(
+                                    activeTool = ActiveToolExecution(
+                                        id = event.toolCallId,
+                                        name = event.toolName,
+                                        arguments = event.arguments,
+                                        status = ToolExecutionStatus.RUNNING,
+                                        output = "",
+                                        startTime = System.currentTimeMillis()
+                                    ),
+                                    streamingText = ""
+                                )
+                            }
+                            is AgentEvent.ToolCallOutputChunk -> {
+                                val current = _state.value.activeTool
+                                if (current != null && current.id == event.toolCallId) {
+                                    val newOutput = if (current.output.isEmpty()) event.chunk else "${current.output}\n${event.chunk}"
+                                    _state.value = _state.value.copy(
+                                        activeTool = current.copy(output = newOutput)
+                                    )
+                                }
+                            }
+                            is AgentEvent.ToolCallComplete -> {
+                                val current = _state.value.activeTool
+                                if (current != null && current.id == event.toolCallId) {
+                                    _state.value = _state.value.copy(
+                                        activeTool = current.copy(
+                                            status = if (event.success) ToolExecutionStatus.SUCCESS else ToolExecutionStatus.ERROR,
+                                            output = event.output,
+                                            durationMs = event.durationMs
+                                        )
+                                    )
+                                }
+                            }
+                            is AgentEvent.MessageAdded -> {
+                                val msg = event.message
+                                val uiMsg = Message(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    sessionId = sessionId,
+                                    role = when (msg.role) {
+                                        ChatMessage.Role.ASSISTANT -> MessageRole.ASSISTANT
+                                        ChatMessage.Role.TOOL -> MessageRole.TOOL
+                                        ChatMessage.Role.USER -> MessageRole.USER
+                                        ChatMessage.Role.SYSTEM -> MessageRole.SYSTEM
+                                    },
+                                    content = msg.content,
+                                    toolCalls = msg.toolCalls.map { tc ->
+                                        ToolCallData(
+                                            id = tc.id,
+                                            name = tc.name,
+                                            arguments = tc.arguments,
+                                            result = if (msg.role == ChatMessage.Role.ASSISTANT) null else msg.content
+                                        )
+                                    },
+                                    toolCallId = msg.toolCallId,
+                                    timestamp = System.currentTimeMillis()
+                                )
+
+                                val updatedMessages = if (uiMsg.role == MessageRole.TOOL && uiMsg.toolCallId != null) {
+                                    _state.value.messages.map { existing ->
+                                        if (existing.role == MessageRole.ASSISTANT && existing.toolCalls.any { it.id == uiMsg.toolCallId }) {
+                                            existing.copy(
+                                                toolCalls = existing.toolCalls.map { tc ->
+                                                    if (tc.id == uiMsg.toolCallId) tc.copy(result = uiMsg.content) else tc
+                                                }
+                                            )
+                                        } else {
+                                            existing
+                                        }
+                                    } + uiMsg
+                                } else {
+                                    _state.value.messages + uiMsg
+                                }
+
+                                _state.value = _state.value.copy(
+                                    messages = updatedMessages,
+                                    activeTool = if (uiMsg.role == MessageRole.TOOL) null else _state.value.activeTool,
+                                    streamingText = ""
+                                )
+                                persistMessage(uiMsg)
+                            }
                         }
                     }
                 )
-
-                val uiMessages = result.newMessages.map { msg ->
-                    Message(
-                        id = java.util.UUID.randomUUID().toString(),
-                        sessionId = sessionId,
-                        role = when (msg.role) {
-                            ChatMessage.Role.ASSISTANT -> MessageRole.ASSISTANT
-                            ChatMessage.Role.TOOL -> MessageRole.TOOL
-                            ChatMessage.Role.USER -> MessageRole.USER
-                            ChatMessage.Role.SYSTEM -> MessageRole.SYSTEM
-                        },
-                        content = msg.content,
-                        toolCalls = msg.toolCalls.map { tc ->
-                            ToolCallData(id = tc.id, name = tc.name, arguments = tc.arguments)
-                        },
-                        toolCallId = msg.toolCallId,
-                        timestamp = System.currentTimeMillis()
-                    )
-                }
 
                 chatHistory = chatHistory + listOf(ChatMessage(ChatMessage.Role.USER, text)) + result.newMessages
 
@@ -328,15 +416,11 @@ class ChatViewModel @Inject constructor(
                 }
 
                 _state.value = _state.value.copy(
-                    messages = _state.value.messages + uiMessages,
                     isStreaming = false,
                     streamingText = "",
+                    activeTool = null,
                     pendingChanges = _state.value.pendingChanges + result.pendingChanges.map { it.copy(sessionId = sessionId) }
                 )
-
-                for (msg in uiMessages) {
-                    persistMessage(msg)
-                }
 
                 // Update session timestamp and title
                 _state.value.sessionId?.let { sid ->
@@ -350,6 +434,7 @@ class ChatViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isStreaming = false,
                     streamingText = "",
+                    activeTool = null,
                     error = "Generation cancelled"
                 )
             } catch (e: Exception) {
@@ -357,6 +442,7 @@ class ChatViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isStreaming = false,
                     streamingText = "",
+                    activeTool = null,
                     error = "Agent error: ${e.message ?: "Unknown error"}"
                 )
             }

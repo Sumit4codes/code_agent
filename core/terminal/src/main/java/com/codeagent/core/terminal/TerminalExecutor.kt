@@ -7,7 +7,7 @@ import java.io.File
 interface TerminalExecutor {
     fun bind(fileSystem: ProjectFileSystem, rootUri: Uri, localWorkDir: File? = null)
     fun unbind()
-    suspend fun execute(command: String): TerminalResult
+    suspend fun execute(command: String, onOutput: ((String) -> Unit)? = null): TerminalResult
     val isEnabled: Boolean
 }
 
