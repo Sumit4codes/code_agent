@@ -21,19 +21,23 @@ class DefaultTerminalExecutor @Inject constructor(
     private var fileSystem: ProjectFileSystem? = null
     private var projectRootUri: Uri? = null
     private var localWorkDir: File? = null
+    private var virtualShell: VirtualShell? = null
 
     override var isEnabled: Boolean = true
 
     override fun bind(fileSystem: ProjectFileSystem, rootUri: Uri, localWorkDir: File?) {
         this.fileSystem = fileSystem
         this.projectRootUri = rootUri
-        this.localWorkDir = localWorkDir ?: UriPathResolver.resolveLocalDirectory(null, rootUri, rootUri.lastPathSegment ?: "workspace")
+        val resolvedLocal = localWorkDir ?: UriPathResolver.resolveLocalDirectory(null, rootUri, rootUri.lastPathSegment ?: "workspace")
+        this.localWorkDir = resolvedLocal
+        this.virtualShell = VirtualShell(fileSystem, rootUri, resolvedLocal.name)
     }
 
     override fun unbind() {
         this.fileSystem = null
         this.projectRootUri = null
         this.localWorkDir = null
+        this.virtualShell = null
     }
 
     override suspend fun execute(command: String, onOutput: ((String) -> Unit)?): TerminalResult = withContext(Dispatchers.IO) {
@@ -59,13 +63,24 @@ class DefaultTerminalExecutor @Inject constructor(
             return@withContext TerminalResult.Error(err, 1)
         }
 
+        var shell = virtualShell
+        if (shell == null && fs != null && rootUri != null) {
+            shell = VirtualShell(fs, rootUri, localDir?.name ?: "")
+            this@DefaultTerminalExecutor.virtualShell = shell
+        }
+
         val parsed = CommandParser.parse(trimmed) ?: return@withContext TerminalResult.Success("", 0)
         val exe = parsed.executable.lowercase()
 
         // 1. Route Git operations to JGit
         if (exe == "git") {
-            val targetDir = localDir ?: (if (rootUri != null) UriPathResolver.resolveLocalDirectory(null, rootUri) else null)
-            if (targetDir != null) {
+            val baseDir = localDir ?: (if (rootUri != null) UriPathResolver.resolveLocalDirectory(null, rootUri) else null)
+            if (baseDir != null) {
+                val targetDir = if (shell != null && shell.currentRelativePath.isNotEmpty()) {
+                    File(baseDir, shell.currentRelativePath)
+                } else {
+                    baseDir
+                }
                 if (!targetDir.exists()) {
                     targetDir.mkdirs()
                 }
@@ -86,9 +101,8 @@ class DefaultTerminalExecutor @Inject constructor(
         }
 
         // 2. Route VFS operations to VirtualShell
-        val virtualCommands = setOf("ls", "cat", "head", "tail", "wc", "grep", "find", "pwd", "echo", "mkdir", "touch")
-        if (exe in virtualCommands && fs != null && rootUri != null) {
-            val shell = VirtualShell(fs, rootUri, localDir?.name ?: "")
+        val virtualCommands = setOf("cd", "ls", "cat", "head", "tail", "wc", "grep", "find", "pwd", "echo", "mkdir", "touch")
+        if (exe in virtualCommands && shell != null) {
             val res = shell.execute(parsed)
             when (res) {
                 is TerminalResult.Success -> if (res.output.isNotEmpty()) onOutput?.invoke(res.output)
@@ -100,11 +114,16 @@ class DefaultTerminalExecutor @Inject constructor(
 
         // 3. If local POSIX dir exists, fallback to ProcessBuilder (/system/bin/sh) with timeout
         if (localDir != null && localDir.exists()) {
-            return@withContext executeProcess(trimmed, localDir, onOutput)
+            val processWorkDir = if (shell != null && shell.currentRelativePath.isNotEmpty()) {
+                File(localDir, shell.currentRelativePath).apply { if (!exists()) mkdirs() }
+            } else {
+                localDir
+            }
+            return@withContext executeProcess(trimmed, processWorkDir, onOutput)
         }
 
         // 4. Command not recognized in virtual shell
-        val notFound = "sh: $exe: command not found (virtual commands available: ls, cat, head, tail, wc, grep, find, pwd, echo, mkdir, touch, git)"
+        val notFound = "sh: $exe: command not found (virtual commands available: cd, ls, cat, head, tail, wc, grep, find, pwd, echo, mkdir, touch, git)"
         onOutput?.invoke(notFound)
         TerminalResult.Error(notFound, 127)
     }

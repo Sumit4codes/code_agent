@@ -13,9 +13,16 @@ class VirtualShell(
     private val workingDirName: String = ""
 ) {
 
+    var currentRelativePath: String = ""
+        private set
+
+    var previousRelativePath: String = ""
+        private set
+
     suspend fun execute(cmd: ParsedCommand): TerminalResult = withContext(Dispatchers.IO) {
         val exe = cmd.executable.lowercase()
         when (exe) {
+            "cd" -> executeCd(cmd)
             "ls" -> executeLs(cmd)
             "cat" -> executeCat(cmd)
             "head" -> executeHead(cmd)
@@ -27,14 +34,119 @@ class VirtualShell(
             "echo" -> executeEcho(cmd)
             "mkdir" -> executeMkdir(cmd)
             "touch" -> executeTouch(cmd)
-            else -> TerminalResult.Error("sh: $exe: command not found (virtual shell supports: ls, cat, head, tail, wc, grep, find, pwd, echo, mkdir, touch, git)", 127)
+            else -> TerminalResult.Error("sh: $exe: command not found (virtual shell supports: cd, ls, cat, head, tail, wc, grep, find, pwd, echo, mkdir, touch, git)", 127)
         }
     }
 
-    private suspend fun resolveUri(path: String): Uri? {
-        val safePath = if (path == "." || path.isEmpty()) "" else path
-        if (safePath.isNotEmpty() && !PathSafety.isValidRelativePath(safePath)) return null
-        return if (safePath.isEmpty()) rootUri else fileSystem.resolveRelativeUri(rootUri, safePath)
+    fun normalizePath(baseRel: String, input: String): String {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty() || trimmed == "~" || trimmed == "/") {
+            return ""
+        }
+        val cleanInput = when {
+            trimmed.startsWith("~") -> trimmed.removePrefix("~").trimStart('/')
+            workingDirName.isNotBlank() && trimmed.startsWith("/$workingDirName/") -> trimmed.removePrefix("/$workingDirName/").trimStart('/')
+            workingDirName.isNotBlank() && trimmed == "/$workingDirName" -> ""
+            trimmed.startsWith("/workspace/") -> trimmed.removePrefix("/workspace/").trimStart('/')
+            trimmed == "/workspace" -> ""
+            trimmed.startsWith("/") -> trimmed.trimStart('/')
+            else -> null
+        }
+
+        val segments = mutableListOf<String>()
+        if (cleanInput == null) {
+            // Relative to baseRel
+            if (baseRel.isNotEmpty()) {
+                segments.addAll(baseRel.split("/").filter { it.isNotEmpty() && it != "." })
+            }
+            val inputSegments = trimmed.split("/").filter { it.isNotEmpty() }
+            for (seg in inputSegments) {
+                when (seg) {
+                    "." -> { /* current dir */ }
+                    ".." -> {
+                        if (segments.isNotEmpty()) {
+                            segments.removeAt(segments.size - 1)
+                        }
+                    }
+                    else -> segments.add(seg)
+                }
+            }
+        } else {
+            // Absolute from root
+            val inputSegments = cleanInput.split("/").filter { it.isNotEmpty() }
+            for (seg in inputSegments) {
+                when (seg) {
+                    "." -> { /* current dir */ }
+                    ".." -> {
+                        if (segments.isNotEmpty()) {
+                            segments.removeAt(segments.size - 1)
+                        }
+                    }
+                    else -> segments.add(seg)
+                }
+            }
+        }
+
+        return segments.joinToString("/")
+    }
+
+    private suspend fun resolveUri(path: String?): Uri? {
+        val relPath = if (path.isNullOrBlank() || path == ".") {
+            currentRelativePath
+        } else {
+            normalizePath(currentRelativePath, path)
+        }
+        if (relPath.isEmpty()) return rootUri
+        if (!PathSafety.isValidRelativePath(relPath)) return null
+        return fileSystem.resolveRelativeUri(rootUri, relPath)
+    }
+
+    private suspend fun isDirectory(relPath: String): Boolean {
+        if (relPath.isEmpty()) return true
+        val parentRel = relPath.substringBeforeLast('/', "")
+        val name = relPath.substringAfterLast('/')
+        val parentUri = if (parentRel.isEmpty()) rootUri else fileSystem.resolveRelativeUri(rootUri, parentRel) ?: return false
+        val children = fileSystem.listChildren(parentUri)
+        val node = children.find { it.name == name } ?: return false
+        return node.isDirectory
+    }
+
+    private suspend fun executeCd(cmd: ParsedCommand): TerminalResult {
+        val target = cmd.args.firstOrNull() ?: ""
+        if (target.isEmpty() || target == "~" || target == "/") {
+            previousRelativePath = currentRelativePath
+            currentRelativePath = ""
+            return TerminalResult.Success("", 0)
+        }
+        if (target == "-") {
+            val prev = previousRelativePath
+            previousRelativePath = currentRelativePath
+            currentRelativePath = prev
+            val base = if (workingDirName.isNotBlank()) "/$workingDirName" else "/workspace"
+            val display = if (currentRelativePath.isNotEmpty()) "$base/$currentRelativePath" else base
+            return TerminalResult.Success(display, 0)
+        }
+
+        val targetRel = normalizePath(currentRelativePath, target)
+        if (targetRel.isEmpty()) {
+            previousRelativePath = currentRelativePath
+            currentRelativePath = ""
+            return TerminalResult.Success("", 0)
+        }
+
+        val targetUri = resolveUri(target) ?: return TerminalResult.Error("cd: $target: No such file or directory", 1)
+        val exists = fileSystem.exists(targetUri)
+        if (!exists) {
+            return TerminalResult.Error("cd: $target: No such file or directory", 1)
+        }
+
+        if (!isDirectory(targetRel)) {
+            return TerminalResult.Error("cd: $target: Not a directory", 1)
+        }
+
+        previousRelativePath = currentRelativePath
+        currentRelativePath = targetRel
+        return TerminalResult.Success("", 0)
     }
 
     private suspend fun executeLs(cmd: ParsedCommand): TerminalResult {
@@ -290,7 +402,8 @@ class VirtualShell(
     }
 
     private fun executePwd(): TerminalResult {
-        val path = if (workingDirName.isNotBlank()) "/$workingDirName" else "/project"
+        val base = if (workingDirName.isNotBlank()) "/$workingDirName" else "/workspace"
+        val path = if (currentRelativePath.isNotEmpty()) "$base/$currentRelativePath" else base
         return TerminalResult.Success(path, 0)
     }
 
@@ -300,9 +413,11 @@ class VirtualShell(
 
     private suspend fun executeMkdir(cmd: ParsedCommand): TerminalResult {
         val dirPath = cmd.args.firstOrNull() ?: return TerminalResult.Error("mkdir: missing operand", 1)
-        if (!PathSafety.isValidRelativePath(dirPath)) return TerminalResult.Error("mkdir: invalid path: $dirPath", 1)
+        val targetRel = normalizePath(currentRelativePath, dirPath)
+        if (targetRel.isEmpty()) return TerminalResult.Success("", 0)
+        if (!PathSafety.isValidRelativePath(targetRel)) return TerminalResult.Error("mkdir: invalid path: $dirPath", 1)
 
-        val parts = dirPath.split("/").filter { it.isNotBlank() }
+        val parts = targetRel.split("/").filter { it.isNotBlank() }
         var currentUri = rootUri
         for (part in parts) {
             val resolved = fileSystem.resolveRelativeUri(currentUri, part)
@@ -319,16 +434,17 @@ class VirtualShell(
 
     private suspend fun executeTouch(cmd: ParsedCommand): TerminalResult {
         val filePath = cmd.args.firstOrNull() ?: return TerminalResult.Error("touch: missing file operand", 1)
-        if (!PathSafety.isValidRelativePath(filePath)) return TerminalResult.Error("touch: invalid path: $filePath", 1)
+        val targetRel = normalizePath(currentRelativePath, filePath)
+        if (targetRel.isEmpty() || !PathSafety.isValidRelativePath(targetRel)) return TerminalResult.Error("touch: invalid path: $filePath", 1)
 
         val existing = resolveUri(filePath)
         if (existing != null && fileSystem.exists(existing)) {
             return TerminalResult.Success("", 0)
         }
 
-        val parentPath = filePath.substringBeforeLast('/', "")
-        val fileName = filePath.substringAfterLast('/')
-        val parentUri = if (parentPath.isEmpty()) rootUri else resolveUri(parentPath)
+        val parentPath = targetRel.substringBeforeLast('/', "")
+        val fileName = targetRel.substringAfterLast('/')
+        val parentUri = if (parentPath.isEmpty()) rootUri else fileSystem.resolveRelativeUri(rootUri, parentPath)
             ?: return TerminalResult.Error("touch: cannot touch '$filePath': No such file or directory", 1)
 
         fileSystem.createFile(parentUri, fileName, "text/plain")

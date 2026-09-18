@@ -173,4 +173,72 @@ class VirtualShellTest {
         assertTrue(gitStatus is TerminalResult.Success)
         assertTrue((gitStatus as TerminalResult.Success).output.contains("nothing to commit"))
     }
+
+    @Test
+    fun testCdNavigationAndRelativeCommands() = runTest {
+        // Initial pwd
+        val initPwd = shell.execute(CommandParser.parse("pwd")!!)
+        assertTrue(initPwd is TerminalResult.Success)
+        assertEquals("/test_proj", (initPwd as TerminalResult.Success).output)
+
+        // cd into src
+        val cdSrc = shell.execute(CommandParser.parse("cd src")!!)
+        assertTrue(cdSrc is TerminalResult.Success)
+
+        val srcPwd = shell.execute(CommandParser.parse("pwd")!!)
+        assertTrue(srcPwd is TerminalResult.Success)
+        assertEquals("/test_proj/src", (srcPwd as TerminalResult.Success).output)
+
+        // ls in current subfolder
+        val srcLs = shell.execute(CommandParser.parse("ls")!!)
+        assertTrue(srcLs is TerminalResult.Success)
+        val srcOut = (srcLs as TerminalResult.Success).output
+        assertTrue(srcOut.contains("main.kt"))
+        assertFalse(srcOut.contains("README.md"))
+
+        // cat relative to src
+        val catMain = shell.execute(CommandParser.parse("cat main.kt")!!)
+        assertTrue(catMain is TerminalResult.Success)
+        assertTrue((catMain as TerminalResult.Success).output.contains("println(\"hi\")"))
+
+        // cd .. back to root
+        val cdUp = shell.execute(CommandParser.parse("cd ..")!!)
+        assertTrue(cdUp is TerminalResult.Success)
+
+        val rootPwd = shell.execute(CommandParser.parse("pwd")!!)
+        assertTrue(rootPwd is TerminalResult.Success)
+        assertEquals("/test_proj", (rootPwd as TerminalResult.Success).output)
+
+        // cd - to go back to previous
+        val cdPrev = shell.execute(CommandParser.parse("cd -")!!)
+        assertTrue(cdPrev is TerminalResult.Success)
+        assertEquals("/test_proj/src", (cdPrev as TerminalResult.Success).output)
+
+        // cd to file should fail
+        val cdFile = shell.execute(CommandParser.parse("cd main.kt")!!)
+        assertTrue(cdFile is TerminalResult.Error)
+        assertTrue((cdFile as TerminalResult.Error).message.contains("Not a directory"))
+
+        // cd to nonexistent should fail
+        val cdBad = shell.execute(CommandParser.parse("cd nonexistent")!!)
+        assertTrue(cdBad is TerminalResult.Error)
+        assertTrue((cdBad as TerminalResult.Error).message.contains("No such file or directory"))
+    }
+
+    @Test
+    fun testDefaultTerminalExecutorStatefulCd() = runTest {
+        val executor = DefaultTerminalExecutor(JGitOperations())
+        executor.bind(fileSystem, rootUri, null)
+
+        val cdRes = executor.execute("cd src")
+        assertTrue(cdRes is TerminalResult.Success)
+
+        val pwdRes = executor.execute("pwd")
+        assertTrue(pwdRes is TerminalResult.Success)
+        assertTrue((pwdRes as TerminalResult.Success).output.endsWith("/src"))
+
+        val lsRes = executor.execute("ls")
+        assertTrue(lsRes is TerminalResult.Success)
+        assertTrue((lsRes as TerminalResult.Success).output.contains("main.kt"))
+    }
 }
