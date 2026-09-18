@@ -291,7 +291,11 @@ class ChatViewModel @Inject constructor(
 
                 val effectiveSystemPrompt = buildString {
                     append("You are an expert coding assistant working within the project '${_state.value.projectName}'.\n")
-                    append("Use the available tools to inspect, execute commands, and modify files.\n\n")
+                    append("Use the available tools to inspect files, execute commands, and modify code.\n\n")
+                    append("WORKSPACE & SHELL RULES:\n")
+                    append("1. To list files or inspect the workspace, call `list_files` or `execute_command` (e.g. `ls`, `cat`, `grep`, `find`, `pwd`).\n")
+                    append("2. You CAN change directories using `cd <folder>` or `cd ..` or pass `-C <folder>` to `git` (e.g. `git -C <folder> status`).\n")
+                    append("3. Always proactively call tools to inspect files and execute commands rather than refusing or asking the user to run them manually.\n\n")
                     append("FILE EDITING RULES:\n")
                     append("1. Always use `read_file` to read the file before editing it.\n")
                     append("2. When calling `propose_file_edit`:\n")

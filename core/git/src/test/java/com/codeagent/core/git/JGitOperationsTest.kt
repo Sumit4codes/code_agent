@@ -161,4 +161,18 @@ class JGitOperationsTest {
         assertEquals(0, resetRes.exitCode)
         assertEquals("v1", File(projectDir, "f1.txt").readText())
     }
+
+    @Test
+    fun testGitDashCFlag() = runTest {
+        val parentDir = tempFolder.newFolder("workspace_parent")
+        val subRepo = File(parentDir, "Hello-World")
+        subRepo.mkdirs()
+        gitOps.initRepo(subRepo)
+        File(subRepo, "keyboard_firmware.c").writeText("int main() { return 0; }")
+
+        // Execute git status with -C subfolder
+        val statusRes = gitOps.executeGit(parentDir, listOf("-C", "Hello-World", "status"))
+        assertEquals(0, statusRes.exitCode)
+        assertTrue(statusRes.output.contains("keyboard_firmware.c"))
+    }
 }

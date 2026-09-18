@@ -351,33 +351,70 @@ class JGitOperations @Inject constructor() : GitOperations {
 
     override suspend fun executeGit(workDir: File, args: List<String>): GitCommandResult = withContext(Dispatchers.IO) {
         if (args.isEmpty()) {
-            return@withContext GitCommandResult("usage: git [--version] [--help] <command> [<args>]", 0)
+            return@withContext GitCommandResult("usage: git [--version] [--help] [-C <path>] <command> [<args>]", 0)
         }
 
-        val subCmd = args[0].lowercase()
-        val rest = args.drop(1)
+        var effectiveWorkDir = workDir
+        val remainingArgs = mutableListOf<String>()
+        var i = 0
+        while (i < args.size) {
+            val arg = args[i]
+            when {
+                arg == "-C" && i + 1 < args.size -> {
+                    val customPath = args[i + 1]
+                    effectiveWorkDir = if (customPath.startsWith("/")) File(customPath) else File(workDir, customPath)
+                    i += 2
+                }
+                arg.startsWith("-C") && arg.length > 2 -> {
+                    val customPath = arg.removePrefix("-C").removePrefix("=")
+                    effectiveWorkDir = if (customPath.startsWith("/")) File(customPath) else File(workDir, customPath)
+                    i++
+                }
+                arg.startsWith("--work-tree=") -> {
+                    val customPath = arg.removePrefix("--work-tree=")
+                    effectiveWorkDir = if (customPath.startsWith("/")) File(customPath) else File(workDir, customPath)
+                    i++
+                }
+                arg.startsWith("--git-dir=") -> {
+                    val customPath = arg.removePrefix("--git-dir=").removeSuffix("/.git")
+                    effectiveWorkDir = if (customPath.startsWith("/")) File(customPath) else File(workDir, customPath)
+                    i++
+                }
+                else -> {
+                    remainingArgs.add(arg)
+                    i++
+                }
+            }
+        }
+
+        if (remainingArgs.isEmpty()) {
+            return@withContext GitCommandResult("usage: git [--version] [--help] [-C <path>] <command> [<args>]", 0)
+        }
+
+        val subCmd = remainingArgs[0].lowercase()
+        val rest = remainingArgs.drop(1)
 
         when (subCmd) {
-            "status" -> status(workDir)
+            "status" -> status(effectiveWorkDir)
             "diff" -> {
                 val cached = "--staged" in rest || "--cached" in rest
-                diff(workDir, cached)
+                diff(effectiveWorkDir, cached)
             }
             "log" -> {
                 var maxCount = 10
-                for (i in rest.indices) {
-                    if (rest[i] == "-n" || rest[i] == "--max-count") {
-                        val parsed = rest.getOrNull(i + 1)?.toIntOrNull()
+                for (j in rest.indices) {
+                    if (rest[j] == "-n" || rest[j] == "--max-count") {
+                        val parsed = rest.getOrNull(j + 1)?.toIntOrNull()
                         if (parsed != null) maxCount = parsed
-                    } else if (rest[i].startsWith("-") && rest[i].drop(1).all { it.isDigit() }) {
-                        val parsed = rest[i].drop(1).toIntOrNull()
+                    } else if (rest[j].startsWith("-") && rest[j].drop(1).all { it.isDigit() }) {
+                        val parsed = rest[j].drop(1).toIntOrNull()
                         if (parsed != null) maxCount = parsed
                     }
                 }
-                log(workDir, maxCount)
+                log(effectiveWorkDir, maxCount)
             }
-            "branch" -> branch(workDir)
-            "init" -> initRepo(workDir)
+            "branch" -> branch(effectiveWorkDir)
+            "init" -> initRepo(effectiveWorkDir)
             "clone" -> {
                 if (rest.isEmpty()) {
                     GitCommandResult("fatal: You must specify a repository to clone.\nusage: git clone [<options>] [--] <repo> [<dir>]", 128)
@@ -385,32 +422,32 @@ class JGitOperations @Inject constructor() : GitOperations {
                     var branch: String? = null
                     var depth: Int? = null
                     val positional = mutableListOf<String>()
-                    var i = 0
-                    while (i < rest.size) {
-                        val arg = rest[i]
+                    var k = 0
+                    while (k < rest.size) {
+                        val arg = rest[k]
                         when {
                             arg == "-b" || arg == "--branch" -> {
-                                branch = rest.getOrNull(i + 1)
-                                i += 2
+                                branch = rest.getOrNull(k + 1)
+                                k += 2
                             }
                             arg.startsWith("--branch=") -> {
                                 branch = arg.removePrefix("--branch=")
-                                i++
+                                k++
                             }
                             arg == "--depth" -> {
-                                depth = rest.getOrNull(i + 1)?.toIntOrNull()
-                                i += 2
+                                depth = rest.getOrNull(k + 1)?.toIntOrNull()
+                                k += 2
                             }
                             arg.startsWith("--depth=") -> {
                                 depth = arg.removePrefix("--depth=").toIntOrNull()
-                                i++
+                                k++
                             }
                             arg.startsWith("-") -> {
-                                i++
+                                k++
                             }
                             else -> {
                                 positional.add(arg)
-                                i++
+                                k++
                             }
                         }
                     }
@@ -419,31 +456,31 @@ class JGitOperations @Inject constructor() : GitOperations {
                     } else {
                         val repoUrl = positional[0]
                         val targetDir = positional.getOrNull(1)
-                        cloneRepo(workDir, repoUrl, targetDir, branch, depth)
+                        cloneRepo(effectiveWorkDir, repoUrl, targetDir, branch, depth)
                     }
                 }
             }
-            "pull" -> pull(workDir)
-            "fetch" -> fetch(workDir)
-            "remote" -> remote(workDir, rest)
+            "pull" -> pull(effectiveWorkDir)
+            "fetch" -> fetch(effectiveWorkDir)
+            "remote" -> remote(effectiveWorkDir, rest)
             "reset" -> {
                 val hard = "--hard" in rest
                 val ref = rest.firstOrNull { it != "--hard" && !it.startsWith("-") } ?: "HEAD"
-                reset(workDir, ref, hard)
+                reset(effectiveWorkDir, ref, hard)
             }
             "add" -> {
                 val pattern = rest.firstOrNull { !it.startsWith("-") } ?: "."
-                add(workDir, pattern)
+                add(effectiveWorkDir, pattern)
             }
             "commit" -> {
                 var msg = "Commit from CodeAgent"
-                for (i in rest.indices) {
-                    if (rest[i] == "-m" || rest[i] == "--message") {
-                        val m = rest.getOrNull(i + 1)
+                for (j in rest.indices) {
+                    if (rest[j] == "-m" || rest[j] == "--message") {
+                        val m = rest.getOrNull(j + 1)
                         if (m != null) msg = m
                     }
                 }
-                commit(workDir, msg)
+                commit(effectiveWorkDir, msg)
             }
             "checkout" -> {
                 val create = "-b" in rest
@@ -451,7 +488,7 @@ class JGitOperations @Inject constructor() : GitOperations {
                 if (target == null) {
                     GitCommandResult("fatal: missing branch/commit target for checkout", 1)
                 } else {
-                    checkout(workDir, target, create)
+                    checkout(effectiveWorkDir, target, create)
                 }
             }
             "version", "--version" -> GitCommandResult("git version 2.43.0 (JGit 6.9.0)", 0)
