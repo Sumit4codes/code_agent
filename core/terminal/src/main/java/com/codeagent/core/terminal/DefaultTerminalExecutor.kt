@@ -2,6 +2,7 @@ package com.codeagent.core.terminal
 
 import android.net.Uri
 import com.codeagent.core.files.ProjectFileSystem
+import com.codeagent.core.files.UriPathResolver
 import com.codeagent.core.git.GitOperations
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,13 +27,7 @@ class DefaultTerminalExecutor @Inject constructor(
     override fun bind(fileSystem: ProjectFileSystem, rootUri: Uri, localWorkDir: File?) {
         this.fileSystem = fileSystem
         this.projectRootUri = rootUri
-        this.localWorkDir = localWorkDir ?: run {
-            val path = rootUri.path
-            if (path != null && (rootUri.scheme == "file" || rootUri.scheme == null || path.startsWith("/"))) {
-                val f = File(path)
-                if (f.exists()) f else null
-            } else null
-        }
+        this.localWorkDir = localWorkDir ?: UriPathResolver.resolveLocalDirectory(null, rootUri, rootUri.lastPathSegment ?: "workspace")
     }
 
     override fun unbind() {
@@ -52,7 +47,11 @@ class DefaultTerminalExecutor @Inject constructor(
 
         val fs = fileSystem
         val rootUri = projectRootUri
-        val localDir = localWorkDir
+        var localDir = localWorkDir
+        if (localDir == null && rootUri != null) {
+            localDir = UriPathResolver.resolveLocalDirectory(null, rootUri, rootUri.lastPathSegment ?: "workspace")
+            this@DefaultTerminalExecutor.localWorkDir = localDir
+        }
 
         if (fs == null && localDir == null) {
             val err = "No active project workspace bound to terminal."
@@ -65,8 +64,12 @@ class DefaultTerminalExecutor @Inject constructor(
 
         // 1. Route Git operations to JGit
         if (exe == "git") {
-            if (localDir != null && localDir.exists()) {
-                val gitRes = gitOperations.executeGit(localDir, parsed.rawArgs)
+            val targetDir = localDir ?: (if (rootUri != null) UriPathResolver.resolveLocalDirectory(null, rootUri) else null)
+            if (targetDir != null) {
+                if (!targetDir.exists()) {
+                    targetDir.mkdirs()
+                }
+                val gitRes = gitOperations.executeGit(targetDir, parsed.rawArgs)
                 if (gitRes.output.isNotEmpty()) {
                     onOutput?.invoke(gitRes.output)
                 }

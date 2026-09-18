@@ -30,4 +30,15 @@ interface GitOperations {
         authorEmail: String = "agent@codeagent.local"
     ): GitCommandResult
     suspend fun checkout(workDir: File, target: String, createNewBranch: Boolean = false): GitCommandResult
+    suspend fun cloneRepo(
+        workDir: File,
+        repoUrl: String,
+        targetDirName: String? = null,
+        branch: String? = null,
+        depth: Int? = null
+    ): GitCommandResult
+    suspend fun pull(workDir: File): GitCommandResult
+    suspend fun fetch(workDir: File): GitCommandResult
+    suspend fun remote(workDir: File, args: List<String> = emptyList()): GitCommandResult
+    suspend fun reset(workDir: File, ref: String = "HEAD", hard: Boolean = false): GitCommandResult
 }

@@ -156,4 +156,21 @@ class VirtualShellTest {
         assertTrue(vfsLs is TerminalResult.Success)
         assertTrue((vfsLs as TerminalResult.Success).output.contains("README.md"))
     }
+
+    @Test
+    fun testDefaultTerminalExecutorSafFallbackWithGit() = runTest {
+        val gitOps = JGitOperations()
+        val executor = DefaultTerminalExecutor(gitOps)
+        // Bind without explicit localDir, only SAF content Uri
+        val safUri = FakeUri("content://com.android.externalstorage.documents/tree/primary%3AProjects%2FSampleProject")
+        executor.bind(fileSystem, safUri, null)
+
+        val gitInit = executor.execute("git init")
+        assertTrue(gitInit is TerminalResult.Success)
+        assertTrue((gitInit as TerminalResult.Success).output.contains("Initialized empty Git repository"))
+
+        val gitStatus = executor.execute("git status")
+        assertTrue(gitStatus is TerminalResult.Success)
+        assertTrue((gitStatus as TerminalResult.Success).output.contains("nothing to commit"))
+    }
 }

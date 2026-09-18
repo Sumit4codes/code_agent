@@ -106,4 +106,59 @@ class JGitOperationsTest {
         assertEquals(0, versionCmd.exitCode)
         assertTrue(versionCmd.output.contains("JGit"))
     }
+
+    @Test
+    fun testCloneRepoAndGitCloneCommand() = runTest {
+        // Prepare an origin repo
+        val originDir = tempFolder.newFolder("origin_repo")
+        gitOps.initRepo(originDir)
+        val file = File(originDir, "origin.txt")
+        file.writeText("hello from origin")
+        gitOps.add(originDir, ".")
+        gitOps.commit(originDir, "Origin commit")
+
+        // 1. Test cloneRepo API
+        val cloneDest = tempFolder.newFolder("cloned_dest")
+        val cloneRes = gitOps.cloneRepo(
+            workDir = cloneDest,
+            repoUrl = originDir.toURI().toString(),
+            targetDirName = "sub_clone"
+        )
+        assertEquals(0, cloneRes.exitCode)
+        assertTrue(cloneRes.output.contains("Cloned repository successfully"))
+        val clonedFile = File(cloneDest, "sub_clone/origin.txt")
+        assertTrue(clonedFile.exists())
+        assertEquals("hello from origin", clonedFile.readText())
+
+        // 2. Test executeGit("clone", ...)
+        val cliCloneDest = tempFolder.newFolder("cli_clone_dest")
+        val cliRes = gitOps.executeGit(
+            cliCloneDest,
+            listOf("clone", originDir.toURI().toString(), "repo_copy")
+        )
+        assertEquals(0, cliRes.exitCode)
+        assertTrue(File(cliCloneDest, "repo_copy/origin.txt").exists())
+    }
+
+    @Test
+    fun testRemoteAndReset() = runTest {
+        gitOps.initRepo(projectDir)
+        File(projectDir, "f1.txt").writeText("v1")
+        gitOps.add(projectDir, ".")
+        gitOps.commit(projectDir, "v1 commit")
+
+        val remoteAdd = gitOps.executeGit(projectDir, listOf("remote", "add", "origin", "https://github.com/test/repo.git"))
+        assertEquals(0, remoteAdd.exitCode)
+
+        val remoteList = gitOps.executeGit(projectDir, listOf("remote", "-v"))
+        assertEquals(0, remoteList.exitCode)
+        assertTrue(remoteList.output.contains("origin"))
+        assertTrue(remoteList.output.contains("https://github.com/test/repo.git"))
+
+        // Test Reset
+        File(projectDir, "f1.txt").writeText("dirty change")
+        val resetRes = gitOps.executeGit(projectDir, listOf("reset", "--hard", "HEAD"))
+        assertEquals(0, resetRes.exitCode)
+        assertEquals("v1", File(projectDir, "f1.txt").readText())
+    }
 }

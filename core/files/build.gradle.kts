@@ -27,5 +27,6 @@ dependencies {
     implementation(libs.diffutils)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
+    testImplementation(project(":core:testing"))
     testImplementation(libs.junit)
 }

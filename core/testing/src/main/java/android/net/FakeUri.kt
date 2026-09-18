@@ -3,7 +3,13 @@ package android.net
 class FakeUri(private val uriString: String) : Uri() {
     override fun isHierarchical(): Boolean = true
     override fun isRelative(): Boolean = false
-    override fun getScheme(): String? = "content"
+    override fun getScheme(): String? = when {
+        uriString.startsWith("file://") -> "file"
+        uriString.startsWith("content://") -> "content"
+        uriString.startsWith("http://") -> "http"
+        uriString.startsWith("https://") -> "https"
+        else -> "content"
+    }
     override fun getSchemeSpecificPart(): String = uriString
     override fun getEncodedSchemeSpecificPart(): String = uriString
     override fun getAuthority(): String? = "test.authority"
@@ -12,7 +18,10 @@ class FakeUri(private val uriString: String) : Uri() {
     override fun getEncodedUserInfo(): String? = null
     override fun getHost(): String? = null
     override fun getPort(): Int = -1
-    override fun getPath(): String = uriString
+    override fun getPath(): String = when {
+        uriString.startsWith("file://") -> uriString.removePrefix("file://")
+        else -> uriString
+    }
     override fun getEncodedPath(): String = uriString
     override fun getQuery(): String? = null
     override fun getEncodedQuery(): String? = null

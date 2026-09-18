@@ -18,6 +18,7 @@ import com.codeagent.core.data.SessionEntity
 import android.util.Log
 import com.codeagent.core.data.SettingsRepository
 import com.codeagent.core.files.SafProjectFileSystem
+import com.codeagent.core.files.UriPathResolver
 import com.codeagent.core.model.ActiveToolExecution
 import com.codeagent.core.model.ChangeStatus
 import com.codeagent.core.model.ChatSession
@@ -90,7 +91,8 @@ class ChatViewModel @Inject constructor(
 
     fun openProject(treeUri: Uri, name: String, projectId: String) {
         val fs = SafProjectFileSystem(context)
-        toolExecutor.bind(fs, treeUri)
+        val localDir = UriPathResolver.resolveLocalDirectory(context, treeUri, projectId.ifBlank { name })
+        toolExecutor.bind(fs, treeUri, localDir)
         pendingChangeManager.bind(fs, treeUri)
 
         _state.value = _state.value.copy(

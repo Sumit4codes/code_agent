@@ -220,6 +220,135 @@ class JGitOperations @Inject constructor() : GitOperations {
         }
     }
 
+    override suspend fun cloneRepo(
+        workDir: File,
+        repoUrl: String,
+        targetDirName: String?,
+        branch: String?,
+        depth: Int?
+    ): GitCommandResult = withContext(Dispatchers.IO) {
+        try {
+            val destinationDir = when {
+                targetDirName == null || targetDirName.isBlank() -> {
+                    val rawName = repoUrl.trimEnd('/').substringAfterLast('/').removeSuffix(".git")
+                    val repoName = if (rawName.isBlank()) "cloned_repo" else rawName
+                    File(workDir, repoName)
+                }
+                targetDirName == "." -> {
+                    workDir
+                }
+                else -> {
+                    File(workDir, targetDirName)
+                }
+            }
+
+            if (!destinationDir.exists()) {
+                destinationDir.mkdirs()
+            }
+
+            val cloneCmd = Git.cloneRepository()
+                .setURI(repoUrl)
+                .setDirectory(destinationDir)
+                .setCloneAllBranches(branch == null)
+
+            if (!branch.isNullOrBlank()) {
+                cloneCmd.setBranch(branch)
+            }
+            if (depth != null && depth > 0) {
+                cloneCmd.setDepth(depth)
+            }
+
+            cloneCmd.call().use { git ->
+                val branchName = try { git.repository.branch ?: "HEAD" } catch (_: Exception) { "HEAD" }
+                GitCommandResult(
+                    output = "Cloning into '${destinationDir.name}'...\nCloned repository successfully on branch '$branchName'.",
+                    exitCode = 0
+                )
+            }
+        } catch (e: Exception) {
+            GitCommandResult("fatal: clone failed: ${e.message}", 128)
+        }
+    }
+
+    override suspend fun pull(workDir: File): GitCommandResult = withContext(Dispatchers.IO) {
+        val git = openGit(workDir) ?: return@withContext GitCommandResult("fatal: not a git repository: .git", 128)
+        git.use { g ->
+            try {
+                val pullResult = g.pull().call()
+                val isSuccessful = pullResult.isSuccessful
+                if (isSuccessful) {
+                    GitCommandResult("Already up to date / Fast-forward merge successful.", 0)
+                } else {
+                    val mergeResult = pullResult.mergeResult
+                    GitCommandResult("fatal: pull failed: ${mergeResult?.mergeStatus ?: "Unknown merge status"}", 1)
+                }
+            } catch (e: Exception) {
+                GitCommandResult("fatal: pull failed: ${e.message}", 1)
+            }
+        }
+    }
+
+    override suspend fun fetch(workDir: File): GitCommandResult = withContext(Dispatchers.IO) {
+        val git = openGit(workDir) ?: return@withContext GitCommandResult("fatal: not a git repository: .git", 128)
+        git.use { g ->
+            try {
+                g.fetch().call()
+                GitCommandResult("Fetched latest from origin.", 0)
+            } catch (e: Exception) {
+                GitCommandResult("fatal: fetch failed: ${e.message}", 1)
+            }
+        }
+    }
+
+    override suspend fun remote(workDir: File, args: List<String>): GitCommandResult = withContext(Dispatchers.IO) {
+        val git = openGit(workDir) ?: return@withContext GitCommandResult("fatal: not a git repository: .git", 128)
+        git.use { g ->
+            try {
+                val config = g.repository.config
+                val remotes = config.getSubsections("remote")
+                if (args.isEmpty() || args[0] == "-v" || args[0] == "--verbose") {
+                    val sb = StringBuilder()
+                    for (r in remotes) {
+                        val url = config.getString("remote", r, "url") ?: ""
+                        if (args.isNotEmpty()) {
+                            sb.append("$r\t$url (fetch)\n")
+                            sb.append("$r\t$url (push)\n")
+                        } else {
+                            sb.append("$r\n")
+                        }
+                    }
+                    GitCommandResult(sb.toString().trimEnd().ifEmpty { "(no remotes configured)" }, 0)
+                } else if (args[0] == "add" && args.size >= 3) {
+                    val name = args[1]
+                    val url = args[2]
+                    config.setString("remote", name, "url", url)
+                    config.setString("remote", name, "fetch", "+refs/heads/*:refs/remotes/$name/*")
+                    config.save()
+                    GitCommandResult("", 0)
+                } else {
+                    GitCommandResult("usage: git remote [-v] | git remote add <name> <url>", 0)
+                }
+            } catch (e: Exception) {
+                GitCommandResult("fatal: remote command failed: ${e.message}", 1)
+            }
+        }
+    }
+
+    override suspend fun reset(workDir: File, ref: String, hard: Boolean): GitCommandResult = withContext(Dispatchers.IO) {
+        val git = openGit(workDir) ?: return@withContext GitCommandResult("fatal: not a git repository: .git", 128)
+        git.use { g ->
+            try {
+                val cmd = g.reset().setRef(ref)
+                if (hard) cmd.setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD)
+                else cmd.setMode(org.eclipse.jgit.api.ResetCommand.ResetType.MIXED)
+                cmd.call()
+                GitCommandResult("HEAD is now at $ref", 0)
+            } catch (e: Exception) {
+                GitCommandResult("fatal: reset failed: ${e.message}", 1)
+            }
+        }
+    }
+
     override suspend fun executeGit(workDir: File, args: List<String>): GitCommandResult = withContext(Dispatchers.IO) {
         if (args.isEmpty()) {
             return@withContext GitCommandResult("usage: git [--version] [--help] <command> [<args>]", 0)
@@ -249,6 +378,59 @@ class JGitOperations @Inject constructor() : GitOperations {
             }
             "branch" -> branch(workDir)
             "init" -> initRepo(workDir)
+            "clone" -> {
+                if (rest.isEmpty()) {
+                    GitCommandResult("fatal: You must specify a repository to clone.\nusage: git clone [<options>] [--] <repo> [<dir>]", 128)
+                } else {
+                    var branch: String? = null
+                    var depth: Int? = null
+                    val positional = mutableListOf<String>()
+                    var i = 0
+                    while (i < rest.size) {
+                        val arg = rest[i]
+                        when {
+                            arg == "-b" || arg == "--branch" -> {
+                                branch = rest.getOrNull(i + 1)
+                                i += 2
+                            }
+                            arg.startsWith("--branch=") -> {
+                                branch = arg.removePrefix("--branch=")
+                                i++
+                            }
+                            arg == "--depth" -> {
+                                depth = rest.getOrNull(i + 1)?.toIntOrNull()
+                                i += 2
+                            }
+                            arg.startsWith("--depth=") -> {
+                                depth = arg.removePrefix("--depth=").toIntOrNull()
+                                i++
+                            }
+                            arg.startsWith("-") -> {
+                                i++
+                            }
+                            else -> {
+                                positional.add(arg)
+                                i++
+                            }
+                        }
+                    }
+                    if (positional.isEmpty()) {
+                        GitCommandResult("fatal: missing repository URL for clone", 128)
+                    } else {
+                        val repoUrl = positional[0]
+                        val targetDir = positional.getOrNull(1)
+                        cloneRepo(workDir, repoUrl, targetDir, branch, depth)
+                    }
+                }
+            }
+            "pull" -> pull(workDir)
+            "fetch" -> fetch(workDir)
+            "remote" -> remote(workDir, rest)
+            "reset" -> {
+                val hard = "--hard" in rest
+                val ref = rest.firstOrNull { it != "--hard" && !it.startsWith("-") } ?: "HEAD"
+                reset(workDir, ref, hard)
+            }
             "add" -> {
                 val pattern = rest.firstOrNull { !it.startsWith("-") } ?: "."
                 add(workDir, pattern)
@@ -273,7 +455,7 @@ class JGitOperations @Inject constructor() : GitOperations {
                 }
             }
             "version", "--version" -> GitCommandResult("git version 2.43.0 (JGit 6.9.0)", 0)
-            else -> GitCommandResult("git: '$subCmd' is not supported in virtual environment. Supported: status, diff, log, add, commit, branch, checkout, init, version", 1)
+            else -> GitCommandResult("git: '$subCmd' is not supported in virtual environment. Supported: clone, status, diff, log, add, commit, branch, checkout, init, pull, fetch, remote, reset, version", 1)
         }
     }
 }
