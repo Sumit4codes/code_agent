@@ -106,4 +106,23 @@ class PosixTerminalExecutorTest {
         val result = executor.execute("echo test")
         assertTrue(result is TerminalResult.Disabled)
     }
+
+    @Test
+    fun `isAlpineActive returns false when PRoot or Alpine rootfs not ready`() {
+        assertFalse(executor.isAlpineActive())
+    }
+
+    @Test
+    fun `setup-alpine command handles bootstrap execution`() = runTest {
+        val root = File(tempDir, "root").apply { mkdirs() }
+        val bootstrapManager = AlpineBootstrapManager(root)
+        val alpineExecutor = PosixTerminalExecutor(
+            context = null,
+            nativeBinaryManager = NativeBinaryManager(null, bootstrapManager),
+            alpineBootstrapManager = bootstrapManager
+        )
+        // Without rootfs asset or network, bootstrap returns handled error without crash
+        val result = alpineExecutor.execute("setup-alpine")
+        assertNotNull(result)
+    }
 }

@@ -15,11 +15,13 @@ import javax.inject.Singleton
 
 @Singleton
 class PosixTerminalExecutor @Inject constructor(
-    @ApplicationContext private val context: Context? = null
+    @ApplicationContext private val context: Context? = null,
+    val nativeBinaryManager: NativeBinaryManager? = null,
+    val alpineBootstrapManager: AlpineBootstrapManager? = null
 ) : TerminalExecutor {
 
     // Secondary constructor for unit tests without Android Context
-    constructor() : this(null)
+    constructor() : this(null, null, null)
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 
@@ -31,6 +33,10 @@ class PosixTerminalExecutor @Inject constructor(
     private var previousWorkingDir: File? = null
 
     override var isEnabled: Boolean = true
+
+    fun isAlpineActive(): Boolean {
+        return nativeBinaryManager?.isAlpineReady() == true
+    }
 
     override fun bind(fileSystem: ProjectFileSystem, rootUri: Uri?, localWorkDir: File?) {
         this.fileSystem = fileSystem
@@ -115,6 +121,11 @@ class PosixTerminalExecutor @Inject constructor(
             return@withContext TerminalResult.Success("", 0)
         }
 
+        // Special command to set up or reinstall Alpine Linux on device
+        if (trimmed == "setup-alpine" || trimmed == "install-alpine") {
+            return@withContext bootstrapAlpine(onOutput)
+        }
+
         val workDir = currentWorkingDir ?: baseProjectDir ?: run {
             val fallback = try {
                 context?.filesDir ?: File(System.getProperty("user.dir") ?: ".")
@@ -137,7 +148,43 @@ class PosixTerminalExecutor @Inject constructor(
             }
         }
 
-        executeProcess(trimmed, workDir, onOutput)
+        if (isAlpineActive()) {
+            executeAlpineProcess(trimmed, workDir, onOutput)
+        } else {
+            executeNativeProcess(trimmed, workDir, onOutput)
+        }
+    }
+
+    suspend fun bootstrapAlpine(onOutput: ((String) -> Unit)?): TerminalResult = withContext(ioDispatcher) {
+        val mgr = alpineBootstrapManager ?: run {
+            val msg = "Alpine bootstrap manager is not configured in this environment."
+            onOutput?.invoke(msg)
+            return@withContext TerminalResult.Error(msg, 1)
+        }
+
+        onOutput?.invoke("==> Initializing Alpine Linux environment for CodeAgent...")
+        val result = mgr.bootstrap { stage, progress ->
+            val pct = if (progress >= 0f) " [${(progress * 100).toInt()}%]" else ""
+            onOutput?.invoke("$stage$pct")
+        }
+
+        if (result.isSuccess) {
+            val successMsg = """
+                [+] Alpine Linux initialized successfully!
+                • Package manager available: apk
+                • Install tools:
+                    apk add git            (Git version control)
+                    apk add python3 py3-pip (Python 3 + pip)
+                    apk add gcc g++ make    (C/C++ compiler and build tools)
+                • Type 'help' or 'bins' for more details.
+            """.trimIndent()
+            onOutput?.invoke(successMsg)
+            TerminalResult.Success(successMsg, 0)
+        } else {
+            val err = "[-] Bootstrap failed: ${result.exceptionOrNull()?.message}"
+            onOutput?.invoke(err)
+            TerminalResult.Error(err, 1)
+        }
     }
 
     private fun handleCd(targetArg: String, currentDir: File): TerminalResult? {
@@ -167,7 +214,126 @@ class PosixTerminalExecutor @Inject constructor(
         return TerminalResult.Success("", 0)
     }
 
-    private suspend fun executeProcess(
+    private suspend fun executeAlpineProcess(
+        command: String,
+        workingDir: File,
+        onOutput: ((String) -> Unit)?,
+        timeoutMs: Long = 120_000L
+    ): TerminalResult = withContext(ioDispatcher) {
+        val prootExec = nativeBinaryManager?.resolvePRootExecutable()
+            ?: return@withContext executeNativeProcess(command, workingDir, onOutput, timeoutMs)
+
+        val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
+        val rootDir = alpineBootstrapManager?.rootDir
+            ?: context?.filesDir
+            ?: File(".")
+        val alpineDir = alpineBootstrapManager?.alpineDir ?: File(rootDir, "alpine")
+        val tmpDir = alpineBootstrapManager?.tmpDir ?: File(rootDir, "tmp")
+        val publicDir = alpineBootstrapManager?.publicDir ?: File(rootDir, "public")
+
+        val args = mutableListOf<String>()
+        args.add(prootExec)
+        args.add("--kill-on-exit")
+        args.add("-r")
+        args.add(alpineDir.absolutePath)
+        args.add("-0")
+        args.add("--link2symlink")
+        args.add("--sysvipc")
+        args.add("-L")
+
+        for (m in listOf("/dev", "/proc", "/sys")) {
+            if (File(m).exists()) {
+                args.add("-b")
+                args.add(m)
+            }
+        }
+        if (File("/dev/urandom").exists()) {
+            args.add("-b")
+            args.add("/dev/urandom:/dev/random")
+        }
+
+        for (storage in listOf("/sdcard", "/storage", "/mnt/sdcard")) {
+            if (File(storage).exists()) {
+                args.add("-b")
+                args.add(storage)
+            }
+        }
+
+        if (nativeDir != null && nativeDir.exists()) {
+            args.add("-b")
+            args.add(nativeDir.absolutePath)
+        }
+        args.add("-b")
+        args.add(rootDir.absolutePath)
+
+        args.add("-b")
+        args.add("${publicDir.absolutePath}:/root")
+        args.add("-b")
+        args.add("${publicDir.absolutePath}:/home")
+
+        val shm = File(alpineDir, "tmp")
+        shm.mkdirs()
+        args.add("-b")
+        args.add("${shm.absolutePath}:/dev/shm")
+
+        val hostWorkDir = workingDir.absolutePath
+        if (File(hostWorkDir).exists()) {
+            args.add("-b")
+            args.add(hostWorkDir)
+            args.add("-w")
+            args.add(hostWorkDir)
+        } else {
+            args.add("-w")
+            args.add("/root")
+        }
+
+        args.add("/bin/sh")
+        args.add("-c")
+        args.add(command)
+
+        try {
+            val result = withTimeoutOrNull(timeoutMs) {
+                val pb = ProcessBuilder(args)
+                    .directory(if (workingDir.exists()) workingDir else rootDir)
+                    .redirectErrorStream(true)
+
+                val env = pb.environment()
+                env["PROOT_TMP_DIR"] = tmpDir.absolutePath
+                if (nativeDir != null) {
+                    env["PROOT_LOADER"] = File(nativeDir, "libproot.so").absolutePath
+                    val loader32 = File(nativeDir, "libproot32.so")
+                    if (loader32.exists()) {
+                        env["PROOT_LOADER32"] = loader32.absolutePath
+                    }
+                    env["LD_LIBRARY_PATH"] = "${rootDir.absolutePath}:${nativeDir.absolutePath}"
+                } else {
+                    env["LD_LIBRARY_PATH"] = rootDir.absolutePath
+                }
+                env["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+                env["HOME"] = "/root"
+                env["USER"] = "root"
+                env["SHELL"] = "/bin/sh"
+                env["TERM"] = "xterm-256color"
+                env["LANG"] = "C.UTF-8"
+                env["LC_ALL"] = "C.UTF-8"
+
+                val process = pb.start()
+                runProcessStream(process, onOutput)
+            }
+
+            result ?: run {
+                val timeoutMsg = "Command timed out after ${timeoutMs / 1000} seconds."
+                onOutput?.invoke(timeoutMsg)
+                TerminalResult.Error(timeoutMsg, 124)
+            }
+        } catch (e: Exception) {
+            val errMsg = "PRoot execution error: ${e.message}"
+            onOutput?.invoke(errMsg)
+            TerminalResult.Error(errMsg, 1)
+        }
+    }
+
+    private suspend fun executeNativeProcess(
         command: String,
         workingDir: File,
         onOutput: ((String) -> Unit)?,
@@ -192,41 +358,7 @@ class PosixTerminalExecutor @Inject constructor(
                 env["LC_ALL"] = "C.UTF-8"
 
                 val process = pb.start()
-                try {
-                    val output = StringBuilder()
-                    val reader = BufferedReader(InputStreamReader(process.inputStream))
-                    val maxBytes = 65536
-                    var byteCount = 0
-                    var truncated = false
-
-                    var line = reader.readLine()
-                    while (line != null) {
-                        if (byteCount < maxBytes) {
-                            output.append(line).append("\n")
-                            onOutput?.invoke(line)
-                            byteCount += line.length + 1
-                        } else if (!truncated) {
-                            truncated = true
-                            val truncMsg = "\n[... Output truncated at 64KB ...]\n"
-                            output.append(truncMsg)
-                            onOutput?.invoke(truncMsg)
-                        }
-                        line = reader.readLine()
-                    }
-
-                    val exitCode = process.waitFor()
-                    val outStr = output.toString().trimEnd()
-
-                    if (exitCode == 0) {
-                        TerminalResult.Success(outStr, 0)
-                    } else {
-                        TerminalResult.Error(if (outStr.isNotEmpty()) outStr else "Process exited with code $exitCode", exitCode)
-                    }
-                } finally {
-                    if (process.isAlive) {
-                        process.destroyForcibly()
-                    }
-                }
+                runProcessStream(process, onOutput)
             }
 
             result ?: run {
@@ -237,11 +369,51 @@ class PosixTerminalExecutor @Inject constructor(
         } catch (e: Exception) {
             val errMsg = "Failed to execute command: ${e.message}"
             onOutput?.invoke(errMsg)
-            // If the failure was due to workingDir permissions (e.g. error=13), recover workingDir
             if (e.message?.contains("error=13") == true || e.message?.contains("Permission denied") == true) {
                 currentWorkingDir = baseProjectDir ?: context?.filesDir
             }
             TerminalResult.Error(errMsg, 1)
+        }
+    }
+
+    private fun runProcessStream(
+        process: Process,
+        onOutput: ((String) -> Unit)?
+    ): TerminalResult {
+        try {
+            val output = StringBuilder()
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val maxBytes = 65536
+            var byteCount = 0
+            var truncated = false
+
+            var line = reader.readLine()
+            while (line != null) {
+                if (byteCount < maxBytes) {
+                    output.append(line).append("\n")
+                    onOutput?.invoke(line)
+                    byteCount += line.length + 1
+                } else if (!truncated) {
+                    truncated = true
+                    val truncMsg = "\n[... Output truncated at 64KB ...]\n"
+                    output.append(truncMsg)
+                    onOutput?.invoke(truncMsg)
+                }
+                line = reader.readLine()
+            }
+
+            val exitCode = process.waitFor()
+            val outStr = output.toString().trimEnd()
+
+            return if (exitCode == 0) {
+                TerminalResult.Success(outStr, 0)
+            } else {
+                TerminalResult.Error(if (outStr.isNotEmpty()) outStr else "Process exited with code $exitCode", exitCode)
+            }
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 }

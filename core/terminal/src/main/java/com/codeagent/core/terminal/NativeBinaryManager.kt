@@ -17,15 +17,20 @@ data class ShellEnvironmentInfo(
     val busyboxVersion: String?,
     val nativeLibraryDir: String?,
     val architecture: String,
-    val path: String
+    val path: String,
+    val isPRootAvailable: Boolean = false,
+    val isAlpineInstalled: Boolean = false,
+    val alpineVersion: String? = null,
+    val environmentType: String = "Native Android (Toybox)"
 )
 
 @Singleton
 class NativeBinaryManager @Inject constructor(
-    @ApplicationContext private val context: Context? = null
+    @ApplicationContext private val context: Context? = null,
+    val alpineBootstrapManager: AlpineBootstrapManager = AlpineBootstrapManager(context)
 ) {
     // Secondary constructor for JVM tests
-    constructor() : this(null)
+    constructor() : this(null, AlpineBootstrapManager(null))
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 
@@ -53,8 +58,33 @@ class NativeBinaryManager @Inject constructor(
         return File(dir, "libbusybox.so").exists()
     }
 
+    fun isPRootAvailable(): Boolean {
+        val dir = nativeLibraryDir ?: return false
+        val proot = File(dir, "libproot-xed.so")
+        val loader = File(dir, "libproot.so")
+        return proot.exists() && loader.exists()
+    }
+
+    fun resolvePRootExecutable(): String? {
+        val dir = nativeLibraryDir ?: return null
+        val proot = File(dir, "libproot-xed.so")
+        return if (proot.exists() && proot.canExecute()) proot.absolutePath else null
+    }
+
+    fun isAlpineReady(): Boolean {
+        return isPRootAvailable() && alpineBootstrapManager.isInstalled()
+    }
+
     fun resolveGitExecutable(): String? {
-        // 1. Check nativeLibraryDir bundled binary
+        // 1. If Alpine is installed, git in Alpine is accessible inside container
+        if (isAlpineReady()) {
+            val alpineGit = File(alpineBootstrapManager.alpineDir, "usr/bin/git")
+            if (alpineGit.exists()) {
+                return "/usr/bin/git"
+            }
+        }
+
+        // 2. Check nativeLibraryDir bundled binary
         val nativeDir = nativeLibraryDir
         if (nativeDir != null) {
             val libGit = File(nativeDir, "libgit.so")
@@ -63,7 +93,7 @@ class NativeBinaryManager @Inject constructor(
             }
         }
 
-        // 2. Check internal files bin
+        // 3. Check internal files bin
         val binDir = internalBinDir
         if (binDir != null) {
             val binGit = File(binDir, "git")
@@ -72,7 +102,7 @@ class NativeBinaryManager @Inject constructor(
             }
         }
 
-        // 3. Check system PATH
+        // 4. Check system PATH
         val pathDirs = (System.getenv("PATH") ?: "/system/bin:/system/xbin:/bin:/usr/bin")
             .split(":")
             .filter { it.isNotBlank() }
@@ -113,7 +143,17 @@ class NativeBinaryManager @Inject constructor(
     }
 
     suspend fun inspectEnvironment(executor: TerminalExecutor): ShellEnvironmentInfo = withContext(ioDispatcher) {
+        val alpineActive = isAlpineReady()
+        val alpineInstalled = alpineBootstrapManager.isInstalled()
+        val prootAvailable = isPRootAvailable()
+
+        val alpineReleaseFile = File(alpineBootstrapManager.alpineDir, "etc/alpine-release")
+        val alpineVersion = if (alpineInstalled && alpineReleaseFile.exists()) {
+            try { alpineReleaseFile.readText().trim() } catch (_: Exception) { null }
+        } else null
+
         val shell = when {
+            alpineActive -> "/bin/sh (Alpine Linux)"
             File("/system/bin/sh").exists() -> "/system/bin/sh"
             File("/bin/sh").exists() -> "/bin/sh"
             else -> "sh"
@@ -145,6 +185,14 @@ class NativeBinaryManager @Inject constructor(
             System.getProperty("os.arch") ?: "unknown"
         }
 
+        val envType = if (alpineActive) {
+            "Alpine Linux ${alpineVersion ?: "3.21"} (PRoot Container)"
+        } else if (alpineInstalled) {
+            "Alpine Linux (Installed, awaiting PRoot initialization)"
+        } else {
+            "Native Android (Toybox)"
+        }
+
         ShellEnvironmentInfo(
             shellPath = shell,
             isGitAvailable = gitExec != null || isNativeGitBundled(),
@@ -153,7 +201,11 @@ class NativeBinaryManager @Inject constructor(
             busyboxVersion = bbVersion,
             nativeLibraryDir = nativeLibraryDir?.absolutePath,
             architecture = arch,
-            path = System.getenv("PATH") ?: ""
+            path = System.getenv("PATH") ?: "",
+            isPRootAvailable = prootAvailable,
+            isAlpineInstalled = alpineInstalled,
+            alpineVersion = alpineVersion,
+            environmentType = envType
         )
     }
 }
