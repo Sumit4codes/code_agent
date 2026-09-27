@@ -112,10 +112,19 @@ You can run unit tests using `./test.sh` (with automatic test result summaries a
 
 ### Install on Device
 
+You can install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK locally and scanning a QR code directly from your terminal:
+
 ```bash
-# USB-connected device with USB debugging enabled
-./build.sh --install
-# Or: ./gradlew installDebug
+# Interactive selection menu (ADB or QR code):
+./install.sh
+
+# Install directly via ADB to connected device:
+./install.sh --adb
+./install.sh --adb --launch      # Install and launch app immediately
+
+# Start local Wi-Fi server with terminal QR code (scan with phone camera):
+./install.sh --qr
+./install.sh --qr --port 8080    # Custom port
 ```
 
 ## Configuration
