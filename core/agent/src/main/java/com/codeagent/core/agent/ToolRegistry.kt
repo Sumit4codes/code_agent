@@ -126,10 +126,10 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = ToolNames.EXECUTE_COMMAND,
-                description = "Execute a shell or git command in the workspace directory. Supported commands include git (status, diff, log, branch, checkout, add, commit), ls, cat, head, tail, wc, grep, find, mkdir, touch, pwd, echo, and system commands.",
+                description = "Execute a shell, git, or build command in the workspace directory. Commands run in an Alpine Linux environment with access to git, python3, gcc, g++, make, and the apk package manager (e.g. 'apk add <pkg>').",
                 parameters = ToolParameters(
                     properties = mapOf(
-                        "command" to PropertyDef("string", "The shell command line to execute (e.g. 'git status', 'ls -la', 'grep TODO .', 'cat build.gradle.kts').")
+                        "command" to PropertyDef("string", "The shell command line to execute (e.g. 'git status', 'python3 main.py', 'gcc -o app main.c', 'apk add <pkg>').")
                     ),
                     required = listOf("command")
                 )
