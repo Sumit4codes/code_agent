@@ -100,6 +100,9 @@ interface ProviderConfigDao {
     @androidx.room.Query("SELECT * FROM provider_configs")
     fun getAll(): Flow<List<ProviderConfigEntity>>
 
+    @androidx.room.Query("SELECT * FROM provider_configs")
+    suspend fun getAllList(): List<ProviderConfigEntity>
+
     @androidx.room.Query("SELECT * FROM provider_configs WHERE isDefault = 1 LIMIT 1")
     suspend fun getDefault(): ProviderConfigEntity?
 
@@ -114,4 +117,10 @@ interface ProviderConfigDao {
 
     @androidx.room.Delete
     suspend fun delete(config: ProviderConfigEntity)
+
+    @androidx.room.Query("DELETE FROM provider_configs WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @androidx.room.Query("UPDATE provider_configs SET isDefault = CASE WHEN id = :providerId THEN 1 ELSE 0 END")
+    suspend fun setDefault(providerId: String)
 }

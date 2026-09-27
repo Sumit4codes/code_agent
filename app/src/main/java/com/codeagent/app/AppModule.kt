@@ -28,7 +28,7 @@ class DynamicAiProvider @Inject constructor(
 
     private suspend fun getDelegate(): AiProvider {
         val config = settingsRepository.getActiveProvider() ?: return FakeAiProvider()
-        val apiKey = settingsRepository.getApiKey(config.id) ?: return FakeAiProvider()
+        val apiKey = settingsRepository.getApiKey(config.id) ?: ""
         return when (config.providerType) {
             ProviderType.OPENAI_COMPATIBLE -> OpenAiCompatibleProvider(
                 baseUrl = config.baseUrl,

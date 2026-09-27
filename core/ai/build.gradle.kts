@@ -30,4 +30,6 @@ dependencies {
     implementation(libs.okhttp.sse)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

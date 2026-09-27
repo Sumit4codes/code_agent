@@ -2,7 +2,10 @@ package com.codeagent.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codeagent.core.ai.ModelFetcher
 import com.codeagent.core.data.SettingsRepository
+import com.codeagent.core.model.PopularProvider
+import com.codeagent.core.model.PopularProviders
 import com.codeagent.core.model.ProviderConfig
 import com.codeagent.core.model.ProviderType
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -10,268 +13,469 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import javax.inject.Inject
 
-enum class ProviderPreset(
-    val label: String,
+data class ProviderUiModel(
+    val id: String,
+    val name: String,
     val providerType: ProviderType,
     val baseUrl: String,
     val model: String,
-    val description: String
-) {
-    OPENAI(
-        label = "OpenAI",
-        providerType = ProviderType.OPENAI_COMPATIBLE,
-        baseUrl = "https://api.openai.com",
-        model = "gpt-4o",
-        description = "Official OpenAI API (GPT-4o, GPT-4o-mini)"
-    ),
-    OPENROUTER(
-        label = "OpenRouter",
-        providerType = ProviderType.OPENAI_COMPATIBLE,
-        baseUrl = "https://openrouter.ai/api/v1",
-        model = "anthropic/claude-3.7-sonnet",
-        description = "Universal API for Claude, DeepSeek, Llama, Qwen"
-    ),
-    DEEPSEEK(
-        label = "DeepSeek",
-        providerType = ProviderType.OPENAI_COMPATIBLE,
-        baseUrl = "https://api.deepseek.com",
-        model = "deepseek-chat",
-        description = "DeepSeek-V3 & DeepSeek-R1 models"
-    ),
-    OLLAMA(
-        label = "Ollama (Local)",
-        providerType = ProviderType.OPENAI_COMPATIBLE,
-        baseUrl = "http://localhost:11434/v1",
-        model = "qwen2.5-coder",
-        description = "Run local models privately via Ollama on device/LAN"
-    ),
-    ANTHROPIC(
-        label = "Anthropic",
-        providerType = ProviderType.ANTHROPIC,
-        baseUrl = "https://api.anthropic.com",
-        model = "claude-3-7-sonnet-20250219",
-        description = "Direct Anthropic Claude Messages API"
-    )
-}
-
-data class ConnectionTestResult(
-    val success: Boolean,
-    val message: String
+    val isDefault: Boolean,
+    val hasApiKey: Boolean,
+    val apiKey: String = "",
+    val temperature: Float = 0.7f,
+    val maxTokens: Int = 4096,
+    val systemPrompt: String? = null
 )
 
-data class SettingsState(
+data class ProviderEditorState(
+    val isOpen: Boolean = false,
+    val isEditing: Boolean = false,
+    val providerId: String = "",
+    val name: String = "",
     val providerType: ProviderType = ProviderType.OPENAI_COMPATIBLE,
-    val baseUrl: String = "https://api.openai.com",
+    val baseUrl: String = "",
     val apiKey: String = "",
-    val model: String = "gpt-4o",
-    val temperature: Float = 0.7f,
-    val maxTokens: String = "4096",
-    val systemPrompt: String = "",
+    val model: String = "",
+    val isDefault: Boolean = true,
+    val availableModels: List<String> = emptyList(),
+    val isFetchingModels: Boolean = false,
+    val modelFetchError: String? = null,
+    val connectionTestSuccess: Boolean? = null,
+    val connectionTestMessage: String? = null,
+    val selectedTemplateId: String = "openai"
+)
+
+data class SettingsUiState(
+    val providers: List<ProviderUiModel> = emptyList(),
+    val activeProvider: ProviderUiModel? = null,
+    val editorState: ProviderEditorState = ProviderEditorState(),
+    val globalSystemPrompt: String = "",
+    val globalTemperature: Float = 0.7f,
+    val globalMaxTokens: String = "4096",
     val isSaving: Boolean = false,
-    val saveMessage: String? = null,
-    val isSaveError: Boolean = false,
-    val isTestingConnection: Boolean = false,
-    val connectionTestResult: ConnectionTestResult? = null
+    val userMessage: String? = null,
+    val isErrorMessage: Boolean = false
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
-    private val okHttpClient: OkHttpClient
+    private val modelFetcher: ModelFetcher
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(SettingsState())
-    val state: StateFlow<SettingsState> = _state.asStateFlow()
+    var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 
-    init {
-        loadSavedSettings()
+    constructor(
+        settingsRepository: SettingsRepository,
+        modelFetcher: ModelFetcher,
+        ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
+    ) : this(settingsRepository, modelFetcher) {
+        this.ioDispatcher = ioDispatcher
     }
 
-    private fun loadSavedSettings() {
+    private val _state = MutableStateFlow(SettingsUiState())
+    val state: StateFlow<SettingsUiState> = _state.asStateFlow()
+
+    init {
+        observeProviders()
+    }
+
+    private fun observeProviders() {
         viewModelScope.launch {
-            val default = settingsRepository.getActiveProvider()
-            if (default != null) {
-                val apiKey = settingsRepository.getApiKey(default.id) ?: ""
+            combine(
+                settingsRepository.getAllProvidersFlow(),
+                settingsRepository.getActiveProviderFlow()
+            ) { allConfigs, activeConfig ->
+                val uiList = allConfigs.map { config ->
+                    val key = settingsRepository.getApiKey(config.id) ?: ""
+                    ProviderUiModel(
+                        id = config.id,
+                        name = config.name,
+                        providerType = config.providerType,
+                        baseUrl = config.baseUrl,
+                        model = config.model,
+                        isDefault = config.isDefault,
+                        hasApiKey = key.isNotBlank(),
+                        apiKey = key,
+                        temperature = config.temperature,
+                        maxTokens = config.maxTokens,
+                        systemPrompt = config.systemPrompt
+                    )
+                }
+                val activeUi = uiList.firstOrNull { it.isDefault } ?: uiList.firstOrNull()
+                Pair(uiList, activeUi)
+            }.collect { (uiList, activeUi) ->
                 _state.value = _state.value.copy(
-                    providerType = default.providerType,
-                    baseUrl = default.baseUrl,
-                    apiKey = apiKey,
-                    model = default.model,
-                    temperature = default.temperature,
-                    maxTokens = default.maxTokens.toString(),
-                    systemPrompt = default.systemPrompt ?: ""
+                    providers = uiList,
+                    activeProvider = activeUi,
+                    globalTemperature = activeUi?.temperature ?: _state.value.globalTemperature,
+                    globalMaxTokens = (activeUi?.maxTokens ?: 4096).toString(),
+                    globalSystemPrompt = activeUi?.systemPrompt ?: _state.value.globalSystemPrompt
                 )
             }
         }
     }
 
-    fun applyPreset(preset: ProviderPreset) {
-        _state.value = _state.value.copy(
-            providerType = preset.providerType,
-            baseUrl = preset.baseUrl,
-            model = preset.model,
-            connectionTestResult = null
-        )
-    }
-
-    fun updateProviderType(type: ProviderType) {
-        val defaults = when (type) {
-            ProviderType.OPENAI_COMPATIBLE -> "https://api.openai.com" to "gpt-4o"
-            ProviderType.ANTHROPIC -> "https://api.anthropic.com" to "claude-3-7-sonnet-20250219"
+    fun setActiveProvider(providerId: String) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.setActiveProvider(providerId)
+                val name = _state.value.providers.firstOrNull { it.id == providerId }?.name ?: providerId
+                _state.value = _state.value.copy(
+                    userMessage = "Active provider set to $name",
+                    isErrorMessage = false
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    userMessage = "Failed to activate provider: ${e.message}",
+                    isErrorMessage = true
+                )
+            }
         }
+    }
+
+    fun quickSelectModel(providerId: String, newModel: String) {
+        viewModelScope.launch {
+            val provider = settingsRepository.getProvider(providerId) ?: return@launch
+            settingsRepository.saveProvider(provider.copy(model = newModel))
+            _state.value = _state.value.copy(
+                userMessage = "Model set to $newModel",
+                isErrorMessage = false
+            )
+        }
+    }
+
+    fun openAddProviderDialog(preset: PopularProvider = PopularProviders.OPENAI) {
+        val hasExisting = _state.value.providers.isNotEmpty()
+        val templateId = preset.id
+        val generatedId = if (preset.isCustom) "custom_${System.currentTimeMillis()}" else preset.id
+        // If a provider with preset.id already exists, suffix timestamp to allow multiple instances
+        val finalId = if (_state.value.providers.any { it.id == generatedId }) {
+            "${preset.id}_${System.currentTimeMillis() % 10000}"
+        } else {
+            generatedId
+        }
+
         _state.value = _state.value.copy(
-            providerType = type,
-            baseUrl = defaults.first,
-            model = defaults.second,
-            connectionTestResult = null
+            editorState = ProviderEditorState(
+                isOpen = true,
+                isEditing = false,
+                providerId = finalId,
+                name = preset.name,
+                providerType = preset.providerType,
+                baseUrl = preset.defaultBaseUrl,
+                apiKey = "",
+                model = preset.defaultModel,
+                isDefault = !hasExisting,
+                availableModels = preset.fallbackModels,
+                isFetchingModels = false,
+                modelFetchError = null,
+                connectionTestSuccess = null,
+                connectionTestMessage = null,
+                selectedTemplateId = templateId
+            )
         )
     }
 
-    fun updateBaseUrl(url: String) {
-        _state.value = _state.value.copy(baseUrl = url, connectionTestResult = null)
+    fun selectPresetTemplate(preset: PopularProvider) {
+        val current = _state.value.editorState
+        val generatedId = if (preset.isCustom) "custom_${System.currentTimeMillis()}" else preset.id
+        val finalId = if (!current.isEditing && _state.value.providers.any { it.id == generatedId }) {
+            "${preset.id}_${System.currentTimeMillis() % 10000}"
+        } else if (!current.isEditing) {
+            generatedId
+        } else {
+            current.providerId
+        }
+
+        _state.value = _state.value.copy(
+            editorState = current.copy(
+                providerId = finalId,
+                name = if (!current.isEditing) preset.name else current.name,
+                providerType = preset.providerType,
+                baseUrl = preset.defaultBaseUrl,
+                model = preset.defaultModel,
+                availableModels = preset.fallbackModels,
+                selectedTemplateId = preset.id,
+                connectionTestSuccess = null,
+                connectionTestMessage = null,
+                modelFetchError = null
+            )
+        )
     }
 
-    fun updateApiKey(key: String) {
-        _state.value = _state.value.copy(apiKey = key, connectionTestResult = null)
+    fun openEditProviderDialog(provider: ProviderUiModel) {
+        viewModelScope.launch {
+            val key = settingsRepository.getApiKey(provider.id) ?: ""
+            val matchedTemplate = PopularProviders.findById(provider.id)
+                ?: PopularProviders.allPopular.firstOrNull { it.defaultBaseUrl == provider.baseUrl }
+                ?: PopularProviders.CUSTOM
+
+            val initialModels = matchedTemplate.fallbackModels.toMutableList()
+            if (provider.model.isNotBlank() && !initialModels.contains(provider.model)) {
+                initialModels.add(0, provider.model)
+            }
+
+            _state.value = _state.value.copy(
+                editorState = ProviderEditorState(
+                    isOpen = true,
+                    isEditing = true,
+                    providerId = provider.id,
+                    name = provider.name,
+                    providerType = provider.providerType,
+                    baseUrl = provider.baseUrl,
+                    apiKey = key,
+                    model = provider.model,
+                    isDefault = provider.isDefault,
+                    availableModels = initialModels,
+                    isFetchingModels = false,
+                    modelFetchError = null,
+                    connectionTestSuccess = null,
+                    connectionTestMessage = null,
+                    selectedTemplateId = matchedTemplate.id
+                )
+            )
+        }
     }
 
-    fun updateModel(model: String) {
-        _state.value = _state.value.copy(model = model)
+    fun updateEditorName(name: String) {
+        _state.value = _state.value.copy(
+            editorState = _state.value.editorState.copy(name = name)
+        )
     }
 
-    fun updateTemperature(temp: Float) {
-        _state.value = _state.value.copy(temperature = (Math.round(temp * 100f) / 100f))
+    fun updateEditorBaseUrl(url: String) {
+        _state.value = _state.value.copy(
+            editorState = _state.value.editorState.copy(
+                baseUrl = url,
+                connectionTestSuccess = null,
+                connectionTestMessage = null,
+                modelFetchError = null
+            )
+        )
     }
 
-    fun updateMaxTokens(tokens: String) {
-        _state.value = _state.value.copy(maxTokens = tokens)
+    fun updateEditorApiKey(key: String) {
+        _state.value = _state.value.copy(
+            editorState = _state.value.editorState.copy(
+                apiKey = key,
+                connectionTestSuccess = null,
+                connectionTestMessage = null,
+                modelFetchError = null
+            )
+        )
     }
 
-    fun updateSystemPrompt(prompt: String) {
-        _state.value = _state.value.copy(systemPrompt = prompt)
+    fun updateEditorModel(model: String) {
+        _state.value = _state.value.copy(
+            editorState = _state.value.editorState.copy(model = model)
+        )
     }
 
-    fun dismissSaveMessage() {
-        _state.value = _state.value.copy(saveMessage = null)
+    fun updateEditorProviderType(type: ProviderType) {
+        _state.value = _state.value.copy(
+            editorState = _state.value.editorState.copy(providerType = type)
+        )
     }
 
-    fun testConnection() {
-        val currentState = _state.value
-        val cleanUrl = currentState.baseUrl.trim().trimEnd('/')
+    fun updateEditorIsDefault(isDefault: Boolean) {
+        _state.value = _state.value.copy(
+            editorState = _state.value.editorState.copy(isDefault = isDefault)
+        )
+    }
+
+    fun closeEditor() {
+        _state.value = _state.value.copy(
+            editorState = _state.value.editorState.copy(isOpen = false)
+        )
+    }
+
+    fun fetchModelsForEditor() {
+        val editor = _state.value.editorState
+        val cleanUrl = editor.baseUrl.trim().trimEnd('/')
         if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
             _state.value = _state.value.copy(
-                connectionTestResult = ConnectionTestResult(false, "Invalid URL: Must start with http:// or https://")
+                editorState = editor.copy(
+                    modelFetchError = "Base URL must start with http:// or https://",
+                    connectionTestSuccess = false,
+                    connectionTestMessage = "Invalid URL"
+                )
             )
             return
         }
 
-        _state.value = _state.value.copy(isTestingConnection = true, connectionTestResult = null)
+        _state.value = _state.value.copy(
+            editorState = editor.copy(
+                isFetchingModels = true,
+                modelFetchError = null,
+                connectionTestSuccess = null,
+                connectionTestMessage = null
+            )
+        )
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
+            val result = modelFetcher.fetchModels(
+                baseUrl = cleanUrl,
+                apiKey = editor.apiKey,
+                providerType = editor.providerType
+            )
+
+            result.fold(
+                onSuccess = { models ->
+                    val chosenModel = if (models.contains(editor.model)) {
+                        editor.model
+                    } else if (editor.model.isNotBlank()) {
+                        editor.model
+                    } else {
+                        models.firstOrNull() ?: ""
+                    }
+
+                    _state.value = _state.value.copy(
+                        editorState = _state.value.editorState.copy(
+                            isFetchingModels = false,
+                            availableModels = models,
+                            model = chosenModel,
+                            modelFetchError = null,
+                            connectionTestSuccess = true,
+                            connectionTestMessage = "Connection verified! Fetched ${models.size} models from endpoint."
+                        )
+                    )
+                },
+                onFailure = { error ->
+                    val fallback = PopularProviders.findById(editor.selectedTemplateId)?.fallbackModels
+                        ?: editor.availableModels
+
+                    _state.value = _state.value.copy(
+                        editorState = _state.value.editorState.copy(
+                            isFetchingModels = false,
+                            availableModels = fallback,
+                            modelFetchError = error.message ?: "Failed to fetch models",
+                            connectionTestSuccess = false,
+                            connectionTestMessage = error.message ?: "Connection test failed"
+                        )
+                    )
+                }
+            )
+        }
+    }
+
+    fun saveProviderFromEditor() {
+        val editor = _state.value.editorState
+        val trimmedName = editor.name.trim()
+        val trimmedUrl = editor.baseUrl.trim().trimEnd('/')
+
+        if (trimmedName.isBlank()) {
+            _state.value = _state.value.copy(
+                userMessage = "Provider name cannot be empty",
+                isErrorMessage = true
+            )
+            return
+        }
+
+        if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) {
+            _state.value = _state.value.copy(
+                userMessage = "Base URL must start with http:// or https://",
+                isErrorMessage = true
+            )
+            return
+        }
+
+        val chosenModel = editor.model.trim().ifBlank {
+            editor.availableModels.firstOrNull() ?: "gpt-4o"
+        }
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSaving = true)
             try {
-                val base = if (cleanUrl.endsWith("/v1")) cleanUrl else "$cleanUrl/v1"
-                val testUrl = "$base/models"
+                val config = ProviderConfig(
+                    id = editor.providerId,
+                    providerType = editor.providerType,
+                    name = trimmedName,
+                    model = chosenModel,
+                    baseUrl = trimmedUrl,
+                    temperature = _state.value.globalTemperature,
+                    maxTokens = _state.value.globalMaxTokens.toIntOrNull() ?: 4096,
+                    systemPrompt = _state.value.globalSystemPrompt.ifBlank { null },
+                    isDefault = editor.isDefault
+                )
 
-                val reqBuilder = Request.Builder()
-                    .url(testUrl)
-                    .get()
+                settingsRepository.saveProvider(config, apiKey = editor.apiKey)
 
-                if (currentState.apiKey.isNotBlank()) {
-                    if (currentState.providerType == ProviderType.ANTHROPIC) {
-                        reqBuilder.header("x-api-key", currentState.apiKey.trim())
-                        reqBuilder.header("anthropic-version", "2023-06-01")
-                    } else {
-                        reqBuilder.header("Authorization", "Bearer ${currentState.apiKey.trim()}")
-                    }
+                if (editor.isDefault) {
+                    settingsRepository.setActiveProvider(config.id)
                 }
 
-                okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val hasModels = body.contains("\"id\"") || body.contains("\"data\"")
-                        val info = if (hasModels) {
-                            "Connection verified! (HTTP ${response.code} OK - endpoint responsive)"
-                        } else {
-                            "Connection verified! (HTTP ${response.code} OK)"
-                        }
-                        _state.value = _state.value.copy(
-                            isTestingConnection = false,
-                            connectionTestResult = ConnectionTestResult(true, info)
-                        )
-                    } else {
-                        val errBody = try { response.body?.string()?.take(160) } catch (_: Exception) { null }
-                        val detail = if (!errBody.isNullOrBlank()) ": $errBody" else ""
-                        _state.value = _state.value.copy(
-                            isTestingConnection = false,
-                            connectionTestResult = ConnectionTestResult(
-                                false,
-                                "Server returned HTTP ${response.code} (${response.message})$detail"
-                            )
-                        )
-                    }
-                }
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    editorState = editor.copy(isOpen = false),
+                    userMessage = "Saved provider '$trimmedName'",
+                    isErrorMessage = false
+                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
-                    isTestingConnection = false,
-                    connectionTestResult = ConnectionTestResult(
-                        false,
-                        "Connection failed: ${e.localizedMessage ?: e.message ?: "Network error"}"
-                    )
+                    isSaving = false,
+                    userMessage = "Failed to save provider: ${e.message}",
+                    isErrorMessage = true
                 )
             }
         }
     }
 
-    fun saveSettings() {
-        val currentState = _state.value
-        _state.value = _state.value.copy(isSaving = true, saveMessage = null)
-
+    fun deleteProvider(providerId: String) {
         viewModelScope.launch {
             try {
-                val cleanUrl = currentState.baseUrl.trim().trimEnd('/')
-                if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
-                    _state.value = _state.value.copy(
-                        isSaving = false,
-                        saveMessage = "Base URL must start with http:// or https://",
-                        isSaveError = true
-                    )
-                    return@launch
-                }
-
-                val id = "provider_${currentState.providerType.name.lowercase()}"
-                settingsRepository.saveProvider(
-                    ProviderConfig(
-                        id = id,
-                        providerType = currentState.providerType,
-                        name = currentState.providerType.name,
-                        model = currentState.model.trim(),
-                        baseUrl = cleanUrl,
-                        temperature = currentState.temperature,
-                        maxTokens = currentState.maxTokens.toIntOrNull() ?: 4096,
-                        systemPrompt = currentState.systemPrompt.ifBlank { null },
-                        isDefault = true
-                    )
-                )
-                if (currentState.apiKey.isNotBlank()) {
-                    settingsRepository.saveApiKey(id, currentState.apiKey.trim())
-                }
+                settingsRepository.deleteProviderById(providerId)
                 _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveMessage = "Settings saved successfully",
-                    isSaveError = false
+                    userMessage = "Provider deleted",
+                    isErrorMessage = false
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveMessage = "Failed to save: ${e.localizedMessage ?: e.message}",
-                    isSaveError = true
+                    userMessage = "Failed to delete: ${e.message}",
+                    isErrorMessage = true
                 )
             }
         }
+    }
+
+    fun updateGlobalTemperature(temp: Float) {
+        val rounded = Math.round(temp * 100f) / 100f
+        _state.value = _state.value.copy(globalTemperature = rounded)
+        syncActiveProviderPreferences(temp = rounded)
+    }
+
+    fun updateGlobalMaxTokens(tokens: String) {
+        _state.value = _state.value.copy(globalMaxTokens = tokens)
+        val intVal = tokens.toIntOrNull() ?: 4096
+        syncActiveProviderPreferences(tokens = intVal)
+    }
+
+    fun updateGlobalSystemPrompt(prompt: String) {
+        _state.value = _state.value.copy(globalSystemPrompt = prompt)
+        syncActiveProviderPreferences(prompt = prompt)
+    }
+
+    private fun syncActiveProviderPreferences(
+        temp: Float? = null,
+        tokens: Int? = null,
+        prompt: String? = null
+    ) {
+        viewModelScope.launch {
+            val active = settingsRepository.getActiveProvider() ?: return@launch
+            val updated = active.copy(
+                temperature = temp ?: active.temperature,
+                maxTokens = tokens ?: active.maxTokens,
+                systemPrompt = prompt ?: active.systemPrompt
+            )
+            settingsRepository.saveProvider(updated)
+        }
+    }
+
+    fun dismissUserMessage() {
+        _state.value = _state.value.copy(userMessage = null)
     }
 }

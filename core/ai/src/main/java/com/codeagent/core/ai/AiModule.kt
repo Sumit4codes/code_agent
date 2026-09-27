@@ -34,4 +34,8 @@ object AiModule {
     @Singleton
     fun provideSseFactory(client: OkHttpClient): EventSource.Factory =
         EventSources.createFactory(client)
+
+    @Provides
+    @Singleton
+    fun provideModelFetcher(defaultModelFetcher: DefaultModelFetcher): ModelFetcher = defaultModelFetcher
 }

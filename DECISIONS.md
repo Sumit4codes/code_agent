@@ -41,3 +41,9 @@
 
 **Trade-off:** Requires users to grant All Files Access permission in system settings (Android 11+ / API 30+), which is standard for developer, file manager, and terminal tools on Android.
 
+## D8: Multi-Provider Architecture with Dynamic Live Model Fetching
+**Decision:** Transition the settings architecture from a single-provider form into a modular multi-provider configuration system. Each provider stores its own endpoint, protocol, and separate encrypted API key. Models are fetched dynamically via an automated `ModelFetcher` service querying provider `/models` endpoints.
+
+**Rationale:** Users work across multiple LLM providers (e.g., OpenAI for flagship reasoning, DeepSeek for fast coding, OpenRouter for Claude/Llama gateways, Ollama for local privacy, and custom private proxies). A monolithic single-provider screen was cluttered and forced users to manually re-enter API keys and URLs whenever switching. Dynamic model fetching eliminates the need for users to memorize or manually type model identifiers.
+
+**Trade-off:** Requires network access to query `/models` endpoints, mitigated with pre-configured fallback models for all popular providers so users can configure offline or behind firewalls.

@@ -19,16 +19,35 @@ class SettingsRepository @Inject constructor(
     fun getActiveProviderFlow(): Flow<ProviderConfig?> =
         providerConfigDao.getDefaultFlow().map { it?.toModel() }
 
+    fun getAllProvidersFlow(): Flow<List<ProviderConfig>> =
+        providerConfigDao.getAll().map { list -> list.map { it.toModel() } }
+
+    suspend fun getAllProviders(): List<ProviderConfig> =
+        providerConfigDao.getAllList().map { it.toModel() }
+
     suspend fun getProvider(id: String): ProviderConfig? {
         return providerConfigDao.getById(id)?.toModel()
     }
 
-    suspend fun saveProvider(config: ProviderConfig) {
-        providerConfigDao.upsert(config.toEntity())
+    suspend fun saveProvider(config: ProviderConfig, apiKey: String? = null) {
+        val all = providerConfigDao.getAllList()
+        val shouldBeDefault = config.isDefault || all.isEmpty()
+        val toSave = config.copy(isDefault = shouldBeDefault)
+        providerConfigDao.upsert(toSave.toEntity())
+        if (shouldBeDefault) {
+            providerConfigDao.setDefault(toSave.id)
+        }
+        if (apiKey != null) {
+            apiKeyStorage.storeKey(toSave.id, apiKey.trim())
+        }
+    }
+
+    suspend fun setActiveProvider(providerId: String) {
+        providerConfigDao.setDefault(providerId)
     }
 
     suspend fun saveApiKey(providerId: String, apiKey: String) {
-        apiKeyStorage.storeKey(providerId, apiKey)
+        apiKeyStorage.storeKey(providerId, apiKey.trim())
     }
 
     suspend fun getApiKey(providerId: String): String? {
@@ -36,8 +55,19 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun deleteProvider(config: ProviderConfig) {
-        providerConfigDao.delete(config.toEntity())
-        apiKeyStorage.removeKey(config.id)
+        deleteProviderById(config.id)
+    }
+
+    suspend fun deleteProviderById(providerId: String) {
+        val wasDefault = providerConfigDao.getById(providerId)?.isDefault == true
+        providerConfigDao.deleteById(providerId)
+        apiKeyStorage.removeKey(providerId)
+        if (wasDefault) {
+            val remaining = providerConfigDao.getAllList()
+            if (remaining.isNotEmpty()) {
+                providerConfigDao.setDefault(remaining.first().id)
+            }
+        }
     }
 }
 

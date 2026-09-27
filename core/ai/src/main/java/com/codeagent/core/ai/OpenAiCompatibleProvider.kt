@@ -28,7 +28,13 @@ class OpenAiCompatibleProvider(
     private fun buildUrl(path: String): String {
         val trimmed = baseUrl.trim().trimEnd('/')
         val cleanPath = if (path.startsWith("/")) path else "/$path"
-        return if (trimmed.endsWith("/v1")) {
+        return if (
+            trimmed.endsWith("/v1") ||
+            trimmed.endsWith("/openai") ||
+            trimmed.endsWith("/v1beta/openai") ||
+            trimmed.contains("/v1/") ||
+            trimmed.contains("/openai/")
+        ) {
             "$trimmed$cleanPath"
         } else {
             "$trimmed/v1$cleanPath"
@@ -36,14 +42,16 @@ class OpenAiCompatibleProvider(
     }
 
     override suspend fun listModels(): List<ModelInfo> = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(buildUrl("/models"))
-            .header("Authorization", "Bearer $apiKey")
             .get()
-            .build()
+
+        if (apiKey.isNotBlank()) {
+            reqBuilder.header("Authorization", "Bearer $apiKey")
+        }
 
         try {
-            client.newCall(request).execute().use { response ->
+            client.newCall(reqBuilder.build()).execute().use { response ->
                 val body = response.body?.string() ?: return@withContext emptyList()
                 val json = Json.parseToJsonElement(body).jsonObject
                 json["data"]?.jsonArray?.map { element ->
@@ -61,12 +69,15 @@ class OpenAiCompatibleProvider(
 
     override suspend fun streamChat(request: ChatRequest): Flow<ChatStreamEvent> = callbackFlow {
         val jsonBody = buildOpenAiRequest(request)
-        val httpRequest = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(buildUrl("/chat/completions"))
-            .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
             .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+
+        if (apiKey.isNotBlank()) {
+            reqBuilder.header("Authorization", "Bearer $apiKey")
+        }
+        val httpRequest = reqBuilder.build()
 
         val eventSource = sseFactory.newEventSource(httpRequest, object : EventSourceListener() {
             override fun onEvent(source: EventSource, id: String?, type: String?, data: String) {

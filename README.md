@@ -41,9 +41,9 @@ A clean-room, Android-native AI coding agent inspired by [OpenCode](https://gith
 | `feature/projects` | Directory browser & project management |
 | `feature/chat` | AI chat with tool-call chips, pending changes banner |
 | `feature/editor` | File tree + code viewer with line numbers |
-| `feature/settings` | Provider configuration form |
-| `core/model` | Domain models (Project, Message, PendingChange, ToolSpec) |
-| `core/ai` | `AiProvider` interface, OpenAI-compatible SSE implementation |
+| `feature/settings` | Multi-provider management, live dynamic model fetching, and preferences |
+| `core/model` | Domain models (Project, Message, PendingChange, ToolSpec, PopularProviders) |
+| `core/ai` | `AiProvider` interface, OpenAI-compatible SSE implementation, `ModelFetcher` |
 | `core/agent` | `AgentOrchestrator` loop, `ToolExecutor`, `PendingChangeManager` |
 | `core/files` | Direct file filesystem, path traversal protection, gitignore, diff engine |
 | `core/data` | Room database, encrypted key store, settings repository |
@@ -51,6 +51,7 @@ A clean-room, Android-native AI coding agent inspired by [OpenCode](https://gith
 
 ### Key Design Decisions
 
+- **Multi-Provider Architecture & Live Model Discovery** — Configure and switch between multiple providers (OpenAI, OpenRouter, Anthropic, DeepSeek, Groq, Gemini, Ollama, Custom), each with its own encrypted API key. Models are discovered automatically via dynamic endpoint querying.
 - **Full Device File Access (`MANAGE_EXTERNAL_STORAGE`)** — Direct `java.io.File` access without SAF bottlenecks, enabling seamless path handling for AI agents, JGit integration, and terminal execution.
 - **Path traversal protection** — `PathSafety.normalize()` rejects `..`, null bytes, and symlink escapes
 - **Pending changes model** — Edits are never applied automatically; every change must be explicitly approved by the user

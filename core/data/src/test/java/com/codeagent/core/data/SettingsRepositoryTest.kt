@@ -55,6 +55,18 @@ class FakeProviderConfigDao : ProviderConfigDao {
     override suspend fun delete(config: ProviderConfigEntity) {
         configs.value = configs.value.filter { it.id != config.id }
     }
+
+    override suspend fun getAllList(): List<ProviderConfigEntity> = configs.value
+
+    override suspend fun deleteById(id: String) {
+        configs.value = configs.value.filter { it.id != id }
+    }
+
+    override suspend fun setDefault(providerId: String) {
+        configs.value = configs.value.map {
+            it.copy(isDefault = (it.id == providerId))
+        }
+    }
 }
 
 class SettingsRepositoryTest {
@@ -117,5 +129,42 @@ class SettingsRepositoryTest {
         assertNull(repository.getProvider("p2"))
         assertNull(repository.getApiKey("p2"))
         assertNull(repository.getActiveProvider())
+    }
+
+    @Test
+    fun `multiple providers can be stored and active provider switched`() = runTest {
+        val p1 = ProviderConfig(
+            id = "openai",
+            providerType = ProviderType.OPENAI_COMPATIBLE,
+            name = "OpenAI",
+            model = "gpt-4o",
+            baseUrl = "https://api.openai.com/v1",
+            isDefault = true
+        )
+        val p2 = ProviderConfig(
+            id = "deepseek",
+            providerType = ProviderType.OPENAI_COMPATIBLE,
+            name = "DeepSeek",
+            model = "deepseek-chat",
+            baseUrl = "https://api.deepseek.com/v1",
+            isDefault = false
+        )
+
+        repository.saveProvider(p1, "sk-openai")
+        repository.saveProvider(p2, "sk-deepseek")
+
+        assertEquals(2, repository.getAllProviders().size)
+        assertEquals("openai", repository.getActiveProvider()?.id)
+        assertEquals("sk-openai", repository.getApiKey("openai"))
+        assertEquals("sk-deepseek", repository.getApiKey("deepseek"))
+
+        // Switch active provider
+        repository.setActiveProvider("deepseek")
+        assertEquals("deepseek", repository.getActiveProvider()?.id)
+
+        // Delete active provider and verify next becomes active
+        repository.deleteProviderById("deepseek")
+        assertEquals(1, repository.getAllProviders().size)
+        assertEquals("openai", repository.getActiveProvider()?.id)
     }
 }
