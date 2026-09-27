@@ -37,9 +37,8 @@ data class AlpineArchInfo(
     val hasLibproot32: Boolean
 )
 
-@Singleton
-class AlpineBootstrapManager @Inject constructor(
-    @ApplicationContext private val context: Context? = null
+class AlpineBootstrapManager(
+    private val context: Context? = null
 ) {
     // Secondary constructor for JVM tests or standalone usage
     private var customBaseDir: File? = null

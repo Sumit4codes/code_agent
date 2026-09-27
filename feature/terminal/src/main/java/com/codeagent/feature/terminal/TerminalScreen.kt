@@ -96,6 +96,34 @@ fun TerminalScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            Spacer(Modifier.width(8.dp))
+                            // Environment status chip
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (uiState.isAlpineReady) Color(0xFF1F3D2C) else Color(0xFF252D38),
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(
+                                                color = if (uiState.isAlpineReady) TerminalPrompt else Color(0xFFE3B341),
+                                                shape = RoundedCornerShape(3.dp)
+                                            )
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = if (uiState.isAlpineReady) "Alpine Linux" else "Toybox Shell",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (uiState.isAlpineReady) TerminalPrompt else Color(0xFFE3B341)
+                                    )
+                                }
+                            }
                             if (uiState.isRunning) {
                                 Spacer(Modifier.width(8.dp))
                                 CircularProgressIndicator(
@@ -138,6 +166,49 @@ fun TerminalScreen(
                 .background(TerminalBg)
                 .imePadding()
         ) {
+            // Optional banner when Alpine Linux is not yet installed
+            if (!uiState.isAlpineReady && !uiState.isRunning && !uiState.isBootstrapping) {
+                Surface(
+                    color = Color(0xFF161B22),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Alpine Linux Environment",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = TerminalPrompt
+                            )
+                            Text(
+                                text = "Enable apk to install git, python3, gcc, g++, make.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AccessoryKeyContent
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = { viewModel.installAlpineEnvironment() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = TerminalPrompt,
+                                contentColor = Color.Black
+                            ),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("Setup", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
             // Scrollable Console Log
             SelectionContainer(
                 modifier = Modifier
@@ -164,6 +235,7 @@ fun TerminalScreen(
                 onHistoryUp = { viewModel.navigateHistoryPrevious() },
                 onHistoryDown = { viewModel.navigateHistoryNext() },
                 isRunning = uiState.isRunning,
+                isAlpine = uiState.isAlpineReady,
                 onCancel = { viewModel.cancelRunningCommand() }
             )
 
@@ -204,10 +276,15 @@ private fun AccessoryKeyboardBar(
     onHistoryUp: () -> Unit,
     onHistoryDown: () -> Unit,
     isRunning: Boolean,
+    isAlpine: Boolean,
     onCancel: () -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val keys = listOf("TAB", "|", "&&", ";", "-", "--", "/", "~", "git", "ls -la", "pwd", "clear")
+    val keys = if (isAlpine) {
+        listOf("TAB", "apk", "git", "python3", "gcc", "make", "|", "&&", ";", "-", "--", "/", "~", "ls -la", "pwd", "clear")
+    } else {
+        listOf("TAB", "setup-alpine", "git", "|", "&&", ";", "-", "--", "/", "~", "ls -la", "pwd", "clear")
+    }
 
     Row(
         modifier = Modifier

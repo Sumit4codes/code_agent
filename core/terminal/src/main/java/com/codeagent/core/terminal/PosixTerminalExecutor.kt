@@ -13,9 +13,8 @@ import java.io.InputStreamReader
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@Singleton
-class PosixTerminalExecutor @Inject constructor(
-    @ApplicationContext private val context: Context? = null,
+class PosixTerminalExecutor(
+    private val context: Context? = null,
     val nativeBinaryManager: NativeBinaryManager? = null,
     val alpineBootstrapManager: AlpineBootstrapManager? = null
 ) : TerminalExecutor {

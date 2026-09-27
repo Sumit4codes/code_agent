@@ -24,9 +24,8 @@ data class ShellEnvironmentInfo(
     val environmentType: String = "Native Android (Toybox)"
 )
 
-@Singleton
-class NativeBinaryManager @Inject constructor(
-    @ApplicationContext private val context: Context? = null,
+class NativeBinaryManager(
+    private val context: Context? = null,
     val alpineBootstrapManager: AlpineBootstrapManager = AlpineBootstrapManager(context)
 ) {
     // Secondary constructor for JVM tests

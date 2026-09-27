@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codeagent.core.data.ProjectDao
 import com.codeagent.core.files.ProjectFileSystem
+import com.codeagent.core.terminal.AlpineBootstrapManager
 import com.codeagent.core.terminal.NativeBinaryManager
 import com.codeagent.core.terminal.PosixTerminalExecutor
 import com.codeagent.core.terminal.TerminalExecutor
@@ -24,7 +25,8 @@ class TerminalViewModel @Inject constructor(
     private val projectDao: ProjectDao,
     private val fileSystem: ProjectFileSystem,
     val terminalExecutor: TerminalExecutor,
-    private val nativeBinaryManager: NativeBinaryManager
+    private val nativeBinaryManager: NativeBinaryManager,
+    val alpineBootstrapManager: AlpineBootstrapManager? = null
 ) : ViewModel() {
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
@@ -35,7 +37,7 @@ class TerminalViewModel @Inject constructor(
         terminalExecutor: TerminalExecutor,
         nativeBinaryManager: NativeBinaryManager,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
-    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager) {
+    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null) {
         this.ioDispatcher = ioDispatcher
     }
 
@@ -48,22 +50,35 @@ class TerminalViewModel @Inject constructor(
         initializeTerminal()
     }
 
-    private fun initializeTerminal() {
+    fun initializeTerminal() {
         viewModelScope.launch(ioDispatcher) {
             val envInfo = nativeBinaryManager.inspectEnvironment(terminalExecutor)
+            val isAlpine = nativeBinaryManager.isAlpineReady()
             val currentDir = terminalExecutor.activeDirectory?.absolutePath
                 ?: (terminalExecutor as? PosixTerminalExecutor)?.currentWorkingDir?.absolutePath
                 ?: System.getProperty("user.dir")
                 ?: "/"
 
-            val systemEntry = TerminalEntry(
-                text = "CodeAgent POSIX Terminal Engine [v1.0]\n" +
-                       "Architecture: ${envInfo.architecture} | Shell: ${envInfo.shellPath}\n" +
-                       "Git: ${if (envInfo.isGitAvailable) envInfo.gitVersion ?: "Available" else "Not detected"}\n" +
-                       "Working Directory: $currentDir\n" +
-                       "Type commands below or use the quick key bar.",
-                type = TerminalEntryType.SYSTEM
-            )
+            val systemEntry = if (isAlpine) {
+                TerminalEntry(
+                    text = "CodeAgent POSIX Terminal Engine [Alpine Linux inside PRoot]\n" +
+                           "Environment: ${envInfo.environmentType} | Arch: ${envInfo.architecture}\n" +
+                           "Package Manager: apk (run 'apk add git python3 gcc g++ make' to install tools)\n" +
+                           "Working Directory: $currentDir\n" +
+                           "Storage Mounted: /sdcard, /storage\n" +
+                           "Type 'help' or 'bins' for commands.",
+                    type = TerminalEntryType.SYSTEM
+                )
+            } else {
+                TerminalEntry(
+                    text = "CodeAgent POSIX Terminal Engine [Native Toybox Shell]\n" +
+                           "Architecture: ${envInfo.architecture} | Shell: ${envInfo.shellPath}\n" +
+                           "Git: ${if (envInfo.isGitAvailable) envInfo.gitVersion ?: "Available" else "Not detected"}\n" +
+                           "Working Directory: $currentDir\n" +
+                           "Tip: Run 'setup-alpine' to install full Alpine Linux with python, gcc, make, and git.",
+                    type = TerminalEntryType.SYSTEM
+                )
+            }
 
             _uiState.update { current ->
                 val updatedEntries = if (current.entries.isEmpty()) {
@@ -75,6 +90,7 @@ class TerminalViewModel @Inject constructor(
                 }
                 current.copy(
                     envInfo = envInfo,
+                    isAlpineReady = isAlpine,
                     workingDirectory = currentDir,
                     entries = updatedEntries
                 )
@@ -112,6 +128,12 @@ class TerminalViewModel @Inject constructor(
         _uiState.update { it.copy(commandInput = newInput) }
     }
 
+    fun installAlpineEnvironment() {
+        if (_uiState.value.isBootstrapping) return
+        _uiState.update { it.copy(isBootstrapping = true, bootstrapProgress = 0f, bootstrapMessage = "Initializing Alpine Linux...") }
+        executeCommand("setup-alpine")
+    }
+
     fun executeCommand(commandText: String = _uiState.value.commandInput) {
         val trimmed = commandText.trim()
         if (trimmed.isEmpty()) return
@@ -144,6 +166,7 @@ class TerminalViewModel @Inject constructor(
         }
 
         if (trimmed == "help") {
+            val isAlpine = _uiState.value.isAlpineReady
             val helpText = """
                 Built-in Commands:
                   clear          - Clear terminal buffer
@@ -152,37 +175,41 @@ class TerminalViewModel @Inject constructor(
                   pwd            - Print current directory
                   cd <dir>       - Change directory (persists across commands)
                   env-info       - Show native shell & binary environment
-                  toybox         - Run Toybox to inspect all built-in Android applets
-                
-                POSIX & Git Commands:
-                  Supports standard shell execution (/system/bin/sh, pipelines, redirection).
-                  Note: Direct directory listing ('ls /system/bin') is blocked by Android SELinux,
-                  but system utilities (ls, cat, grep, find, etc.) execute directly from PATH or via 'toybox <cmd>'.
+                  setup-alpine   - Bootstrap/reinstall Alpine Linux distribution
+
+                Alpine Linux Development Tools:
+                  ${if (isAlpine) "Container Active: commands execute inside Alpine Linux with /sdcard mounted." else "Run 'setup-alpine' to activate Alpine Linux."}
+                  apk update              - Refresh package repositories
+                  apk add git             - Install Git version control
+                  apk add python3 py3-pip - Install Python 3 and pip
+                  apk add gcc g++ make    - Install C/C++ compiler and build tools
+                  apk add nodejs npm      - Install Node.js & npm
+                  apk search <query>      - Search for packages
             """.trimIndent()
             _uiState.update { it.copy(entries = it.entries + TerminalEntry(helpText, TerminalEntryType.SYSTEM)) }
             return
         }
 
         if (trimmed == "bins" || trimmed == "commands" || trimmed == "sys-bins") {
+            val isAlpine = _uiState.value.isAlpineReady
             val binsText = """
                 Available Commands in Terminal:
-                
+
                 1. System Utilities (Android Toybox):
                    cat, chmod, chown, clear, cp, cut, date, df, du, echo, env,
                    find, grep, head, id, kill, ln, logcat, ls, md5sum, mkdir,
                    mv, printenv, ps, pwd, rm, rmdir, sed, sleep, sort, stat,
                    tail, tar, tee, touch, tr, uname, uniq, wc, which, whoami, xargs...
-                   (Run 'toybox' for the full list of compiled applets on your device)
-                
-                2. Shell & Terminal Built-ins:
-                   cd, pwd, clear, help, bins, env-info
-                
-                3. Bundled Binaries:
-                   ${if (_uiState.value.envInfo?.isGitAvailable == true) "git (${_uiState.value.envInfo?.gitVersion ?: "available"})" else "git: not bundled"}
-                   ${if (_uiState.value.envInfo?.isBusyboxAvailable == true) "busybox (${_uiState.value.envInfo?.busyboxVersion ?: "available"})" else "busybox: not bundled"}
-                
-                Note: Android SELinux restricts listing /system/bin (e.g. 'ls /system/bin'),
-                but all commands above can be executed directly by name.
+                   (Run 'toybox' for full list of compiled Android applets)
+
+                2. Package Manager (Alpine Linux):
+                   ${if (isAlpine) "apk (Active) - use 'apk add <tool>' to install git, python3, gcc, make..." else "apk (Not installed - run 'setup-alpine' to enable)"}
+
+                3. Development Environment:
+                   Git: ${_uiState.value.envInfo?.gitVersion ?: "Install with 'apk add git'"}
+                   Python: run 'apk add python3 py3-pip' to install
+                   Compilers: run 'apk add gcc g++ make' to install C/C++
+                   Environment: ${_uiState.value.envInfo?.environmentType ?: "Standard POSIX"}
             """.trimIndent()
             _uiState.update { it.copy(entries = it.entries + TerminalEntry(binsText, TerminalEntryType.SYSTEM)) }
             return
@@ -191,18 +218,19 @@ class TerminalViewModel @Inject constructor(
         if (trimmed == "env-info") {
             val env = _uiState.value.envInfo
             val infoText = """
-                Shell: ${env?.shellPath ?: "unknown"}
+                Environment: ${env?.environmentType ?: "unknown"}
                 Architecture: ${env?.architecture ?: "unknown"}
-                Git Available: ${env?.isGitAvailable ?: false} (${env?.gitVersion ?: "N/A"})
-                Busybox Available: ${env?.isBusyboxAvailable ?: false} (${env?.busyboxVersion ?: "N/A"})
-                Native Library Dir: ${env?.nativeLibraryDir ?: "None"}
-                Current PWD: ${_uiState.value.workingDirectory}
+                PRoot Available: ${env?.isPRootAvailable ?: false}
+                Alpine Installed: ${env?.isAlpineInstalled ?: false} (Version: ${env?.alpineVersion ?: "N/A"})
+                Shell: ${env?.shellPath ?: "unknown"}
+                Git: ${if (env?.isGitAvailable == true) env.gitVersion ?: "Available" else "Not detected"}
+                Working Directory: ${_uiState.value.workingDirectory}
             """.trimIndent()
             _uiState.update { it.copy(entries = it.entries + TerminalEntry(infoText, TerminalEntryType.SYSTEM)) }
             return
         }
 
-        // Launch POSIX process
+        // Launch process
         activeJob?.cancel()
         activeJob = viewModelScope.launch(ioDispatcher) {
             _uiState.update { it.copy(isRunning = true) }
@@ -223,14 +251,16 @@ class TerminalViewModel @Inject constructor(
 
             when (result) {
                 is TerminalResult.Success -> {
-                    // Output was already streamed line by line via callback
+                    if (trimmed == "setup-alpine" || trimmed == "install-alpine") {
+                        initializeTerminal()
+                    }
                 }
                 is TerminalResult.Error -> {
                     val isSystemBinAccess = (trimmed.contains("/system/bin") || trimmed.contains("/system/xbin")) &&
                             (result.message.contains("Permission denied") || result.message.contains("error=13"))
                     val tip = if (isSystemBinAccess) {
                         "\n[Notice: Android SELinux blocks directory enumeration of /system/bin for apps. " +
-                        "Commands in /system/bin are still executable directly via PATH. Type 'bins' or 'toybox' to view available commands.]"
+                        "Commands in /system/bin are still executable directly via PATH. Run 'setup-alpine' for full Linux shell environment.]"
                     } else ""
                     _uiState.update { current ->
                         current.copy(
@@ -253,7 +283,7 @@ class TerminalViewModel @Inject constructor(
                 }
             }
 
-            _uiState.update { it.copy(isRunning = false, workingDirectory = currentDir) }
+            _uiState.update { it.copy(isRunning = false, isBootstrapping = false, workingDirectory = currentDir) }
         }
     }
 
@@ -264,6 +294,7 @@ class TerminalViewModel @Inject constructor(
             _uiState.update { current ->
                 current.copy(
                     isRunning = false,
+                    isBootstrapping = false,
                     entries = current.entries + TerminalEntry(
                         text = "^C (Command terminated)",
                         type = TerminalEntryType.STDERR
