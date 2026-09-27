@@ -69,7 +69,16 @@ A clean-room, Android-native AI coding agent inspired by [OpenCode](https://gith
 
 ### Build
 
+You can use the provided `./build.sh` helper script (which automatically detects JDK 21 and your Android SDK) or `./gradlew`:
+
 ```bash
+# Using build helper script:
+./build.sh                  # Build debug APK
+./build.sh --release        # Build release APK
+./build.sh --bundle         # Build Android App Bundle (AAB)
+./build.sh --clean          # Clean and build
+
+# Or directly via gradlew:
 export JAVA_HOME=~/.local/opt/jdk-21   # or your JDK 21 path
 ./gradlew assembleDebug
 ```
@@ -78,7 +87,16 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ### Run Unit Tests
 
+You can run unit tests using `./test.sh` (with automatic test result summaries and HTML report links) or `./gradlew`:
+
 ```bash
+# Using test helper script:
+./test.sh                             # Run all unit tests
+./test.sh -m core:files               # Run tests for specific module
+./test.sh -c PathSafetyTest           # Run a specific test class
+./test.sh --fail-fast --report        # Stop on first failure and show reports
+
+# Or directly via gradlew:
 ./gradlew test
 ```
 
@@ -86,7 +104,8 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ```bash
 # USB-connected device with USB debugging enabled
-./gradlew installDebug
+./build.sh --install
+# Or: ./gradlew installDebug
 ```
 
 ## Configuration
