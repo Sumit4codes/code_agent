@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -40,7 +41,7 @@ private val TerminalSystem = Color(0xFF58A6FF)
 private val AccessoryKeyBg = Color(0xFF21262D)
 private val AccessoryKeyContent = Color(0xFFC9D1D9)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TerminalScreen(
     projectId: String? = null,
@@ -49,6 +50,8 @@ fun TerminalScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
 
     LaunchedEffect(projectId) {
         if (!projectId.isNullOrBlank()) {
@@ -63,7 +66,15 @@ fun TerminalScreen(
         }
     }
 
+    // Auto-scroll when soft keyboard appears so command line and latest logs remain visible
+    LaunchedEffect(isImeVisible) {
+        if (isImeVisible && uiState.entries.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.entries.size - 1)
+        }
+    }
+
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -123,7 +134,9 @@ fun TerminalScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
                 .background(TerminalBg)
+                .imePadding()
         ) {
             // Scrollable Console Log
             SelectionContainer(
@@ -135,7 +148,8 @@ fun TerminalScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .imeNestedScroll(),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     items(uiState.entries, key = { it.id }) { entry ->
