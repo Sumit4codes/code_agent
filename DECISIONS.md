@@ -33,3 +33,11 @@
 **Decision:** Use `com.codeagent.app` as applicationId and package name.
 
 **Rationale:** Neutral name, avoids OpenCode branding per requirements. Can be changed later by updating `namespace` and `applicationId` in `app/build.gradle.kts`.
+
+## D7: Full Device File Access (MANAGE_EXTERNAL_STORAGE) Instead of SAF
+**Decision:** Transition from Android's Storage Access Framework (SAF) to full device storage access (`MANAGE_EXTERNAL_STORAGE`).
+
+**Rationale:** SAF document URIs (`content://...`) require complex cursor querying through `DocumentsContract` and cannot be operated on by standard POSIX-oriented tools like JGit and ProcessBuilder. By requesting `MANAGE_EXTERNAL_STORAGE` and utilizing direct `java.io.File` access via `FileProjectFileSystem`, file path handling for AI agents is vastly simplified. Agents can specify standard relative paths or absolute file paths without SAF lookup bottlenecks.
+
+**Trade-off:** Requires users to grant All Files Access permission in system settings (Android 11+ / API 30+), which is standard for developer, file manager, and terminal tools on Android.
+

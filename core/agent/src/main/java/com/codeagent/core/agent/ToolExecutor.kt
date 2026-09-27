@@ -39,13 +39,37 @@ class ToolExecutor @Inject constructor(
     fun bind(fileSystem: ProjectFileSystem, rootUri: Uri, localWorkDir: File? = null) {
         this.fileSystem = fileSystem
         this.projectRootUri = rootUri
-        terminalExecutor.bind(fileSystem, rootUri, localWorkDir)
+        val resolvedLocalDir = localWorkDir ?: run {
+            val path = rootUri.path ?: rootUri.toString().removePrefix("file://")
+            val f = File(path)
+            if (f.exists()) f else null
+        }
+        terminalExecutor.bind(fileSystem, rootUri, resolvedLocalDir)
     }
 
     fun unbind() {
         this.fileSystem = null
         this.projectRootUri = null
         terminalExecutor.unbind()
+    }
+
+    private fun normalizeAgentPath(rawPath: String): String? {
+        val trimmed = rawPath.trim()
+        if (trimmed.isEmpty() || trimmed == ".") return "."
+
+        val rootPath = projectRootUri?.let { uri ->
+            val path = uri.path ?: uri.toString()
+            if (path.startsWith("file://")) path.removePrefix("file://") else path
+        }
+
+        val withoutRoot = if (rootPath != null && trimmed.startsWith(rootPath)) {
+            trimmed.removePrefix(rootPath).removePrefix("/")
+        } else {
+            trimmed.removePrefix("./").removePrefix("/")
+        }
+
+        val target = if (withoutRoot.isEmpty()) "." else withoutRoot
+        return if (target == "." || PathSafety.isValidRelativePath(target)) target else null
     }
 
     suspend fun execute(
@@ -87,15 +111,12 @@ class ToolExecutor @Inject constructor(
     }
 
     private suspend fun executeListFiles(fs: ProjectFileSystem, args: JsonObject): ToolResult {
-        val relPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
-        val safePath = if (relPath == ".") "" else relPath
-        if (safePath.isNotEmpty() && !PathSafety.isValidRelativePath(safePath)) {
-            return ToolResult(false, "Invalid path: $relPath")
-        }
+        val rawPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
+        val safePath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
 
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
-        val targetUri = if (safePath.isEmpty()) rootUri else {
-            fs.resolveRelativeUri(rootUri, safePath) ?: return ToolResult(false, "Cannot resolve path: $relPath")
+        val targetUri = if (safePath == ".") rootUri else {
+            fs.resolveRelativeUri(rootUri, safePath) ?: return ToolResult(false, "Cannot resolve path: $rawPath")
         }
 
         val children = fs.listChildren(targetUri)
@@ -108,14 +129,12 @@ class ToolExecutor @Inject constructor(
     }
 
     private suspend fun executeReadFile(fs: ProjectFileSystem, args: JsonObject): ToolResult {
-        val relPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
-        if (!PathSafety.isValidRelativePath(relPath)) {
-            return ToolResult(false, "Invalid path: $relPath")
-        }
+        val rawPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
+        val relPath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
 
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
-            ?: return ToolResult(false, "File not found: $relPath")
+            ?: return ToolResult(false, "File not found: $rawPath")
 
         val content = fs.readTextFile(fileUri)
             ?: return ToolResult(false, "Cannot read file: $relPath (may be binary or too large)")
@@ -195,17 +214,15 @@ class ToolExecutor @Inject constructor(
     }
 
     private suspend fun executeGetFileSummary(fs: ProjectFileSystem, args: JsonObject): ToolResult {
-        val relPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
-        if (!PathSafety.isValidRelativePath(relPath)) {
-            return ToolResult(false, "Invalid path: $relPath")
-        }
+        val rawPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
+        val relPath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
 
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
-            ?: return ToolResult(false, "File not found: $relPath")
+            ?: return ToolResult(false, "File not found: $rawPath")
 
         val content = fs.readTextFile(fileUri)
-            ?: return ToolResult(false, "Cannot read file: $relPath")
+            ?: return ToolResult(false, "Cannot read file: $rawPath")
 
         val lines = content.lines()
         val lineCount = lines.size
@@ -229,7 +246,7 @@ class ToolExecutor @Inject constructor(
     }
 
     private suspend fun executeProposeEdit(fs: ProjectFileSystem, args: JsonObject): ToolResult {
-        val relPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
+        val rawPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
         val newContent = argString(args, "content")
             ?: argString(args, "new_content")
             ?: argString(args, "replacement")
@@ -239,13 +256,11 @@ class ToolExecutor @Inject constructor(
             ?: argString(args, "target_content")
             ?: argString(args, "search")
 
-        if (!PathSafety.isValidRelativePath(relPath)) {
-            return ToolResult(false, "Invalid path: $relPath")
-        }
+        val relPath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
 
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
-            ?: return ToolResult(false, "File not found: $relPath")
+            ?: return ToolResult(false, "File not found: $rawPath")
 
         val originalContent = fs.readTextFile(fileUri) ?: ""
 
@@ -279,12 +294,10 @@ class ToolExecutor @Inject constructor(
     }
 
     private suspend fun executeCreateFile(fs: ProjectFileSystem, args: JsonObject): ToolResult {
-        val relPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
+        val rawPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
         val content = argString(args, "content") ?: return ToolResult(false, "Missing 'content' argument")
 
-        if (!PathSafety.isValidRelativePath(relPath)) {
-            return ToolResult(false, "Invalid path: $relPath")
-        }
+        val relPath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
 
         val change = PendingChange(
             id = java.util.UUID.randomUUID().toString(),
@@ -304,15 +317,13 @@ class ToolExecutor @Inject constructor(
     }
 
     private suspend fun executeDeleteFile(fs: ProjectFileSystem, args: JsonObject): ToolResult {
-        val relPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
+        val rawPath = argString(args, "path") ?: return ToolResult(false, "Missing 'path' argument")
 
-        if (!PathSafety.isValidRelativePath(relPath)) {
-            return ToolResult(false, "Invalid path: $relPath")
-        }
+        val relPath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
 
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
-            ?: return ToolResult(false, "File not found: $relPath")
+            ?: return ToolResult(false, "File not found: $rawPath")
 
         val originalContent = fs.readTextFile(fileUri)
 

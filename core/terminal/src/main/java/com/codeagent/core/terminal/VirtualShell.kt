@@ -32,9 +32,15 @@ class VirtualShell(
     }
 
     private suspend fun resolveUri(path: String): Uri? {
-        val safePath = if (path == "." || path.isEmpty()) "" else path
-        if (safePath.isNotEmpty() && !PathSafety.isValidRelativePath(safePath)) return null
-        return if (safePath.isEmpty()) rootUri else fileSystem.resolveRelativeUri(rootUri, safePath)
+        val trimmed = path.trim()
+        val cleanPath = when {
+            trimmed == "." || trimmed.isEmpty() -> ""
+            trimmed.startsWith("./") -> trimmed.removePrefix("./")
+            trimmed.startsWith("/") -> trimmed.removePrefix("/")
+            else -> trimmed
+        }
+        if (cleanPath.isNotEmpty() && !PathSafety.isValidRelativePath(cleanPath)) return null
+        return if (cleanPath.isEmpty()) rootUri else fileSystem.resolveRelativeUri(rootUri, cleanPath)
     }
 
     private suspend fun executeLs(cmd: ParsedCommand): TerminalResult {

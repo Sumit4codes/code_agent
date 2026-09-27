@@ -17,7 +17,7 @@ import com.codeagent.core.data.SessionDao
 import com.codeagent.core.data.SessionEntity
 import android.util.Log
 import com.codeagent.core.data.SettingsRepository
-import com.codeagent.core.files.SafProjectFileSystem
+import com.codeagent.core.files.ProjectFileSystem
 import com.codeagent.core.model.ActiveToolExecution
 import com.codeagent.core.model.ChangeStatus
 import com.codeagent.core.model.ChatSession
@@ -68,7 +68,7 @@ class ChatViewModel @Inject constructor(
     private val messageDao: MessageDao,
     private val pendingChangeDao: PendingChangeDao,
     private val settingsRepository: SettingsRepository,
-    @ApplicationContext private val context: android.content.Context
+    private val fileSystem: ProjectFileSystem
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatState())
@@ -89,9 +89,8 @@ class ChatViewModel @Inject constructor(
     }
 
     fun openProject(treeUri: Uri, name: String, projectId: String) {
-        val fs = SafProjectFileSystem(context)
-        toolExecutor.bind(fs, treeUri)
-        pendingChangeManager.bind(fs, treeUri)
+        toolExecutor.bind(fileSystem, treeUri)
+        pendingChangeManager.bind(fileSystem, treeUri)
 
         _state.value = _state.value.copy(
             projectUri = treeUri,

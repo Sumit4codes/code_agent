@@ -6,9 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.codeagent.core.data.ProjectDao
 import com.codeagent.core.files.FileNode
 import com.codeagent.core.files.ProjectFileSystem
-import com.codeagent.core.files.SafProjectFileSystem
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,13 +29,11 @@ data class EditorState(
 @HiltViewModel
 class EditorViewModel @Inject constructor(
     private val projectDao: ProjectDao,
-    @ApplicationContext private val context: android.content.Context
+    private val fileSystem: ProjectFileSystem
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = _state.asStateFlow()
-
-    private var fileSystem: SafProjectFileSystem? = null
 
     fun openProjectById(projectId: String) {
         viewModelScope.launch {
@@ -52,7 +48,6 @@ class EditorViewModel @Inject constructor(
     }
 
     fun openProject(treeUri: Uri, name: String) {
-        fileSystem = SafProjectFileSystem(context)
         _state.value = _state.value.copy(
             projectUri = treeUri,
             projectName = name,
