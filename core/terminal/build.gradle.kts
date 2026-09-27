@@ -28,6 +28,7 @@ dependencies {
     implementation(project(":core:files"))
     implementation(project(":core:git"))
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.commons.compress)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     testImplementation(project(":core:testing"))
