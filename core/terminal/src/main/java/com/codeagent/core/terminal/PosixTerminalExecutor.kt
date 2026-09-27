@@ -32,13 +32,13 @@ class PosixTerminalExecutor @Inject constructor(
 
     override var isEnabled: Boolean = true
 
-    override fun bind(fileSystem: ProjectFileSystem, rootUri: Uri, localWorkDir: File?) {
+    override fun bind(fileSystem: ProjectFileSystem, rootUri: Uri?, localWorkDir: File?) {
         this.fileSystem = fileSystem
         this.projectRootUri = rootUri
         val dir = localWorkDir ?: run {
-            val path = rootUri.path ?: rootUri.toString().removePrefix("file://")
-            val f = File(path)
-            if (f.exists() && f.isDirectory) f else null
+            val path = rootUri?.path ?: rootUri?.toString()?.removePrefix("file://")
+            val f = path?.let { File(it) }
+            if (f != null && f.exists() && f.isDirectory) f else null
         }
         this.baseProjectDir = dir
         this.currentWorkingDir = dir
@@ -53,7 +53,7 @@ class PosixTerminalExecutor @Inject constructor(
         this.previousWorkingDir = null
     }
 
-    val activeDirectory: File?
+    override val activeDirectory: File?
         get() = currentWorkingDir ?: baseProjectDir
 
     fun setWorkingDirectory(dir: File) {
@@ -181,34 +181,40 @@ class PosixTerminalExecutor @Inject constructor(
                 env["LC_ALL"] = "C.UTF-8"
 
                 val process = pb.start()
-                val output = StringBuilder()
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
-                val maxBytes = 65536
-                var byteCount = 0
-                var truncated = false
+                try {
+                    val output = StringBuilder()
+                    val reader = BufferedReader(InputStreamReader(process.inputStream))
+                    val maxBytes = 65536
+                    var byteCount = 0
+                    var truncated = false
 
-                var line = reader.readLine()
-                while (line != null) {
-                    if (byteCount < maxBytes) {
-                        output.append(line).append("\n")
-                        onOutput?.invoke(line)
-                        byteCount += line.length + 1
-                    } else if (!truncated) {
-                        truncated = true
-                        val truncMsg = "\n[... Output truncated at 64KB ...]\n"
-                        output.append(truncMsg)
-                        onOutput?.invoke(truncMsg)
+                    var line = reader.readLine()
+                    while (line != null) {
+                        if (byteCount < maxBytes) {
+                            output.append(line).append("\n")
+                            onOutput?.invoke(line)
+                            byteCount += line.length + 1
+                        } else if (!truncated) {
+                            truncated = true
+                            val truncMsg = "\n[... Output truncated at 64KB ...]\n"
+                            output.append(truncMsg)
+                            onOutput?.invoke(truncMsg)
+                        }
+                        line = reader.readLine()
                     }
-                    line = reader.readLine()
-                }
 
-                val exitCode = process.waitFor()
-                val outStr = output.toString().trimEnd()
+                    val exitCode = process.waitFor()
+                    val outStr = output.toString().trimEnd()
 
-                if (exitCode == 0) {
-                    TerminalResult.Success(outStr, 0)
-                } else {
-                    TerminalResult.Error(if (outStr.isNotEmpty()) outStr else "Process exited with code $exitCode", exitCode)
+                    if (exitCode == 0) {
+                        TerminalResult.Success(outStr, 0)
+                    } else {
+                        TerminalResult.Error(if (outStr.isNotEmpty()) outStr else "Process exited with code $exitCode", exitCode)
+                    }
+                } finally {
+                    if (process.isAlive) {
+                        process.destroyForcibly()
+                    }
                 }
             }
 

@@ -51,25 +51,32 @@ class TerminalViewModel @Inject constructor(
     private fun initializeTerminal() {
         viewModelScope.launch(ioDispatcher) {
             val envInfo = nativeBinaryManager.inspectEnvironment(terminalExecutor)
-            val currentDir = (terminalExecutor as? PosixTerminalExecutor)?.activeDirectory?.absolutePath
+            val currentDir = terminalExecutor.activeDirectory?.absolutePath
                 ?: (terminalExecutor as? PosixTerminalExecutor)?.currentWorkingDir?.absolutePath
                 ?: System.getProperty("user.dir")
                 ?: "/"
 
+            val systemEntry = TerminalEntry(
+                text = "CodeAgent POSIX Terminal Engine [v1.0]\n" +
+                       "Architecture: ${envInfo.architecture} | Shell: ${envInfo.shellPath}\n" +
+                       "Git: ${if (envInfo.isGitAvailable) envInfo.gitVersion ?: "Available" else "Not detected"}\n" +
+                       "Working Directory: $currentDir\n" +
+                       "Type commands below or use the quick key bar.",
+                type = TerminalEntryType.SYSTEM
+            )
+
             _uiState.update { current ->
+                val updatedEntries = if (current.entries.isEmpty()) {
+                    listOf(systemEntry)
+                } else if (current.entries.first().type == TerminalEntryType.SYSTEM) {
+                    listOf(systemEntry) + current.entries.drop(1)
+                } else {
+                    listOf(systemEntry) + current.entries
+                }
                 current.copy(
                     envInfo = envInfo,
                     workingDirectory = currentDir,
-                    entries = listOf(
-                        TerminalEntry(
-                            text = "CodeAgent POSIX Terminal Engine [v1.0]\n" +
-                                   "Architecture: ${envInfo.architecture} | Shell: ${envInfo.shellPath}\n" +
-                                   "Git: ${if (envInfo.isGitAvailable) envInfo.gitVersion ?: "Available" else "Not detected"}\n" +
-                                   "Working Directory: $currentDir\n" +
-                                   "Type commands below or use the quick key bar.",
-                            type = TerminalEntryType.SYSTEM
-                        )
-                    )
+                    entries = updatedEntries
                 )
             }
         }
@@ -78,12 +85,13 @@ class TerminalViewModel @Inject constructor(
     fun openProject(projectId: String) {
         viewModelScope.launch(ioDispatcher) {
             val project = projectDao.getById(projectId) ?: return@launch
-            val treeUri = Uri.parse(project.treeUri)
-            val path = treeUri.path ?: treeUri.toString().removePrefix("file://")
+            val rawUri = project.treeUri
+            val treeUri = try { Uri.parse(rawUri) } catch (_: Exception) { null }
+            val path = treeUri?.path ?: rawUri.removePrefix("file://")
             val workDir = File(path)
 
             terminalExecutor.bind(fileSystem, treeUri, if (workDir.exists()) workDir else null)
-            val currentDir = (terminalExecutor as? PosixTerminalExecutor)?.activeDirectory?.absolutePath
+            val currentDir = terminalExecutor.activeDirectory?.absolutePath
                 ?: workDir.absolutePath
 
             _uiState.update { current ->
@@ -182,7 +190,7 @@ class TerminalViewModel @Inject constructor(
                 }
             }
 
-            val currentDir = (terminalExecutor as? PosixTerminalExecutor)?.activeDirectory?.absolutePath
+            val currentDir = terminalExecutor.activeDirectory?.absolutePath
                 ?: _uiState.value.workingDirectory
 
             when (result) {
