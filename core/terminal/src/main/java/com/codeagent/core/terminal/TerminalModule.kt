@@ -12,5 +12,5 @@ abstract class TerminalModule {
 
     @Binds
     @Singleton
-    abstract fun bindTerminalExecutor(impl: DefaultTerminalExecutor): TerminalExecutor
+    abstract fun bindTerminalExecutor(impl: PosixTerminalExecutor): TerminalExecutor
 }

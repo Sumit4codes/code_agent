@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -30,11 +31,13 @@ import com.codeagent.feature.editor.DiffReviewScreen
 import com.codeagent.feature.editor.EditorScreen
 import com.codeagent.feature.projects.ProjectsScreen
 import com.codeagent.feature.settings.SettingsScreen
+import com.codeagent.feature.terminal.TerminalScreen
 
 object Routes {
     const val PROJECTS = "projects"
     const val CHAT = "chat"
     const val EDITOR = "editor"
+    const val TERMINAL = "terminal"
     const val SETTINGS = "settings"
     const val DIFF_REVIEW = "diff_review"
 }
@@ -46,7 +49,7 @@ fun AppNavHost(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val isTopLevelRoute = currentRoute == Routes.PROJECTS || currentRoute == Routes.SETTINGS
+    val isTopLevelRoute = currentRoute == Routes.PROJECTS || currentRoute == Routes.TERMINAL || currentRoute == Routes.SETTINGS
 
     Scaffold(
         bottomBar = {
@@ -59,6 +62,20 @@ fun AppNavHost(
                         onClick = {
                             if (currentRoute != Routes.PROJECTS) {
                                 navController.navigate(Routes.PROJECTS) {
+                                    popUpTo(Routes.PROJECTS) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Terminal, contentDescription = "Terminal") },
+                        label = { Text("Terminal") },
+                        selected = currentRoute == Routes.TERMINAL,
+                        onClick = {
+                            if (currentRoute != Routes.TERMINAL) {
+                                navController.navigate(Routes.TERMINAL) {
                                     popUpTo(Routes.PROJECTS) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
@@ -109,6 +126,22 @@ fun AppNavHost(
             ) { backStackEntry ->
                 val projectId = backStackEntry.arguments?.getString("projectId") ?: ""
                 EditorScreen(
+                    projectId = projectId,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenTerminal = { navController.navigate("${Routes.TERMINAL}/$projectId") }
+                )
+            }
+            composable(Routes.TERMINAL) {
+                TerminalScreen()
+            }
+            composable(
+                route = "${Routes.TERMINAL}/{projectId}",
+                arguments = listOf(
+                    navArgument("projectId") { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val projectId = backStackEntry.arguments?.getString("projectId")
+                TerminalScreen(
                     projectId = projectId,
                     onNavigateBack = { navController.popBackStack() }
                 )

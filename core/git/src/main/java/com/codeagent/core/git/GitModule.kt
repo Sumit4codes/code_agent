@@ -12,5 +12,5 @@ abstract class GitModule {
 
     @Binds
     @Singleton
-    abstract fun bindGitOperations(impl: JGitOperations): GitOperations
+    abstract fun bindGitOperations(impl: CliGitOperations): GitOperations
 }

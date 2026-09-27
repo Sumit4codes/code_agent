@@ -9,7 +9,6 @@ import com.codeagent.core.model.ToolNames
 import com.codeagent.core.terminal.TerminalExecutor
 import com.codeagent.core.terminal.DefaultTerminalExecutor
 import com.codeagent.core.terminal.TerminalResult
-import com.codeagent.core.git.JGitOperations
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -31,7 +30,7 @@ class ToolExecutor @Inject constructor(
     private val terminalExecutor: TerminalExecutor
 ) {
     // Secondary constructor for lightweight instantiations or tests
-    constructor() : this(DefaultTerminalExecutor(JGitOperations()))
+    constructor() : this(DefaultTerminalExecutor())
 
     private var fileSystem: ProjectFileSystem? = null
     private var projectRootUri: Uri? = null

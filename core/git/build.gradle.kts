@@ -23,7 +23,6 @@ kotlin {
 dependencies {
     implementation(project(":core:common"))
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.jgit)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     testImplementation(project(":core:testing"))

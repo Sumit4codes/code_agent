@@ -4,24 +4,34 @@ import android.net.FakeUri
 import com.codeagent.core.model.ChangeType
 import com.codeagent.core.testing.FakeProjectFileSystem
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class ToolExecutorTest {
 
     private lateinit var fs: FakeProjectFileSystem
     private lateinit var executor: ToolExecutor
+    private lateinit var tempDir: File
     private val rootUri = FakeUri("content://test/root")
 
     @Before
     fun setUp() {
+        tempDir = Files.createTempDirectory("tool-exec-test").toFile()
         fs = FakeProjectFileSystem("content://test/root")
         executor = ToolExecutor()
-        executor.bind(fs, rootUri)
+        executor.bind(fs, rootUri, tempDir)
+    }
+
+    @After
+    fun tearDown() {
+        tempDir.deleteRecursively()
     }
 
     @Test
@@ -186,7 +196,9 @@ class ToolExecutorTest {
     }
 
     @Test
-    fun `execute execute_command runs virtual shell command`() = runTest {
+    fun `execute execute_command runs real shell command`() = runTest {
+        val file = File(tempDir, "README.md")
+        file.writeText("# My Project\nLine 2")
         fs.putFile("README.md", "# My Project\nLine 2")
         val result = executor.execute("execute_command", """{"command":"cat README.md"}""")
         assertTrue(result.success)
@@ -195,6 +207,8 @@ class ToolExecutorTest {
 
     @Test
     fun `execute execute_command with ls flags`() = runTest {
+        val file = File(tempDir, "main.py")
+        file.writeText("print('hello')")
         fs.putFile("main.py", "print('hello')")
         val result = executor.execute("execute_command", """{"command":"ls -la"}""")
         assertTrue(result.success)

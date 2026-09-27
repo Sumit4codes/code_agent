@@ -41,7 +41,8 @@ import java.util.Locale
 fun EditorScreen(
     projectId: String = "",
     viewModel: EditorViewModel = hiltViewModel(),
-    onNavigateBack: (() -> Unit)? = null
+    onNavigateBack: (() -> Unit)? = null,
+    onOpenTerminal: (() -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -113,6 +114,7 @@ fun EditorScreen(
                         onToggleWrapLines = {
                             wrapLines = !wrapLines
                         },
+                        onOpenTerminal = onOpenTerminal,
                         onCopyContent = {
                             state.fileContent?.let { content ->
                                 clipboardManager.setText(AnnotatedString(content))
@@ -233,6 +235,7 @@ private fun EditorTopAppBar(
     onToggleDrawer: () -> Unit,
     onToggleSplitView: () -> Unit,
     onToggleWrapLines: () -> Unit,
+    onOpenTerminal: (() -> Unit)? = null,
     onCopyContent: () -> Unit
 ) {
     TopAppBar(
@@ -304,6 +307,15 @@ private fun EditorTopAppBar(
                     contentDescription = if (isSplitView) "Full screen code" else "Split view",
                     tint = if (isSplitView) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            // Open terminal
+            if (onOpenTerminal != null) {
+                IconButton(onClick = onOpenTerminal) {
+                    Icon(
+                        imageVector = Icons.Default.Terminal,
+                        contentDescription = "Open Terminal"
+                    )
+                }
             }
         }
     )

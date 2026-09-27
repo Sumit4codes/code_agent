@@ -47,3 +47,16 @@
 **Rationale:** Users work across multiple LLM providers (e.g., OpenAI for flagship reasoning, DeepSeek for fast coding, OpenRouter for Claude/Llama gateways, Ollama for local privacy, and custom private proxies). A monolithic single-provider screen was cluttered and forced users to manually re-enter API keys and URLs whenever switching. Dynamic model fetching eliminates the need for users to memorize or manually type model identifiers.
 
 **Trade-off:** Requires network access to query `/models` endpoints, mitigated with pre-configured fallback models for all popular providers so users can configure offline or behind firewalls.
+
+## D9: Self-Contained POSIX Process Execution Engine & Interactive Visual Terminal (Option C)
+**Decision:** Completely eliminate the mock in-memory `VirtualShell` and Java `JGit` in favor of a real native POSIX process execution engine (`PosixTerminalExecutor` and `CliGitOperations`), packaged as a self-contained APK architecture (Option C) with a dual-surface developer interface.
+
+**Rationale:**
+1. **Full Agentic Control:** Toy virtual shells and pure-Java git abstractions cannot run real development workflows (e.g. bash pipelines, find/grep filters, redirects, real git hooks, diffs, subshells, and builds). Real POSIX process execution via `/system/bin/sh` gives autonomous coding agents genuine environment control.
+2. **Android W^X SELinux Compliance:** Under Android API 29+, executing binaries directly out of writable app storage (`/data/data/.../files`) is forbidden (`W^X` SELinux restriction). Option C addresses this cleanly by resolving binaries from `context.applicationInfo.nativeLibraryDir` (where `lib*.so` binaries are extracted with executable `r-xp` permissions) and system directories, with shell preamble function routing.
+3. **Dual-Surface Developer Experience:** The architecture serves two distinct requirements:
+   - *Headless Streaming Execution:* The AI agent invokes commands programmatically with output streaming line-by-line via real-time callbacks.
+   - *Interactive Developer Terminal (`feature:terminal`):* A dedicated visual terminal screen with monospace dark console, persistent working directory tracking, command history buffer (`↑`/`↓`), and a mobile programmer keyboard accessory bar (`Tab`, `Ctrl-C`, `|`, `&&`, `/`, `git`, `clear`).
+
+**Trade-off:** The execution environment operates within the Android app's sandbox user ID (UID) and available system/bundled CLI utilities.
+
