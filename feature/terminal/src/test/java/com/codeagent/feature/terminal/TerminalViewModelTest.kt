@@ -235,4 +235,28 @@ class TerminalViewModelTest {
         assertEquals("proj-1", state.projectId)
         assertTrue(state.entries.any { it.text.contains("Workspace switched to: Test Project") })
     }
+
+    @Test
+    fun `execute bins displays available commands list`() = runTest(testDispatcher) {
+        viewModel.executeCommand("bins")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.entries.any { it.text.contains("Available Commands in Terminal") })
+        assertTrue(state.entries.any { it.text.contains("Android Toybox") })
+    }
+
+    @Test
+    fun `executeCommand with system bin error appends SELinux notice`() = runTest(testDispatcher) {
+        executor.executionHandler = { _, _ ->
+            TerminalResult.Error("ls: /system/bin: Permission denied", 1)
+        }
+        viewModel.executeCommand("ls /system/bin")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        val errEntry = state.entries.firstOrNull { it.type == TerminalEntryType.STDERR }
+        assertNotNull(errEntry)
+        assertTrue(errEntry!!.text.contains("Android SELinux blocks directory enumeration"))
+    }
 }

@@ -98,6 +98,11 @@ class PosixTerminalExecutor @Inject constructor(
         }
         val systemPath = System.getenv("PATH") ?: "/system/bin:/system/xbin:/bin:/usr/bin"
         pathEntries.add(systemPath)
+        for (stdPath in listOf("/system/bin", "/system/xbin", "/vendor/bin", "/apex/com.android.runtime/bin")) {
+            if (!pathEntries.any { it.contains(stdPath) }) {
+                pathEntries.add(stdPath)
+            }
+        }
         return pathEntries.joinToString(":")
     }
 
@@ -136,9 +141,10 @@ class PosixTerminalExecutor @Inject constructor(
     }
 
     private fun handleCd(targetArg: String, currentDir: File): TerminalResult? {
+        val homeDir = baseProjectDir ?: context?.filesDir ?: File(System.getProperty("user.home") ?: ".")
         val targetFile = when {
-            targetArg.isEmpty() || targetArg == "~" -> baseProjectDir ?: currentDir
-            targetArg == "-" -> previousWorkingDir ?: currentDir
+            targetArg.isEmpty() || targetArg == "~" -> homeDir
+            targetArg == "-" -> previousWorkingDir ?: homeDir
             targetArg.startsWith("/") -> File(targetArg)
             else -> File(currentDir, targetArg)
         }
@@ -149,6 +155,11 @@ class PosixTerminalExecutor @Inject constructor(
         }
         if (!canonical.isDirectory) {
             return TerminalResult.Error("cd: $targetArg: Not a directory", 1)
+        }
+
+        // Guard against navigating into directories without read/execute permissions for current app UID
+        if (!canonical.canRead() && !canonical.canExecute()) {
+            return TerminalResult.Error("cd: $targetArg: Permission denied", 1)
         }
 
         previousWorkingDir = currentDir
@@ -226,6 +237,10 @@ class PosixTerminalExecutor @Inject constructor(
         } catch (e: Exception) {
             val errMsg = "Failed to execute command: ${e.message}"
             onOutput?.invoke(errMsg)
+            // If the failure was due to workingDir permissions (e.g. error=13), recover workingDir
+            if (e.message?.contains("error=13") == true || e.message?.contains("Permission denied") == true) {
+                currentWorkingDir = baseProjectDir ?: context?.filesDir
+            }
             TerminalResult.Error(errMsg, 1)
         }
     }

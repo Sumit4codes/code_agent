@@ -148,15 +148,43 @@ class TerminalViewModel @Inject constructor(
                 Built-in Commands:
                   clear          - Clear terminal buffer
                   help           - Show this help message
+                  bins           - List all available system utilities & commands
                   pwd            - Print current directory
                   cd <dir>       - Change directory (persists across commands)
                   env-info       - Show native shell & binary environment
+                  toybox         - Run Toybox to inspect all built-in Android applets
                 
                 POSIX & Git Commands:
                   Supports standard shell execution (/system/bin/sh, pipelines, redirection).
-                  Bundled Git & Busybox binaries are automatically resolved.
+                  Note: Direct directory listing ('ls /system/bin') is blocked by Android SELinux,
+                  but system utilities (ls, cat, grep, find, etc.) execute directly from PATH or via 'toybox <cmd>'.
             """.trimIndent()
             _uiState.update { it.copy(entries = it.entries + TerminalEntry(helpText, TerminalEntryType.SYSTEM)) }
+            return
+        }
+
+        if (trimmed == "bins" || trimmed == "commands" || trimmed == "sys-bins") {
+            val binsText = """
+                Available Commands in Terminal:
+                
+                1. System Utilities (Android Toybox):
+                   cat, chmod, chown, clear, cp, cut, date, df, du, echo, env,
+                   find, grep, head, id, kill, ln, logcat, ls, md5sum, mkdir,
+                   mv, printenv, ps, pwd, rm, rmdir, sed, sleep, sort, stat,
+                   tail, tar, tee, touch, tr, uname, uniq, wc, which, whoami, xargs...
+                   (Run 'toybox' for the full list of compiled applets on your device)
+                
+                2. Shell & Terminal Built-ins:
+                   cd, pwd, clear, help, bins, env-info
+                
+                3. Bundled Binaries:
+                   ${if (_uiState.value.envInfo?.isGitAvailable == true) "git (${_uiState.value.envInfo?.gitVersion ?: "available"})" else "git: not bundled"}
+                   ${if (_uiState.value.envInfo?.isBusyboxAvailable == true) "busybox (${_uiState.value.envInfo?.busyboxVersion ?: "available"})" else "busybox: not bundled"}
+                
+                Note: Android SELinux restricts listing /system/bin (e.g. 'ls /system/bin'),
+                but all commands above can be executed directly by name.
+            """.trimIndent()
+            _uiState.update { it.copy(entries = it.entries + TerminalEntry(binsText, TerminalEntryType.SYSTEM)) }
             return
         }
 
@@ -198,10 +226,16 @@ class TerminalViewModel @Inject constructor(
                     // Output was already streamed line by line via callback
                 }
                 is TerminalResult.Error -> {
+                    val isSystemBinAccess = (trimmed.contains("/system/bin") || trimmed.contains("/system/xbin")) &&
+                            (result.message.contains("Permission denied") || result.message.contains("error=13"))
+                    val tip = if (isSystemBinAccess) {
+                        "\n[Notice: Android SELinux blocks directory enumeration of /system/bin for apps. " +
+                        "Commands in /system/bin are still executable directly via PATH. Type 'bins' or 'toybox' to view available commands.]"
+                    } else ""
                     _uiState.update { current ->
                         current.copy(
                             entries = current.entries + TerminalEntry(
-                                text = "Exit ${result.exitCode ?: 1}: ${result.message}",
+                                text = "Exit ${result.exitCode ?: 1}: ${result.message}$tip",
                                 type = TerminalEntryType.STDERR
                             )
                         )
