@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -92,37 +93,47 @@ fun ChatScreen(
     }
 
     // Total item count in LazyColumn
-    val totalItemsCount = remember(state.messages.size, state.isStreaming) {
-        state.messages.size + if (state.isStreaming) 1 else 0
+    val totalItemsCount = state.messages.size + if (state.isStreaming) 1 else 0
+
+    // Track whether the user has manually scrolled up away from bottom
+    var userScrolledUp by remember { mutableStateOf(false) }
+
+    // When manual scrolling finishes, check whether the user is positioned near the bottom
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress) {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+            if (lastVisible != null) {
+                val isAtBottom = lastVisible.index == totalItemsCount - 1 && !listState.canScrollForward
+                userScrolledUp = !isAtBottom
+            }
+        }
     }
 
     // Determine if user has scrolled up away from bottom
     val isScrolledUp by remember {
         derivedStateOf {
-            val totalItems = listState.layoutInfo.totalItemsCount
-            if (totalItems <= 2) false
-            else {
-                val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                lastVisibleIndex < totalItems - 1
-            }
+            userScrolledUp || listState.canScrollForward
         }
     }
 
-    // Smoothly scroll when a new message is added or when streaming starts/stops
+    // Smoothly scroll when a new message is added or streaming starts/stops
     LaunchedEffect(state.messages.size, state.isStreaming) {
-        if (totalItemsCount > 0 && !isScrolledUp) {
+        if (totalItemsCount > 0 && !userScrolledUp) {
             listState.animateScrollToItem(totalItemsCount - 1)
         }
     }
 
-    // While streaming, gently keep viewport pinned to bottom without starting/canceling spring animations
-    LaunchedEffect(state.isStreaming) {
-        if (state.isStreaming) {
-            while (state.isStreaming) {
-                kotlinx.coroutines.delay(100L)
-                if (!isScrolledUp && totalItemsCount > 0) {
-                    listState.scrollToItem(totalItemsCount - 1)
+    // While streaming text or updating active tool, gently keep viewport pinned to bottom without locking scroll mutex
+    LaunchedEffect(state.streamingText, state.activeTool?.output) {
+        if (state.isStreaming && !userScrolledUp && !listState.isScrollInProgress && totalItemsCount > 0) {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+            if (lastVisible != null && lastVisible.index == totalItemsCount - 1) {
+                val overflow = (lastVisible.offset + lastVisible.size + listState.layoutInfo.afterContentPadding) - listState.layoutInfo.viewportEndOffset
+                if (overflow > 0) {
+                    listState.scrollBy(overflow.toFloat())
                 }
+            } else if (lastVisible != null && lastVisible.index < totalItemsCount - 1) {
+                listState.scrollToItem(totalItemsCount - 1)
             }
         }
     }
@@ -250,6 +261,7 @@ fun ChatScreen(
                 onInputChange = { inputText = it },
                 onSend = {
                     if (inputText.isNotBlank()) {
+                        userScrolledUp = false
                         viewModel.sendMessage(inputText)
                         inputText = ""
                     }
@@ -335,6 +347,7 @@ fun ChatScreen(
             ) {
                 FloatingActionButton(
                     onClick = {
+                        userScrolledUp = false
                         coroutineScope.launch {
                             if (totalItemsCount > 0) {
                                 listState.animateScrollToItem(totalItemsCount - 1)

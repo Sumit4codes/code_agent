@@ -13,6 +13,8 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import okhttp3.OkHttpClient
 import okhttp3.sse.EventSource
@@ -26,10 +28,10 @@ class DynamicAiProvider @Inject constructor(
     private val sseFactory: EventSource.Factory
 ) : AiProvider {
 
-    private suspend fun getDelegate(): AiProvider {
-        val config = settingsRepository.getActiveProvider() ?: return FakeAiProvider()
+    private suspend fun getDelegate(): AiProvider = withContext(Dispatchers.IO) {
+        val config = settingsRepository.getActiveProvider() ?: return@withContext FakeAiProvider()
         val apiKey = settingsRepository.getApiKey(config.id) ?: ""
-        return when (config.providerType) {
+        when (config.providerType) {
             ProviderType.OPENAI_COMPATIBLE -> OpenAiCompatibleProvider(
                 baseUrl = config.baseUrl,
                 apiKey = apiKey,
@@ -40,12 +42,12 @@ class DynamicAiProvider @Inject constructor(
         }
     }
 
-    override suspend fun streamChat(request: ChatRequest): Flow<ChatStreamEvent> {
-        return getDelegate().streamChat(request)
+    override suspend fun streamChat(request: ChatRequest): Flow<ChatStreamEvent> = withContext(Dispatchers.IO) {
+        getDelegate().streamChat(request)
     }
 
-    override suspend fun listModels(): List<ModelInfo> {
-        return getDelegate().listModels()
+    override suspend fun listModels(): List<ModelInfo> = withContext(Dispatchers.IO) {
+        getDelegate().listModels()
     }
 }
 

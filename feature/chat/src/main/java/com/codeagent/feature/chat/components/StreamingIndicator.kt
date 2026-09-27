@@ -438,44 +438,91 @@ private fun buildStreamingAnnotatedString(
     val builder = AnnotatedString.Builder()
     if (!text.contains("```") && !text.contains('`')) {
         builder.append(text)
-    } else {
-        val fenceParts = text.split("```")
-        for (i in fenceParts.indices) {
-            if (i % 2 == 1) {
-                // Inside ``` code block
-                val block = fenceParts[i]
-                val nlIndex = block.indexOf('\n')
-                val code = if (nlIndex != -1) block.substring(nlIndex + 1) else block
-                builder.pushStyle(
-                    SpanStyle(
-                        fontFamily = FontFamily.Monospace,
-                        background = codeBg,
-                        fontSize = 13.sp
-                    )
-                )
-                builder.append(code)
+        builder.append(" ▋")
+        return builder.toAnnotatedString()
+    }
+
+    val monoStyle = SpanStyle(
+        fontFamily = FontFamily.Monospace,
+        background = codeBg,
+        fontSize = 13.sp
+    )
+
+    var cursor = 0
+    val length = text.length
+
+    while (cursor < length) {
+        val fenceStart = text.indexOf("```", cursor)
+        if (fenceStart == -1) {
+            // No more code fences, parse inline code till end
+            appendInlineCodeSpans(builder, text, cursor, length, monoStyle)
+            break
+        }
+
+        // Parse inline code before the fence
+        if (fenceStart > cursor) {
+            appendInlineCodeSpans(builder, text, cursor, fenceStart, monoStyle)
+        }
+
+        val codeContentStart = fenceStart + 3
+        val fenceEnd = text.indexOf("```", codeContentStart)
+
+        if (fenceEnd == -1) {
+            // Unclosed code fence (currently streaming inside code block)
+            val nlIndex = text.indexOf('\n', codeContentStart)
+            val actualStart = if (nlIndex != -1) nlIndex + 1 else codeContentStart
+            if (actualStart < length) {
+                builder.pushStyle(monoStyle)
+                builder.append(text.substring(actualStart))
                 builder.pop()
-            } else {
-                // Regular text: check inline `code`
-                val inlineParts = fenceParts[i].split("`")
-                for (j in inlineParts.indices) {
-                    if (j % 2 == 1) {
-                        builder.pushStyle(
-                            SpanStyle(
-                                fontFamily = FontFamily.Monospace,
-                                background = codeBg,
-                                fontSize = 13.sp
-                            )
-                        )
-                        builder.append(inlineParts[j])
-                        builder.pop()
-                    } else {
-                        builder.append(inlineParts[j])
-                    }
-                }
             }
+            break
+        } else {
+            // Closed code fence
+            val nlIndex = text.indexOf('\n', codeContentStart)
+            val actualStart = if (nlIndex != -1 && nlIndex < fenceEnd) nlIndex + 1 else codeContentStart
+            if (actualStart < fenceEnd) {
+                builder.pushStyle(monoStyle)
+                builder.append(text.substring(actualStart, fenceEnd))
+                builder.pop()
+            }
+            cursor = fenceEnd + 3
         }
     }
+
     builder.append(" ▋")
     return builder.toAnnotatedString()
+}
+
+private fun appendInlineCodeSpans(
+    builder: AnnotatedString.Builder,
+    text: String,
+    start: Int,
+    end: Int,
+    monoStyle: SpanStyle
+) {
+    var cursor = start
+    while (cursor < end) {
+        val backtickStart = text.indexOf('`', cursor)
+        if (backtickStart == -1 || backtickStart >= end) {
+            builder.append(text.substring(cursor, end))
+            break
+        }
+
+        if (backtickStart > cursor) {
+            builder.append(text.substring(cursor, backtickStart))
+        }
+
+        val backtickEnd = text.indexOf('`', backtickStart + 1)
+        if (backtickEnd == -1 || backtickEnd >= end) {
+            // Unclosed inline backtick
+            builder.append(text.substring(backtickStart, end))
+            break
+        }
+
+        builder.pushStyle(monoStyle)
+        builder.append(text.substring(backtickStart + 1, backtickEnd))
+        builder.pop()
+        cursor = backtickEnd + 1
+    }
 }
