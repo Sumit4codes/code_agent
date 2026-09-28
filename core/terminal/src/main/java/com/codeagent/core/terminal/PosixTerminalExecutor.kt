@@ -240,6 +240,7 @@ class PosixTerminalExecutor(
         args.add("--sysvipc")
         args.add("-L")
 
+        alpineBootstrapManager?.setupSupportingLibraries()
         alpineBootstrapManager?.ensureGitConfigured()
 
         val boundSources = mutableListOf<String>()

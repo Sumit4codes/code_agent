@@ -65,8 +65,10 @@ class AlpineBootstrapManager(
     val configuredMarker: File
         get() = File(rootDir, ".configured")
 
+    var customNativeLibraryDir: File? = null
+
     val nativeLibraryDir: File?
-        get() = try {
+        get() = customNativeLibraryDir ?: try {
             context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
         } catch (_: Exception) {
             null
@@ -135,6 +137,7 @@ class AlpineBootstrapManager(
         onProgress: ((String, Float) -> Unit)? = null
     ): Result<File> = withContext(ioDispatcher) {
         if (!forceReinstall && isInstalled()) {
+            setupSupportingLibraries(rootDir)
             ensureGitConfigured()
             val ready = AlpineBootstrapState.Ready(alpineDir)
             _bootstrapState.value = ready
@@ -189,20 +192,22 @@ class AlpineBootstrapManager(
         }
     }
 
-    private fun setupSupportingLibraries(root: File) {
+    fun setupSupportingLibraries(root: File = rootDir) {
         val nativeDir = nativeLibraryDir ?: return
         val tallocTarget = File(nativeDir, "libtalloc.so")
         if (tallocTarget.exists()) {
-            val tallocLink = File(root, "libtalloc.so.2")
-            if (tallocLink.exists() || Files.isSymbolicLink(tallocLink.toPath())) {
-                tallocLink.delete()
-            }
-            try {
-                Files.createSymbolicLink(tallocLink.toPath(), tallocTarget.toPath())
-            } catch (_: Exception) {
+            for (linkName in listOf("libtalloc.so.2", "libtalloc.so")) {
+                val destFile = File(root, linkName)
+                if (destFile.exists() || Files.isSymbolicLink(destFile.toPath())) {
+                    destFile.delete()
+                }
                 try {
-                    tallocTarget.copyTo(tallocLink, overwrite = true)
-                } catch (_: Exception) {}
+                    Files.createSymbolicLink(destFile.toPath(), tallocTarget.toPath())
+                } catch (_: Exception) {
+                    try {
+                        tallocTarget.copyTo(destFile, overwrite = true)
+                    } catch (_: Exception) {}
+                }
             }
         }
     }

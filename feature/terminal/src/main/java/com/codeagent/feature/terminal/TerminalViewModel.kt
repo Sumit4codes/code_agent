@@ -26,10 +26,9 @@ class TerminalViewModel @Inject constructor(
     private val fileSystem: ProjectFileSystem,
     val terminalExecutor: TerminalExecutor,
     private val nativeBinaryManager: NativeBinaryManager,
-    val alpineBootstrapManager: AlpineBootstrapManager? = null
-) : ViewModel() {
-
+    val alpineBootstrapManager: AlpineBootstrapManager? = null,
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
+) : ViewModel() {
 
     constructor(
         projectDao: ProjectDao,
@@ -37,9 +36,7 @@ class TerminalViewModel @Inject constructor(
         terminalExecutor: TerminalExecutor,
         nativeBinaryManager: NativeBinaryManager,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
-    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null) {
-        this.ioDispatcher = ioDispatcher
-    }
+    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null, ioDispatcher)
 
     private val _uiState = MutableStateFlow(TerminalUiState())
     val uiState: StateFlow<TerminalUiState> = _uiState.asStateFlow()

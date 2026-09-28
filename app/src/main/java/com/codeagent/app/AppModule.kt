@@ -58,4 +58,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideAiProvider(dynamicAiProvider: DynamicAiProvider): AiProvider = dynamicAiProvider
+
+    @Provides
+    fun provideIoDispatcher(): kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 }

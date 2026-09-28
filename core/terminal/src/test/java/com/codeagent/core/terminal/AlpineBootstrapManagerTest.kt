@@ -132,4 +132,19 @@ class AlpineBootstrapManagerTest {
         manager.ensureGitConfigured()
         assertEquals(initialContent, sysConfig.readText())
     }
+
+    @Test
+    fun setupSupportingLibraries_createsBothTallocLinks() {
+        val fakeNativeDir = tempFolder.newFolder("nativeLibDir")
+        val tallocSource = File(fakeNativeDir, "libtalloc.so")
+        tallocSource.writeText("fake talloc library content")
+
+        manager.customNativeLibraryDir = fakeNativeDir
+        manager.setupSupportingLibraries()
+
+        val tallocLink2 = File(rootDir, "libtalloc.so.2")
+        val tallocLink = File(rootDir, "libtalloc.so")
+        assertTrue(tallocLink2.exists())
+        assertTrue(tallocLink.exists())
+    }
 }
