@@ -100,4 +100,36 @@ class AlpineBootstrapManagerTest {
         assertTrue(cmdFile.exists())
         assertTrue(cmdFile.canExecute())
     }
+
+    @Test
+    fun ensureGitConfigured_createsSystemAndUserGitConfigs() {
+        manager.ensureGitConfigured()
+
+        val sysConfig = File(manager.alpineDir, "etc/gitconfig")
+        assertTrue(sysConfig.exists())
+        val sysText = sysConfig.readText()
+        assertTrue(sysText.contains("createObject = rename"))
+        assertTrue(sysText.contains("filemode = false"))
+        assertTrue(sysText.contains("symlinks = false"))
+        assertTrue(sysText.contains("directory = *"))
+
+        val userConfig = File(manager.publicDir, ".gitconfig")
+        assertTrue(userConfig.exists())
+        val userText = userConfig.readText()
+        assertTrue(userText.contains("createObject = rename"))
+        assertTrue(userText.contains("filemode = false"))
+        assertTrue(userText.contains("symlinks = false"))
+        assertTrue(userText.contains("directory = *"))
+    }
+
+    @Test
+    fun ensureGitConfigured_isIdempotent() {
+        manager.ensureGitConfigured()
+        val sysConfig = File(manager.alpineDir, "etc/gitconfig")
+        val initialContent = sysConfig.readText()
+
+        // Call again
+        manager.ensureGitConfigured()
+        assertEquals(initialContent, sysConfig.readText())
+    }
 }

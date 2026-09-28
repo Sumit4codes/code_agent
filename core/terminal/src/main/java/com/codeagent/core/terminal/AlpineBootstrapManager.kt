@@ -135,6 +135,7 @@ class AlpineBootstrapManager(
         onProgress: ((String, Float) -> Unit)? = null
     ): Result<File> = withContext(ioDispatcher) {
         if (!forceReinstall && isInstalled()) {
+            ensureGitConfigured()
             val ready = AlpineBootstrapState.Ready(alpineDir)
             _bootstrapState.value = ready
             return@withContext Result.success(alpineDir)
@@ -395,6 +396,55 @@ class AlpineBootstrapManager(
                 """.trimIndent()
             )
         }
+
+        // 7. Git configuration for PRoot / Android storage compatibility
+        ensureGitConfigured()
+    }
+
+    /**
+     * Ensures system and user-level Git configuration files are properly populated with
+     * options required for reliable Git operations on Android shared storage (FUSE/sdcardfs)
+     * and PRoot emulation.
+     *
+     * In particular:
+     * - `core.createObject = rename`: Avoids calling link() on temporary pack files, preventing
+     *   PRoot's --link2symlink from renaming the temporary pack file away before failing on FUSE symlink().
+     * - `core.filemode = false`: Android FUSE storage does not support POSIX permission bits.
+     * - `core.symlinks = false`: Android shared storage does not support symlinks.
+     * - `safe.directory = *`: Android shared storage files are owned by Android's media UID, not root.
+     */
+    fun ensureGitConfigured() {
+        val targetAlpine = alpineDir
+        val targetPublic = publicDir
+        val gitConfigContent = """
+            [core]
+            	createObject = rename
+            	filemode = false
+            	symlinks = false
+            [safe]
+            	directory = *
+        """.trimIndent() + "\n"
+
+        // 1. System gitconfig: /etc/gitconfig in Alpine rootfs
+        try {
+            val etcDir = File(targetAlpine, "etc")
+            if (etcDir.exists() || etcDir.mkdirs()) {
+                val sysGitConfig = File(etcDir, "gitconfig")
+                if (!sysGitConfig.exists() || !sysGitConfig.readText().contains("createObject")) {
+                    sysGitConfig.writeText(gitConfigContent)
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. User gitconfig: /root/.gitconfig and /home/.gitconfig (mapped to publicDir)
+        try {
+            if (targetPublic.exists() || targetPublic.mkdirs()) {
+                val userGitConfig = File(targetPublic, ".gitconfig")
+                if (!userGitConfig.exists() || !userGitConfig.readText().contains("createObject")) {
+                    userGitConfig.writeText(gitConfigContent)
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun updateState(

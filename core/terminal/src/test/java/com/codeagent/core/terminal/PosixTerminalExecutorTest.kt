@@ -125,4 +125,15 @@ class PosixTerminalExecutorTest {
         val result = alpineExecutor.execute("setup-alpine")
         assertNotNull(result)
     }
+
+    @Test
+    fun `native process receives git config parameters environment`() = runTest {
+        val result = executor.execute("echo \"\$GIT_CONFIG_PARAMETERS\"")
+        assertTrue(result is TerminalResult.Success)
+        val output = (result as TerminalResult.Success).output
+        assertTrue(output.contains("core.createObject=rename"))
+        assertTrue(output.contains("core.filemode=false"))
+        assertTrue(output.contains("core.symlinks=false"))
+        assertTrue(output.contains("safe.directory=*"))
+    }
 }

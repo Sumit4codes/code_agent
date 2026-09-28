@@ -240,11 +240,28 @@ class PosixTerminalExecutor(
         args.add("--sysvipc")
         args.add("-L")
 
-        for (m in listOf("/dev", "/proc", "/sys")) {
-            if (File(m).exists()) {
+        alpineBootstrapManager?.ensureGitConfigured()
+
+        val boundSources = mutableListOf<String>()
+
+        fun addBind(src: String, dst: String? = null) {
+            val srcFile = File(src)
+            if (srcFile.exists()) {
                 args.add("-b")
-                args.add(m)
+                if (dst != null) {
+                    args.add("$src:$dst")
+                } else {
+                    args.add(src)
+                }
+                boundSources.add(srcFile.absolutePath)
+                try {
+                    boundSources.add(srcFile.canonicalPath)
+                } catch (_: Exception) {}
             }
+        }
+
+        for (m in listOf("/dev", "/proc", "/sys")) {
+            addBind(m)
         }
         if (File("/dev/urandom").exists()) {
             args.add("-b")
@@ -252,23 +269,20 @@ class PosixTerminalExecutor(
         }
 
         for (storage in listOf("/sdcard", "/storage", "/mnt/sdcard")) {
-            if (File(storage).exists()) {
-                args.add("-b")
-                args.add(storage)
-            }
+            addBind(storage)
         }
 
         if (nativeDir != null && nativeDir.exists()) {
-            args.add("-b")
-            args.add(nativeDir.absolutePath)
+            addBind(nativeDir.absolutePath)
         }
-        args.add("-b")
-        args.add(rootDir.absolutePath)
+        addBind(rootDir.absolutePath)
 
         args.add("-b")
         args.add("${publicDir.absolutePath}:/root")
         args.add("-b")
         args.add("${publicDir.absolutePath}:/home")
+        boundSources.add(publicDir.absolutePath)
+        try { boundSources.add(publicDir.canonicalPath) } catch (_: Exception) {}
 
         val shm = File(alpineDir, "tmp")
         shm.mkdirs()
@@ -276,9 +290,18 @@ class PosixTerminalExecutor(
         args.add("${shm.absolutePath}:/dev/shm")
 
         val hostWorkDir = workingDir.absolutePath
-        if (File(hostWorkDir).exists()) {
-            args.add("-b")
-            args.add(hostWorkDir)
+        val workCanon = try { workingDir.canonicalPath } catch (_: Exception) { hostWorkDir }
+
+        val isAlreadyBound = boundSources.any { boundPath ->
+            hostWorkDir == boundPath || hostWorkDir.startsWith("$boundPath/") ||
+                workCanon == boundPath || workCanon.startsWith("$boundPath/")
+        }
+
+        if (workingDir.exists()) {
+            if (!isAlreadyBound) {
+                args.add("-b")
+                args.add(hostWorkDir)
+            }
             args.add("-w")
             args.add(hostWorkDir)
         } else {
@@ -315,6 +338,8 @@ class PosixTerminalExecutor(
                 env["TERM"] = "xterm-256color"
                 env["LANG"] = "C.UTF-8"
                 env["LC_ALL"] = "C.UTF-8"
+                env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
+                env["GIT_OPTIONAL_LOCKS"] = "0"
 
                 val process = pb.start()
                 runProcessStream(process, onOutput)
@@ -354,6 +379,8 @@ class PosixTerminalExecutor(
                 env["TMPDIR"] = try { context?.cacheDir?.absolutePath ?: "/data/local/tmp" } catch (_: Exception) { "/tmp" }
                 env["TERM"] = "xterm-256color"
                 env["GIT_TERMINAL_PROMPT"] = "0"
+                env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
+                env["GIT_OPTIONAL_LOCKS"] = "0"
                 env["LC_ALL"] = "C.UTF-8"
 
                 val process = pb.start()
