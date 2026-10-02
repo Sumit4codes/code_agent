@@ -263,13 +263,17 @@ fun TerminalScreen(
                     }
                 },
                 update = { view ->
-                    val session = viewModel.terminalSession
-                    if (session != null) {
-                        if (view.currentSession != session) {
-                            view.attachSession(session)
-                        } else if (view.mEmulator == null && view.width > 0 && view.height > 0) {
-                            view.updateSize()
+                    try {
+                        val session = viewModel.terminalSession
+                        if (session != null) {
+                            if (view.currentSession != session) {
+                                view.attachSession(session)
+                            } else if (view.mEmulator == null && view.width > 0 && view.height > 0) {
+                                view.updateSize()
+                            }
                         }
+                    } catch (e: Throwable) {
+                        android.util.Log.e("TerminalScreen", "Error updating TerminalView session", e)
                     }
                 },
                 modifier = Modifier

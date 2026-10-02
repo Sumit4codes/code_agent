@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codeagent.core.data.ProjectDao
+import com.codeagent.core.files.FileProjectFileSystem
 import com.codeagent.core.files.ProjectFileSystem
 import com.codeagent.core.terminal.AlpineBootstrapManager
 import com.codeagent.core.terminal.CodeAgentTerminalSessionClient
@@ -16,6 +17,7 @@ import com.codeagent.core.terminal.TermuxSessionManager
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -124,8 +126,8 @@ class TerminalViewModel @Inject constructor(
             val project = projectDao.getById(projectId) ?: return@launch
             val rawUri = project.treeUri
             val treeUri = try { Uri.parse(rawUri) } catch (_: Exception) { null }
-            val path = treeUri?.path ?: rawUri.removePrefix("file://")
-            val workDir = File(path)
+            val workDir = treeUri?.let { FileProjectFileSystem.uriToFile(it) }
+                ?: File(rawUri.removePrefix("file://"))
 
             terminalExecutor.bind(fileSystem, treeUri, if (workDir.exists()) workDir else null)
             val currentDir = terminalExecutor.activeDirectory?.absolutePath
@@ -150,9 +152,13 @@ class TerminalViewModel @Inject constructor(
         terminalViewRef = WeakReference(view)
         sessionClient.attachView(view)
         view.setTerminalViewClient(viewClient)
-        val session = getOrCreateSession()
-        if (session != null) {
-            view.attachSession(session)
+        try {
+            val session = getOrCreateSession()
+            if (session != null) {
+                view.attachSession(session)
+            }
+        } catch (e: Throwable) {
+            android.util.Log.e("TerminalViewModel", "Failed to attach terminal session on register", e)
         }
     }
 
@@ -163,19 +169,43 @@ class TerminalViewModel @Inject constructor(
         }
         val mgr = termuxSessionManager ?: return null
         val workDir = terminalExecutor.activeDirectory
-        val session = mgr.createSession(workDir, sessionClient)
-        this.terminalSession = session
-        _uiState.update { it.copy(isRunning = true) }
-        return session
+        return try {
+            val session = mgr.createSession(workDir, sessionClient)
+            this.terminalSession = session
+            _uiState.update { it.copy(isRunning = true) }
+            session
+        } catch (e: Throwable) {
+            android.util.Log.e("TerminalViewModel", "Failed to create terminal session", e)
+            _uiState.update { currentUi ->
+                currentUi.copy(
+                    isRunning = false,
+                    entries = currentUi.entries + TerminalEntry(
+                        text = "Failed to launch interactive terminal: ${e.message ?: e.javaClass.simpleName}",
+                        type = TerminalEntryType.STDERR
+                    )
+                )
+            }
+            null
+        }
     }
 
     fun restartSession() {
-        terminalSession?.finishIfRunning()
-        terminalSession = null
-        val newSession = getOrCreateSession()
-        terminalViewRef?.get()?.let { view ->
-            if (newSession != null) {
-                view.attachSession(newSession)
+        viewModelScope.launch(Dispatchers.Main) {
+            try {
+                terminalSession?.finishIfRunning()
+                terminalSession = null
+                val newSession = getOrCreateSession()
+                terminalViewRef?.get()?.let { view ->
+                    if (newSession != null) {
+                        try {
+                            view.attachSession(newSession)
+                        } catch (e: Throwable) {
+                            android.util.Log.e("TerminalViewModel", "Failed to attach session to view", e)
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("TerminalViewModel", "Failed to restart session", e)
             }
         }
     }

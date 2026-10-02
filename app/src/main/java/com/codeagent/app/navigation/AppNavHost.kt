@@ -128,7 +128,13 @@ fun AppNavHost(
                 EditorScreen(
                     projectId = projectId,
                     onNavigateBack = { navController.popBackStack() },
-                    onOpenTerminal = { navController.navigate("${Routes.TERMINAL}/$projectId") }
+                    onOpenTerminal = {
+                        if (projectId.isNotBlank()) {
+                            navController.navigate("${Routes.TERMINAL}/${Uri.encode(projectId)}")
+                        } else {
+                            navController.navigate(Routes.TERMINAL)
+                        }
+                    }
                 )
             }
             composable(Routes.TERMINAL) {
@@ -140,7 +146,8 @@ fun AppNavHost(
                     navArgument("projectId") { type = NavType.StringType }
                 )
             ) { backStackEntry ->
-                val projectId = backStackEntry.arguments?.getString("projectId")
+                val rawProjectId = backStackEntry.arguments?.getString("projectId")
+                val projectId = rawProjectId?.let { Uri.decode(it) }
                 TerminalScreen(
                     projectId = projectId,
                     onNavigateBack = { navController.popBackStack() }
