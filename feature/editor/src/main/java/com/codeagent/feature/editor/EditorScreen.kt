@@ -1,14 +1,17 @@
 package com.codeagent.feature.editor
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.WrapText
@@ -17,7 +20,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -146,7 +152,7 @@ fun EditorScreen(
                             .fillMaxSize()
                             .padding(padding)
                     ) {
-                        val sidebarWidth = if (isWideScreen) 260.dp else (totalMaxWidth * 0.32f)
+                        val sidebarWidth = if (isWideScreen) 260.dp else (totalMaxWidth * 0.42f).coerceIn(160.dp, 280.dp)
                         Surface(
                             modifier = Modifier
                                 .width(sidebarWidth)
@@ -251,18 +257,21 @@ private fun EditorTopAppBar(
         },
         title = {
             Column {
+                val currentTitle = state.selectedFile?.name ?: state.projectName.ifBlank { "Files" }
                 Text(
-                    text = state.selectedFile?.name ?: state.projectName.ifBlank { "Files" },
+                    text = currentTitle,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 val subtitle = if (state.selectedFile != null) {
                     state.breadcrumbs.joinToString(" / ") { it.name }
+                } else if (state.breadcrumbs.size > 1) {
+                    state.breadcrumbs.joinToString(" / ") { it.name }
                 } else {
-                    state.breadcrumbs.lastOrNull()?.name ?: ""
+                    ""
                 }
-                if (subtitle.isNotBlank()) {
+                if (subtitle.isNotBlank() && subtitle != currentTitle) {
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
@@ -366,35 +375,78 @@ private fun FileExplorerPane(
         }
 
         // Quick filter search box
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchQueryChange,
+        val searchFocusRequester = remember { FocusRequester() }
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            placeholder = { Text("Filter files...", style = MaterialTheme.typography.bodySmall) },
-            leadingIcon = {
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .height(36.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    searchFocusRequester.requestFocus()
+                },
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(
-                    Icons.Default.Search,
+                    imageVector = Icons.Default.Search,
                     contentDescription = "Search",
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            },
-            trailingIcon = {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = "Filter files...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false
+                        )
+                    }
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(searchFocusRequester),
+                        singleLine = true,
+                        maxLines = 1,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                    )
+                }
                 if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { onSearchQueryChange("") }) {
+                    IconButton(
+                        onClick = { onSearchQueryChange("") },
+                        modifier = Modifier.size(20.dp)
+                    ) {
                         Icon(
-                            Icons.Default.Clear,
+                            imageVector = Icons.Default.Clear,
                             contentDescription = "Clear search",
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-            },
-            singleLine = true,
-            textStyle = MaterialTheme.typography.bodySmall,
-            shape = RoundedCornerShape(12.dp)
-        )
+            }
+        }
 
         // Breadcrumbs row
         if (state.breadcrumbs.isNotEmpty()) {
