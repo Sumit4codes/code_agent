@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -207,5 +208,164 @@ class SettingsViewModelTest {
 
         assertTrue(viewModel.state.value.providers.isEmpty())
         assertNull(viewModel.state.value.activeProvider)
+    }
+
+    @Test
+    fun `connectSync updates account on success`() = runTest {
+        val fakeSync = FakeCloudSyncManager()
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        viewModel.openConnectSyncDialog()
+        assertTrue(viewModel.state.value.isConnectDialogOpen)
+
+        viewModel.connectSync("ghp_test_token_12345", "my_secret_passphrase")
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isConnectDialogOpen)
+        assertEquals("octocat", viewModel.state.value.syncAccount.username)
+        assertTrue(viewModel.state.value.syncAccount.isConnected)
+        assertEquals("ghp_test_token_12345", fakeSync.lastConnectedToken)
+        assertEquals("my_secret_passphrase", fakeSync.lastPassphrase)
+        assertTrue(viewModel.state.value.userMessage?.contains("@octocat") == true)
+    }
+
+    @Test
+    fun `connectSync fails with short passphrase`() = runTest {
+        val fakeSync = FakeCloudSyncManager()
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        viewModel.connectSync("ghp_valid_token", "123")
+        advanceUntilIdle()
+
+        assertEquals("Encryption passphrase must be at least 6 characters", viewModel.state.value.syncError)
+        assertNull(fakeSync.lastConnectedToken)
+    }
+
+    @Test
+    fun `disconnectSync clears account and calls logout`() = runTest {
+        val fakeSync = FakeCloudSyncManager()
+        fakeSync._account.value = com.codeagent.core.data.sync.SyncAccountInfo(
+            provider = com.codeagent.core.data.sync.SyncAccountProvider.GITHUB,
+            username = "octocat"
+        )
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        assertEquals("octocat", viewModel.state.value.syncAccount.username)
+
+        viewModel.disconnectSync()
+        advanceUntilIdle()
+
+        assertTrue(fakeSync.logoutCalled)
+        assertFalse(viewModel.state.value.syncAccount.isConnected)
+    }
+
+    @Test
+    fun `triggerCloudSync and restore use cached passphrase`() = runTest {
+        val fakeSync = FakeCloudSyncManager()
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        // Connect sets cached passphrase
+        viewModel.connectSync("token", "vault_pass_123")
+        advanceUntilIdle()
+
+        // Sync now
+        viewModel.triggerCloudSync()
+        advanceUntilIdle()
+        assertEquals("vault_pass_123", fakeSync.lastPassphrase)
+        assertTrue(viewModel.state.value.userMessage?.contains("synced") == true)
+
+        // Restore now
+        viewModel.triggerCloudRestore()
+        advanceUntilIdle()
+        assertEquals("vault_pass_123", fakeSync.lastPassphrase)
+        assertTrue(viewModel.state.value.userMessage?.contains("Restored 3") == true)
+    }
+
+    @Test
+    fun `export and import encrypted backup`() = runTest {
+        val fakeSync = FakeCloudSyncManager()
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        viewModel.openBackupDialog()
+        assertTrue(viewModel.state.value.isBackupDialogOpen)
+
+        viewModel.exportEncryptedBackup("backup_pass_123")
+        advanceUntilIdle()
+
+        assertEquals("{\"version\":1,\"ciphertextBase64\":\"abc\"}", viewModel.state.value.backupExportText)
+
+        viewModel.importEncryptedBackup("{\"version\":1}", "backup_pass_123")
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isBackupDialogOpen)
+        assertTrue(viewModel.state.value.userMessage?.contains("imported and decrypted 2", ignoreCase = true) == true)
+    }
+}
+
+private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManager {
+    val _account = MutableStateFlow(com.codeagent.core.data.sync.SyncAccountInfo())
+    override val accountInfo: StateFlow<com.codeagent.core.data.sync.SyncAccountInfo> = _account
+
+    var connectResult: Result<com.codeagent.core.data.sync.SyncAccountInfo> = Result.success(
+        com.codeagent.core.data.sync.SyncAccountInfo(
+            provider = com.codeagent.core.data.sync.SyncAccountProvider.GITHUB,
+            username = "octocat",
+            avatarUrl = "https://github.com/octocat.png",
+            syncTargetId = "gist_12345"
+        )
+    )
+    var syncResult: Result<com.codeagent.core.data.sync.SyncAccountInfo> = Result.success(
+        com.codeagent.core.data.sync.SyncAccountInfo(
+            provider = com.codeagent.core.data.sync.SyncAccountProvider.GITHUB,
+            username = "octocat",
+            lastSyncedAt = 123456789L,
+            syncTargetId = "gist_12345"
+        )
+    )
+    var restoreResult: Result<Int> = Result.success(3)
+    var exportPayloadText: String = "{\"version\":1,\"ciphertextBase64\":\"abc\"}"
+    var importResult: Result<Int> = Result.success(2)
+
+    var lastConnectedToken: String? = null
+    var lastPassphrase: String? = null
+    var logoutCalled: Boolean = false
+
+    override suspend fun createLocalVault(): com.codeagent.core.data.sync.SyncVault = com.codeagent.core.data.sync.SyncVault()
+    override suspend fun restoreVault(vault: com.codeagent.core.data.sync.SyncVault): Int = 0
+    override suspend fun exportEncryptedPayloadJson(passphrase: String): String {
+        lastPassphrase = passphrase
+        return exportPayloadText
+    }
+    override suspend fun importEncryptedPayloadJson(payloadJson: String, passphrase: String): Result<Int> {
+        lastPassphrase = passphrase
+        return importResult
+    }
+    override suspend fun connectGitHub(token: String, passphrase: String): Result<com.codeagent.core.data.sync.SyncAccountInfo> {
+        lastConnectedToken = token
+        lastPassphrase = passphrase
+        if (connectResult.isSuccess) {
+            _account.value = connectResult.getOrThrow()
+        }
+        return connectResult
+    }
+    override suspend fun syncToGitHub(passphrase: String): Result<com.codeagent.core.data.sync.SyncAccountInfo> {
+        lastPassphrase = passphrase
+        if (syncResult.isSuccess) {
+            _account.value = syncResult.getOrThrow()
+        }
+        return syncResult
+    }
+    override suspend fun restoreFromGitHub(passphrase: String): Result<Int> {
+        lastPassphrase = passphrase
+        return restoreResult
+    }
+    override fun logout() {
+        logoutCalled = true
+        _account.value = com.codeagent.core.data.sync.SyncAccountInfo()
     }
 }

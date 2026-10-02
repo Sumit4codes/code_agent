@@ -8,6 +8,9 @@ import com.codeagent.core.model.PopularProvider
 import com.codeagent.core.model.PopularProviders
 import com.codeagent.core.model.ProviderConfig
 import com.codeagent.core.model.ProviderType
+import com.codeagent.core.data.sync.CloudSyncManager
+import com.codeagent.core.data.sync.NoOpCloudSyncManager
+import com.codeagent.core.data.sync.SyncAccountInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +52,11 @@ data class ProviderEditorState(
     val selectedTemplateId: String = "openai"
 )
 
+enum class SyncAction {
+    SYNC,
+    RESTORE
+}
+
 data class SettingsUiState(
     val providers: List<ProviderUiModel> = emptyList(),
     val activeProvider: ProviderUiModel? = null,
@@ -58,22 +66,41 @@ data class SettingsUiState(
     val globalMaxTokens: String = "4096",
     val isSaving: Boolean = false,
     val userMessage: String? = null,
-    val isErrorMessage: Boolean = false
+    val isErrorMessage: Boolean = false,
+    val syncAccount: SyncAccountInfo = SyncAccountInfo(),
+    val isSyncing: Boolean = false,
+    val syncError: String? = null,
+    val isConnectDialogOpen: Boolean = false,
+    val isPassphrasePromptOpen: Boolean = false,
+    val pendingSyncAction: SyncAction? = null,
+    val isBackupDialogOpen: Boolean = false,
+    val backupExportText: String? = null
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
-    private val modelFetcher: ModelFetcher
+    private val modelFetcher: ModelFetcher,
+    private val cloudSyncManager: CloudSyncManager
 ) : ViewModel() {
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
+    private var cachedPassphrase: String? = null
 
     constructor(
         settingsRepository: SettingsRepository,
         modelFetcher: ModelFetcher,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
-    ) : this(settingsRepository, modelFetcher) {
+    ) : this(settingsRepository, modelFetcher, NoOpCloudSyncManager()) {
+        this.ioDispatcher = ioDispatcher
+    }
+
+    constructor(
+        settingsRepository: SettingsRepository,
+        modelFetcher: ModelFetcher,
+        ioDispatcher: kotlinx.coroutines.CoroutineDispatcher,
+        cloudSyncManager: CloudSyncManager
+    ) : this(settingsRepository, modelFetcher, cloudSyncManager) {
         this.ioDispatcher = ioDispatcher
     }
 
@@ -82,6 +109,15 @@ class SettingsViewModel @Inject constructor(
 
     init {
         observeProviders()
+        observeSyncAccount()
+    }
+
+    private fun observeSyncAccount() {
+        viewModelScope.launch {
+            cloudSyncManager.accountInfo.collect { accountInfo ->
+                _state.value = _state.value.copy(syncAccount = accountInfo)
+            }
+        }
     }
 
     private fun observeProviders() {
@@ -477,5 +513,229 @@ class SettingsViewModel @Inject constructor(
 
     fun dismissUserMessage() {
         _state.value = _state.value.copy(userMessage = null)
+    }
+
+    fun openConnectSyncDialog() {
+        _state.value = _state.value.copy(
+            isConnectDialogOpen = true,
+            syncError = null
+        )
+    }
+
+    fun closeConnectSyncDialog() {
+        _state.value = _state.value.copy(
+            isConnectDialogOpen = false,
+            syncError = null
+        )
+    }
+
+    fun connectSync(token: String, passphrase: String) {
+        if (token.isBlank()) {
+            _state.value = _state.value.copy(syncError = "GitHub Personal Access Token is required")
+            return
+        }
+        if (passphrase.length < 6) {
+            _state.value = _state.value.copy(syncError = "Encryption passphrase must be at least 6 characters")
+            return
+        }
+
+        viewModelScope.launch(ioDispatcher) {
+            _state.value = _state.value.copy(isSyncing = true, syncError = null)
+            val result = cloudSyncManager.connectGitHub(token.trim(), passphrase)
+            result.fold(
+                onSuccess = { info ->
+                    cachedPassphrase = passphrase
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        isConnectDialogOpen = false,
+                        syncError = null,
+                        userMessage = "Connected to GitHub as @${info.username ?: "user"}! Vault synchronized.",
+                        isErrorMessage = false
+                    )
+                },
+                onFailure = { error ->
+                    val msg = if (error.message?.contains("Tag", ignoreCase = true) == true ||
+                        error.message?.contains("AEAD", ignoreCase = true) == true
+                    ) {
+                        "Decryption failed: Incorrect passphrase for the existing vault on GitHub."
+                    } else {
+                        error.message ?: "Failed to connect to GitHub"
+                    }
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        syncError = msg
+                    )
+                }
+            )
+        }
+    }
+
+    fun disconnectSync() {
+        viewModelScope.launch(ioDispatcher) {
+            cloudSyncManager.logout()
+            cachedPassphrase = null
+            _state.value = _state.value.copy(
+                userMessage = "GitHub Sync disconnected.",
+                isErrorMessage = false
+            )
+        }
+    }
+
+    fun triggerCloudSync(passphrase: String? = null) {
+        val finalPass = passphrase ?: cachedPassphrase
+        if (finalPass.isNullOrBlank()) {
+            _state.value = _state.value.copy(
+                isPassphrasePromptOpen = true,
+                pendingSyncAction = SyncAction.SYNC
+            )
+            return
+        }
+
+        viewModelScope.launch(ioDispatcher) {
+            _state.value = _state.value.copy(isSyncing = true, isPassphrasePromptOpen = false)
+            val result = cloudSyncManager.syncToGitHub(finalPass)
+            result.fold(
+                onSuccess = {
+                    cachedPassphrase = finalPass
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        userMessage = "Vault encrypted and synced to GitHub Gist!",
+                        isErrorMessage = false
+                    )
+                },
+                onFailure = { error ->
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        userMessage = "Sync failed: ${error.message}",
+                        isErrorMessage = true
+                    )
+                }
+            )
+        }
+    }
+
+    fun triggerCloudRestore(passphrase: String? = null) {
+        val finalPass = passphrase ?: cachedPassphrase
+        if (finalPass.isNullOrBlank()) {
+            _state.value = _state.value.copy(
+                isPassphrasePromptOpen = true,
+                pendingSyncAction = SyncAction.RESTORE
+            )
+            return
+        }
+
+        viewModelScope.launch(ioDispatcher) {
+            _state.value = _state.value.copy(isSyncing = true, isPassphrasePromptOpen = false)
+            val result = cloudSyncManager.restoreFromGitHub(finalPass)
+            result.fold(
+                onSuccess = { count ->
+                    cachedPassphrase = finalPass
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        userMessage = "Restored $count provider configuration(s) from GitHub Gist!",
+                        isErrorMessage = false
+                    )
+                },
+                onFailure = { error ->
+                    val msg = if (error.message?.contains("Tag", ignoreCase = true) == true ||
+                        error.message?.contains("AEAD", ignoreCase = true) == true
+                    ) {
+                        "Decryption failed: Incorrect passphrase"
+                    } else {
+                        error.message ?: "Failed to restore from GitHub"
+                    }
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        userMessage = "Restore failed: $msg",
+                        isErrorMessage = true
+                    )
+                }
+            )
+        }
+    }
+
+    fun closePassphrasePrompt() {
+        _state.value = _state.value.copy(
+            isPassphrasePromptOpen = false,
+            pendingSyncAction = null
+        )
+    }
+
+    fun submitPassphrasePrompt(passphrase: String) {
+        val action = _state.value.pendingSyncAction ?: return
+        if (action == SyncAction.SYNC) {
+            triggerCloudSync(passphrase)
+        } else {
+            triggerCloudRestore(passphrase)
+        }
+    }
+
+    fun openBackupDialog() {
+        _state.value = _state.value.copy(
+            isBackupDialogOpen = true,
+            backupExportText = null,
+            syncError = null
+        )
+    }
+
+    fun closeBackupDialog() {
+        _state.value = _state.value.copy(
+            isBackupDialogOpen = false,
+            backupExportText = null,
+            syncError = null
+        )
+    }
+
+    fun exportEncryptedBackup(passphrase: String) {
+        if (passphrase.length < 6) {
+            _state.value = _state.value.copy(syncError = "Passphrase must be at least 6 characters")
+            return
+        }
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                val jsonText = cloudSyncManager.exportEncryptedPayloadJson(passphrase)
+                _state.value = _state.value.copy(
+                    backupExportText = jsonText,
+                    syncError = null
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(syncError = "Export failed: ${e.message}")
+            }
+        }
+    }
+
+    fun importEncryptedBackup(payloadJson: String, passphrase: String) {
+        if (payloadJson.isBlank()) {
+            _state.value = _state.value.copy(syncError = "Backup JSON is required")
+            return
+        }
+        if (passphrase.isBlank()) {
+            _state.value = _state.value.copy(syncError = "Passphrase is required")
+            return
+        }
+        viewModelScope.launch(ioDispatcher) {
+            val result = cloudSyncManager.importEncryptedPayloadJson(payloadJson.trim(), passphrase)
+            result.fold(
+                onSuccess = { count ->
+                    _state.value = _state.value.copy(
+                        isBackupDialogOpen = false,
+                        backupExportText = null,
+                        syncError = null,
+                        userMessage = "Successfully imported and decrypted $count provider(s)!",
+                        isErrorMessage = false
+                    )
+                },
+                onFailure = { error ->
+                    val msg = if (error.message?.contains("Tag", ignoreCase = true) == true ||
+                        error.message?.contains("AEAD", ignoreCase = true) == true
+                    ) {
+                        "Decryption failed: Incorrect passphrase"
+                    } else {
+                        error.message ?: "Failed to import backup"
+                    }
+                    _state.value = _state.value.copy(syncError = msg)
+                }
+            )
+        }
     }
 }

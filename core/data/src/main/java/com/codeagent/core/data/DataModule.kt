@@ -100,4 +100,8 @@ object DataModule {
     @Provides
     @Singleton
     fun provideApiKeyStorage(store: SecureKeyStore): ApiKeyStorage = store
+
+    @Provides
+    @Singleton
+    fun provideCloudSyncManager(impl: com.codeagent.core.data.sync.DefaultCloudSyncManager): com.codeagent.core.data.sync.CloudSyncManager = impl
 }

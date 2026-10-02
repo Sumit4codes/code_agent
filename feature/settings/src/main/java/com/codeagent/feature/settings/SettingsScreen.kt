@@ -16,13 +16,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -32,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codeagent.core.data.sync.SyncAccountInfo
 import com.codeagent.core.model.PopularProvider
 import com.codeagent.core.model.PopularProviders
 import com.codeagent.core.model.ProviderType
@@ -114,11 +118,54 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onSystemPromptChange = { viewModel.updateGlobalSystemPrompt(it) }
             )
 
-            // 4. STORAGE & PRIVACY INFO
+            // 4. CROSS-DEVICE CLOUD SYNC CARD
+            CloudSyncCard(
+                syncAccount = state.syncAccount,
+                isSyncing = state.isSyncing,
+                onConnectClick = { viewModel.openConnectSyncDialog() },
+                onSyncClick = { viewModel.triggerCloudSync() },
+                onRestoreClick = { viewModel.triggerCloudRestore() },
+                onDisconnectClick = { viewModel.disconnectSync() },
+                onBackupClick = { viewModel.openBackupDialog() }
+            )
+
+            // 5. STORAGE & PRIVACY INFO
             AboutPrivacyCard()
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    // CONNECT SYNC DIALOG
+    if (state.isConnectDialogOpen) {
+        ConnectSyncDialog(
+            isSyncing = state.isSyncing,
+            errorMessage = state.syncError,
+            onDismiss = { viewModel.closeConnectSyncDialog() },
+            onConnect = { token, passphrase -> viewModel.connectSync(token, passphrase) }
+        )
+    }
+
+    // PASSPHRASE PROMPT DIALOG
+    val pendingAction = state.pendingSyncAction
+    if (state.isPassphrasePromptOpen && pendingAction != null) {
+        PassphrasePromptDialog(
+            action = pendingAction,
+            isSyncing = state.isSyncing,
+            onDismiss = { viewModel.closePassphrasePrompt() },
+            onSubmit = { passphrase -> viewModel.submitPassphrasePrompt(passphrase) }
+        )
+    }
+
+    // OFFLINE BACKUP / RESTORE DIALOG
+    if (state.isBackupDialogOpen) {
+        BackupDialog(
+            exportJsonText = state.backupExportText,
+            errorMessage = state.syncError,
+            onDismiss = { viewModel.closeBackupDialog() },
+            onExport = { passphrase -> viewModel.exportEncryptedBackup(passphrase) },
+            onImport = { json, passphrase -> viewModel.importEncryptedBackup(json, passphrase) }
+        )
     }
 
     // ADD / EDIT PROVIDER DIALOG
@@ -1167,6 +1214,643 @@ private fun ModelSelectorDialog(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudSyncCard(
+    syncAccount: SyncAccountInfo,
+    isSyncing: Boolean,
+    onConnectClick: () -> Unit,
+    onSyncClick: () -> Unit,
+    onRestoreClick: () -> Unit,
+    onDisconnectClick: () -> Unit,
+    onBackupClick: () -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header: Icon + Title + Status Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Cross-Device Sync",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Text(
+                            text = "Zero-Knowledge E2EE (GitHub Gist)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+
+                if (syncAccount.isConnected) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "Connected",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            if (syncAccount.isConnected) {
+                // Connected info block
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "@${syncAccount.username}",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            val lastSyncTime = syncAccount.lastSyncedAt
+                            val lastSyncText = if (lastSyncTime != null) {
+                                val diff = System.currentTimeMillis() - lastSyncTime
+                                when {
+                                    diff < 60_000 -> "Just now"
+                                    diff < 3600_000 -> "${diff / 60_000}m ago"
+                                    else -> "${diff / 3600_000}h ago"
+                                }
+                            } else {
+                                "Never"
+                            }
+                            Text(
+                                text = "Last synced: $lastSyncText",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(onClick = onDisconnectClick) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = "Disconnect",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+
+                // Action buttons: Sync Now & Restore
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onSyncClick,
+                        enabled = !isSyncing,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Sync to Cloud", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onRestoreClick,
+                        enabled = !isSyncing,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Restore", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            } else {
+                // Not connected: description & Connect button
+                Text(
+                    text = "Sync your AI providers and API keys securely across devices using your private GitHub Gist. All data is encrypted with AES-256-GCM using your secret passphrase before leaving your device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Button(
+                    onClick = onConnectClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Connect GitHub Sync")
+                }
+            }
+
+            // Offline Backup / Restore Link
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onBackupClick) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Offline Encrypted Backup", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectSyncDialog(
+    isSyncing: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onConnect: (token: String, passphrase: String) -> Unit
+) {
+    var token by remember { mutableStateOf("") }
+    var passphrase by remember { mutableStateOf("") }
+    var confirmPassphrase by remember { mutableStateOf("") }
+    var showToken by remember { mutableStateOf(false) }
+    var showPassphrase by remember { mutableStateOf(false) }
+    var localValidation by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "Connect GitHub Sync",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+
+                Text(
+                    text = "Your API keys and provider endpoints will be encrypted using Zero-Knowledge AES-256-GCM and stored in a private GitHub Gist on your own account.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Generate token helper button
+                OutlinedButton(
+                    onClick = {
+                        val url = "https://github.com/settings/tokens/new?scopes=gist&description=CodeAgent%20Sync"
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Generate Token on GitHub (gist scope)", style = MaterialTheme.typography.labelSmall)
+                }
+
+                // GitHub Token Field
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = {
+                        token = it
+                        localValidation = null
+                    },
+                    label = { Text("GitHub Personal Access Token") },
+                    placeholder = { Text("ghp_xxxxxxxxxxxx") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showToken = !showToken }) {
+                            Icon(
+                                imageVector = if (showToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showToken) "Hide" else "Show"
+                            )
+                        }
+                    }
+                )
+
+                // Sync Passphrase Field
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = {
+                        passphrase = it
+                        localValidation = null
+                    },
+                    label = { Text("Sync Passphrase (min 6 chars)") },
+                    placeholder = { Text("Enter a secure secret passphrase") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassphrase = !showPassphrase }) {
+                            Icon(
+                                imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showPassphrase) "Hide" else "Show"
+                            )
+                        }
+                    }
+                )
+
+                // Confirm Passphrase Field
+                OutlinedTextField(
+                    value = confirmPassphrase,
+                    onValueChange = {
+                        confirmPassphrase = it
+                        localValidation = null
+                    },
+                    label = { Text("Confirm Sync Passphrase") },
+                    placeholder = { Text("Re-enter your secret passphrase") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation()
+                )
+
+                // Validation or Error Message
+                val activeError = localValidation ?: errorMessage
+                if (!activeError.isNullOrBlank()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = activeError,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+
+                // Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss, enabled = !isSyncing) {
+                        Text("Cancel")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (token.isBlank()) {
+                                localValidation = "GitHub Token cannot be empty"
+                                return@Button
+                            }
+                            if (passphrase.length < 6) {
+                                localValidation = "Passphrase must be at least 6 characters"
+                                return@Button
+                            }
+                            if (passphrase != confirmPassphrase) {
+                                localValidation = "Passphrases do not match"
+                                return@Button
+                            }
+                            onConnect(token, passphrase)
+                        },
+                        enabled = !isSyncing
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Connecting...")
+                        } else {
+                            Text("Connect & Sync")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PassphrasePromptDialog(
+    action: SyncAction,
+    isSyncing: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    var passphrase by remember { mutableStateOf("") }
+    var showPassphrase by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = if (action == SyncAction.SYNC) "Encrypt & Sync Vault" else "Decrypt & Restore Vault",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+
+                Text(
+                    text = if (action == SyncAction.SYNC)
+                        "Enter your sync passphrase to encrypt your provider keys before uploading to GitHub."
+                    else
+                        "Enter your sync passphrase to decrypt your providers from GitHub.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = { passphrase = it },
+                    label = { Text("Passphrase") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassphrase = !showPassphrase }) {
+                            Icon(
+                                imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showPassphrase) "Hide" else "Show"
+                            )
+                        }
+                    }
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss, enabled = !isSyncing) {
+                        Text("Cancel")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { onSubmit(passphrase) },
+                        enabled = passphrase.isNotBlank() && !isSyncing
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text(if (action == SyncAction.SYNC) "Sync" else "Restore")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupDialog(
+    exportJsonText: String?,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onExport: (passphrase: String) -> Unit,
+    onImport: (json: String, passphrase: String) -> Unit
+) {
+    var tabIndex by remember { mutableIntStateOf(0) }
+    var passphrase by remember { mutableStateOf("") }
+    var importJson by remember { mutableStateOf("") }
+    var showPassphrase by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = "Encrypted Vault Backup",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+
+                PrimaryTabRow(selectedTabIndex = tabIndex) {
+                    Tab(
+                        selected = tabIndex == 0,
+                        onClick = { tabIndex = 0 },
+                        text = { Text("Export") }
+                    )
+                    Tab(
+                        selected = tabIndex == 1,
+                        onClick = { tabIndex = 1 },
+                        text = { Text("Import") }
+                    )
+                }
+
+                if (tabIndex == 0) {
+                    // EXPORT TAB
+                    Text(
+                        text = "Generate a zero-knowledge encrypted backup payload. You can transfer this text to another device offline.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = passphrase,
+                        onValueChange = { passphrase = it },
+                        label = { Text("Encryption Passphrase (min 6 chars)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showPassphrase = !showPassphrase }) {
+                                Icon(
+                                    imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    )
+
+                    Button(
+                        onClick = { onExport(passphrase) },
+                        enabled = passphrase.length >= 6,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Generate Encrypted Payload")
+                    }
+
+                    if (!exportJsonText.isNullOrBlank()) {
+                        OutlinedTextField(
+                            value = exportJsonText,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Encrypted Payload JSON") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp)
+                        )
+
+                        Button(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(exportJsonText))
+                                copied = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (copied) "Copied to Clipboard!" else "Copy Encrypted Payload")
+                        }
+                    }
+                } else {
+                    // IMPORT TAB
+                    Text(
+                        text = "Paste an encrypted backup payload from another device and provide the passphrase used to encrypt it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = importJson,
+                        onValueChange = { importJson = it },
+                        label = { Text("Encrypted Payload JSON") },
+                        placeholder = { Text("Paste payload JSON here") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = passphrase,
+                        onValueChange = { passphrase = it },
+                        label = { Text("Decryption Passphrase") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showPassphrase = !showPassphrase }) {
+                                Icon(
+                                    imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    )
+
+                    Button(
+                        onClick = { onImport(importJson, passphrase) },
+                        enabled = importJson.isNotBlank() && passphrase.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Decrypt & Restore Providers")
+                    }
+                }
+
+                if (!errorMessage.isNullOrBlank()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Close")
                     }
                 }
             }
