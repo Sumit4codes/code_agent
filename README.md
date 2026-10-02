@@ -1,19 +1,21 @@
 # CodeAgent — Android AI Coding Agent
 
-A clean-room, Android-native AI coding agent inspired by [OpenCode](https://github.com/opencode-ai/opencode). Open code projects on your device, chat with an AI agent that understands your repository, review proposed changes as diffs, and apply them safely.
+A clean-room, Android-native AI coding agent inspired by [OpenCode](https://github.com/opencode-ai/opencode). Open code projects on your device, chat with an autonomous AI agent that understands your repository, review proposed changes as diffs, run real Linux terminal commands with full terminal emulation, and sync your configuration securely across devices.
 
 ## Features
 
-- **Project Explorer** — Open any local folder on your device, browse the file tree, and view files with syntax highlighting
-- **Interactive Terminal** — Built-in visual monospace console with command history, quick accessory keys (Tab, Ctrl-C, pipes, flags), and working directory persistence
-- **Native POSIX Execution** — Real process execution engine (`sh -c`, pipelines, file redirection) and native Git CLI operations replacing mock shells
-- **AI Chat** — Converse with an OpenAI-compatible LLM (GPT-4o, Claude, local models) about your code
-- **Tool-Calling Agent** — The AI can read files, search code, list directories, run terminal commands, and propose edits through structured tool calls
-- **Diff Review** — Every proposed change appears as a colored diff; approve or reject each one individually or in bulk
-- **Session Persistence** — Chat history and pending changes survive app restarts (Room DB)
-- **Cancel Generation** — Stop a streaming response or running terminal process at any time
-- **Markdown Rendering** — AI responses render as rich Markdown (code blocks, lists, links, bold/italic)
-- **Secure Key Storage** — API keys are encrypted at rest via EncryptedSharedPreferences
+- **Project Explorer** — Open any local folder on your device (`MANAGE_EXTERNAL_STORAGE`), browse the file tree with responsive split view, filter files instantly with a compact search bar, and inspect files with syntax highlighting.
+- **Full Linux Terminal Emulator** — Real interactive Linux terminal powered by Termux's `TerminalView` and ANSI VT100 emulator with 24-bit truecolor, alternate screen buffers, PTY session lifecycle, and soft keyboard input management. Supports full-screen terminal editors like `vim`, `nano`, and shell utilities.
+- **Alpine Linux inside PRoot** — Run real Linux package management on Android via `apk` (install `git`, `python3`, `gcc`, `g++`, `make`, `vim`, `nodejs`) with access to host storage (`/sdcard`, `/storage`). Automatic fallback to native Android Toybox shell (`/system/bin/sh`).
+- **Developer Accessory Keyboard** — Monospace accessory bar with dedicated `ESC`, `TAB`, `CTRL`, `CTRL-C`, arrow keys (`↑`, `↓`, `←`, `→`), and quick command tokens (`sh`, `bash`, `chmod +x`, `git`, `python3`, `gcc`, `make`, `vim`).
+- **Autonomous Tool-Calling Agent** — Converse with OpenAI-compatible LLMs (GPT-4o, Claude 3.7, DeepSeek-V3/R1, Qwen, Ollama). The agent autonomously iterates through tool calls—reading files, searching code, listing directories, proposing edits, and executing terminal commands—without artificial iteration caps.
+- **Safety-Bounded File Reading** — Structured file reading with an 800-line pagination cap per call, 45 KB byte limit protection against minified bundles, explicit next-page guidance (`start_line=801`), and a 100 MB file size limit to prevent LLM context blowups or device OOMs.
+- **Diff Review** — Every proposed change appears as a colored side-by-side / unified diff; approve or reject each change individually or in bulk before anything is applied to disk.
+- **Zero-Knowledge E2EE Cloud Sync** — Synchronize API keys, provider configurations, and settings cross-device via encrypted secret GitHub Gists ($0 serverless infrastructure). Protected with AES-256-GCM and PBKDF2 passphrase key derivation (100,000 iterations); no third-party server ever sees your credentials.
+- **1-Tap GitHub Browser Sign-In** — Authenticate securely with GitHub via OAuth Device Authorization Flow in your default web browser, with automatic background polling and token storage.
+- **Multi-Provider Architecture & Live Model Discovery** — Configure and switch between multiple providers (OpenAI, OpenRouter, Anthropic, DeepSeek, Groq, Gemini, Ollama, custom proxies). Fetch models dynamically via automated `/models` querying.
+- **Session Persistence** — Chat history, provider settings, and pending changes survive app restarts via encrypted local Room database.
+- **Markdown & Code Rendering** — Rich Markdown rendering for assistant reasoning, code blocks, lists, links, and formatted tables.
 
 ## Architecture
 
@@ -26,11 +28,14 @@ A clean-room, Android-native AI coding agent inspired by [OpenCode](https://gith
 │  projects  │   chat     │   editor   │  terminal  │  settings    │
 ├────────────┴────────────┴────────────┴────────────┴──────────────┤
 │ core/agent  core/terminal  core/git   core/ai   core/files       │
-│ AgentOrch.  PosixExecutor  CliGitOps  AiProv.   File FS          │
-│ ToolExec.   Preamble/W^X   Git CLI    SSE/Fetch PathSafe / Diff  │
+│ AgentOrch.  TermuxSession  CliGitOps  AiProv.   File FS          │
+│ ToolExec.   PosixExecutor  Git CLI    SSE/Fetch PathSafe / Diff  │
+│ ToolReg.    Alpine PRoot   W^X Pream. ModelFetch                 │
 ├───────────────────────────────────────┬──────────────────────────┤
 │              core/data                │         core/ui          │
-│        Room DB · Secure KeyStore      │    Theme · MarkdownView  │
+│   Room DB · EncryptedKeyStore         │    Theme · MarkdownView  │
+│   CloudSyncManager · VaultCrypto      │                          │
+│   GitHubGistSyncClient · SyncAccount  │                          │
 ├───────────────────────────────────────┴──────────────────────────┤
 │                           core/model                             │
 │              Project · Session · Message · Tools                 │
@@ -41,31 +46,30 @@ A clean-room, Android-native AI coding agent inspired by [OpenCode](https://gith
 
 | Module | Responsibility |
 |---|---|
-| `app` | Navigation, Hilt entry point, `AiProvider` and executor bindings |
-| `feature/projects` | Directory browser & project management |
-| `feature/chat` | AI chat with tool-call chips, pending changes banner |
-| `feature/editor` | File tree + code viewer with line numbers and terminal shortcut |
-| `feature/terminal` | Dedicated visual terminal screen, monospace console, accessory keyboard |
-| `feature/settings` | Multi-provider management, live dynamic model fetching, and preferences |
-| `core/model` | Domain models (Project, Message, PendingChange, ToolSpec, PopularProviders) |
-| `core/ai` | `AiProvider` interface, OpenAI-compatible SSE implementation, `ModelFetcher` |
-| `core/agent` | `AgentOrchestrator` loop, `ToolExecutor`, `PendingChangeManager` |
-| `core/terminal` | Real POSIX process execution (`PosixTerminalExecutor`), native binary management |
-| `core/git` | Native CLI Git operations (`CliGitOperations`), repository management |
-| `core/files` | Direct file filesystem, path traversal protection, gitignore, diff engine |
-| `core/data` | Room database, encrypted key store, settings repository |
-| `core/ui` | Material3 theme, Markdown rendering composable |
+| `app` | Navigation (`AppNavHost`), Hilt application entry point, dependency injection bindings |
+| `feature/projects` | Directory browser, project creation, recent workspaces |
+| `feature/chat` | AI chat interface with streaming text deltas, tool-call event chips, diff banners |
+| `feature/editor` | Responsive split view / full-screen code viewer, compact file search bar, breadcrumbs, terminal shortcut |
+| `feature/terminal` | Dedicated Linux terminal screen, Termux `TerminalView` canvas, soft keyboard toggle, accessory bar |
+| `feature/settings` | Multi-provider manager, live dynamic model discovery, Zero-Knowledge E2EE cloud sync, GitHub OAuth |
+| `core/model` | Domain entities (`Project`, `Session`, `Message`, `PendingChange`, `ToolSpec`, `PopularProviders`) |
+| `core/ai` | `AiProvider` interface, OpenAI-compatible SSE streaming, dynamic `ModelFetcher` |
+| `core/agent` | Unbounded `AgentOrchestrator` loop, `ToolExecutor`, `ToolRegistry`, `EditResolver` |
+| `core/terminal` | `TermuxSessionManager` (PTY & Termux terminal bridge), `AlpineBootstrapManager` (PRoot), `PosixTerminalExecutor` |
+| `core/git` | Native CLI Git operations (`CliGitOperations`), repository status, branch tracking |
+| `core/files` | Direct file filesystem (`FileProjectFileSystem`), path safety guards, diff engine |
+| `core/data` | Room database, `VaultCrypto` (AES-256-GCM + PBKDF2), `CloudSyncManager`, `GitHubGistSyncClient`, `SyncAccountStorage` |
+| `core/ui` | Material3 theme, monospace styling, Markdown rendering composable |
 
 ### Key Design Decisions
 
-- **Self-Contained POSIX Process Execution Engine (Option C)** — Deprecated `VirtualShell` and Java `JGit` in favor of real POSIX process execution (`/system/bin/sh`) and `CliGitOperations`. Complies with Android API 29+ `W^X` SELinux restrictions by routing native executables via `nativeLibraryDir` (`lib*.so`) and shell function preambles.
-- **Dual-Surface Terminal Interface** — Headless execution streaming for the AI agent inside chat chips + dedicated interactive visual terminal screen (`feature:terminal`) for manual developer typing with quick-access developer keys (`Tab`, `Ctrl-C`, `|`, `git`, `clear`, history up/down).
-- **Multi-Provider Architecture & Live Model Discovery** — Configure and switch between multiple providers (OpenAI, OpenRouter, Anthropic, DeepSeek, Groq, Gemini, Ollama, Custom), each with its own encrypted API key. Models are discovered automatically via dynamic endpoint querying.
-- **Full Device File Access (`MANAGE_EXTERNAL_STORAGE`)** — Direct `java.io.File` access without SAF bottlenecks, enabling seamless path handling for AI agents, Git CLI, and terminal execution.
-- **Path traversal protection** — `PathSafety.normalize()` rejects `..`, null bytes, and symlink escapes
-- **Pending changes model** — Edits are never applied automatically; every change must be explicitly approved by the user
-- **Hilt DI** — Single `@HiltAndroidApp` with module-per-layer bindings
-- **Room + Flow** — Observable queries use `Flow<>`; one-shot queries use `suspend fun`
+- **Zero-Knowledge E2EE Cloud Sync via GitHub Gist ($0 Backend Architecture)** — Cloud synchronization without maintaining private backend servers or subscription databases. Encrypted with client-side AES-256-GCM using keys derived via PBKDF2 (SHA-256, 100,000 iterations) from a user-supplied encryption passphrase, stored inside hidden GitHub Gists. 1-tap GitHub OAuth Device Flow handles authorization directly through the user's web browser.
+- **Embedded PRoot Alpine Linux & Termux Terminal Engine** — Integrates Termux's `TerminalView` and VT100 terminal emulator for complete ANSI escape code, truecolor, and alternate screen handling (`vim`, `nano`, interactive TUIs). Runs inside an Alpine Linux rootfs via PRoot, giving users access to `apk` packages (`git`, `python3`, `gcc`, `make`, `vim`) while strictly respecting Android API 29+ `W^X` SELinux restrictions.
+- **Autonomous Unbounded Agent Loop with Safety-Bounded Reading** — Removed artificial tool iteration limits so the agent can autonomously complete multi-step refactoring, builds, and verification workflows. Reading files is protected by an 800-line slice limit, 45 KB byte limit, and 100 MB max file size to prevent LLM context blowups while providing explicit pagination instructions.
+- **Dual-Surface Developer Interface** — Headless streaming execution for AI agent tool calls + dedicated interactive visual terminal screen (`feature:terminal`) for developer control with programmer keys (`Esc`, `Tab`, `Ctrl-C`, `|`, `git`, `clear`, history up/down).
+- **Multi-Provider Architecture & Live Model Discovery** — Store and switch between multiple AI providers independently with encrypted API keys and dynamic `/models` querying.
+- **Full Device File Access (`MANAGE_EXTERNAL_STORAGE`)** — Direct `java.io.File` access without Storage Access Framework bottlenecks, enabling seamless path handling for AI agents, Git CLI, and terminal execution.
+- **Pending Changes Safety Model** — Edits are never applied automatically; every change must be explicitly reviewed and approved by the user.
 
 ## Build & Run
 
@@ -97,13 +101,13 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ### Run Unit Tests
 
-You can run unit tests using `./test.sh` (with automatic test result summaries and HTML report links) or `./gradlew`:
+Run unit tests using `./test.sh` (with automatic test result summaries and HTML report links) or `./gradlew`:
 
 ```bash
 # Using test helper script:
-./test.sh                             # Run all unit tests
-./test.sh -m core:files               # Run tests for specific module
-./test.sh -c PathSafetyTest           # Run a specific test class
+./test.sh                             # Run all 119 unit tests
+./test.sh -m core:agent               # Run tests for specific module
+./test.sh -c ToolExecutorTest         # Run a specific test class
 ./test.sh --fail-fast --report        # Stop on first failure and show reports
 
 # Or directly via gradlew:
@@ -112,7 +116,7 @@ You can run unit tests using `./test.sh` (with automatic test result summaries a
 
 ### Install on Device
 
-You can install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK locally and scanning a QR code directly from your terminal:
+Install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK locally and scanning a QR code directly from your terminal:
 
 ```bash
 # Interactive selection menu (ADB or QR code):
@@ -129,33 +133,39 @@ You can install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK 
 
 ## Configuration
 
-1. Open the app → **Settings** tab
-2. Choose a provider (e.g., OpenAI, OpenRouter, local Ollama)
-3. Enter your API key (stored encrypted)
-4. Set the base URL and model name
-5. Mark as default
+1. Open the app → **Settings** tab.
+2. Add or select an AI provider (e.g., OpenAI, OpenRouter, Anthropic, DeepSeek, local Ollama).
+3. Enter your API key (stored encrypted at rest).
+4. Tap **Fetch Models** to automatically discover available models.
+5. *(Optional)* Set up **Cloud Sync** using 1-tap GitHub browser sign-in and an encryption passphrase to sync your configurations across devices.
 
 ## Tech Stack
 
 - **Kotlin 2.4.20** + **Jetpack Compose** (BOM 2026.09.00)
 - **AGP 9.4.0** (built-in Kotlin — no `kotlin-android` plugin)
 - **Hilt 2.60.1** for dependency injection
+- **Termux Terminal Engine (`termux-view`, `termux-emulator`)** for VT100 / PTY terminal emulation
+- **PRoot + Alpine Linux rootfs** for userland Linux utilities (`apk`, `python3`, `gcc`, `make`, `git`)
 - **Room 2.8.5** for local persistence
-- **OkHttp 5.5.0** for SSE streaming
+- **OkHttp 5.5.0** for SSE streaming and GitHub REST APIs
+- **AES-256-GCM + PBKDF2 (SHA-256, 100k iterations)** for Zero-Knowledge cloud sync
 - **java-diff-utils 4.17** for diff generation
 - **multiplatform-markdown-renderer 0.45.0** for Markdown rendering
-- **EncryptedSharedPreferences** for API key security
+- **EncryptedSharedPreferences** for secure local storage
 
 ## Milestones
 
-1. ✅ **Scaffold** — Gradle + modules + navigation + theme
-2. ✅ **Project Access** — Full device storage access, directory browser, code viewer
-3. ✅ **AI Chat** — Settings, OpenAI-compatible provider, streaming chat UI
-4. ✅ **Context System** — Agent context builder, file attachment
-5. ✅ **Agent Tools** — Tool registry (7 tools), executor, propose edit
-6. ✅ **Diff Approval** — Pending changes, diff viewer, apply/reject
-7. ✅ **Persistence** — Room v2, session restore, cancel generation, Markdown
-8. ✅ **Native Execution Engine** — POSIX process execution (`PosixTerminalExecutor`), `CliGitOperations`, Option C native CLI packaging, and interactive developer terminal (`feature:terminal`)
+1. ✅ **Scaffold** — Gradle + multi-module architecture + navigation + Material3 theme
+2. ✅ **Project Access** — Full device storage access (`MANAGE_EXTERNAL_STORAGE`), directory browser, syntax-highlighted code viewer
+3. ✅ **AI Chat** — Settings, OpenAI-compatible streaming chat UI, token delta events
+4. ✅ **Context System** — Agent context builder, file attachments, system prompts
+5. ✅ **Agent Tools** — Tool registry, executor, propose edit, file summary, search code
+6. ✅ **Diff Approval** — Pending changes review, colored diff viewer, individual/bulk apply and reject
+7. ✅ **Persistence** — Room database v2, session restore, cancel generation, Markdown rendering
+8. ✅ **Native Execution Engine** — POSIX process execution (`PosixTerminalExecutor`), `CliGitOperations`, Option C native binary packaging
+9. ✅ **Full Linux Terminal & Alpine Container** — Termux `TerminalView`, ANSI truecolor PTY, PRoot Alpine Linux with `apk`, vim, gcc, python3
+10. ✅ **Zero-Knowledge Cloud Sync & OAuth** — E2EE AES-256-GCM vault sync via GitHub Gist, 1-tap browser OAuth device flow
+11. ✅ **Autonomous Agent & Safety Bounds** — Unbounded iterative tool execution, 800-line / 45 KB pagination guards, 100 MB file limit
 
 ## License
 

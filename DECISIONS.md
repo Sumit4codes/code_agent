@@ -70,3 +70,34 @@
 
 **Trade-off:** Strong copyleft enforcement prevents proprietary, closed-source commercial distribution of derivative versions.
 
+## D11: Zero-Knowledge E2EE Cloud Sync via GitHub Gist ($0 Backend Architecture)
+**Decision:** Implement cross-device cloud synchronization for API keys, AI provider configurations, and settings by storing an encrypted vault in a secret GitHub Gist, authenticated via the GitHub OAuth Device Authorization Flow.
+
+**Rationale:**
+1. **$0 Infrastructure & Privacy:** Avoids standing up, maintaining, or paying for centralized cloud databases or backend servers. The user owns their data entirely inside their personal GitHub account.
+2. **End-to-End Cryptography (`VaultCrypto`):** Encrypted with client-side AES-256-GCM using keys derived via PBKDF2 (SHA-256, 100,000 iterations, 128-bit random salt, 96-bit random IV) from a user-supplied encryption passphrase. Neither GitHub nor any intermediary can inspect or tamper with stored API keys.
+3. **Frictionless Browser Sign-In:** 1-tap browser OAuth Device Flow allows authorization directly through the user's default mobile web browser, eliminating the need to manually generate or paste Personal Access Tokens.
+
+**Trade-off:** If the user loses their encryption passphrase, the encrypted vault cannot be recovered by anyone.
+
+## D12: Termux TerminalView Integration with PRoot Alpine Linux Container
+**Decision:** Embed Termux's native `TerminalView` canvas and VT100 emulator backed by an Alpine Linux userland rootfs running inside PRoot.
+
+**Rationale:**
+1. **Full Linux Toolchain:** Mobile developers require genuine toolchains (`apk add git python3 gcc make vim nodejs`) and full interactive visual terminal capabilities (curses/alternate screen buffer `\e[?1049h` for `vim`/`nano`, PTY signals like `Ctrl-C`, soft keyboard input connection).
+2. **Android W^X SELinux Compliance:** PRoot executes in userland within the app's sandboxed data directory, providing Linux filesystem emulation (`/`, `/usr/bin`, `/bin`) while mounting host storage (`/sdcard`, `/storage`) without requiring root access or violating Android API 29+ `W^X` SELinux restrictions.
+3. **Resilience & Fallback:** Session creation runs strictly on the UI thread (`Dispatchers.Main`) to respect `Looper` and Android View thread requirements, with an automatic fallback to the native Android Toybox shell (`/system/bin/sh`) if PRoot is uninitialized.
+
+**Trade-off:** PRoot introduces slight ptrace emulation overhead compared to bare-metal binaries, which is well worth the benefit of a full package manager (`apk`).
+
+## D13: Agent Read-File Safety Bounds (800 Lines / 45 KB / 100 MB) & Unbounded Autonomous Loop
+**Decision:** Remove the artificial tool iteration cap (`MAX_TOOL_ITERATIONS = 25`) from `AgentOrchestrator`, while enforcing strict safety bounds on file inspection in `ToolExecutor` (800 lines maximum per read, 45 KB byte limit, 100 MB maximum file size).
+
+**Rationale:**
+1. **Autonomous Task Completion:** Complex software engineering tasks (navigating unfamiliar codebases, refactoring multiple files, running builds, analyzing compiler errors, and iterating on fixes) regularly exceed 25 tool turns. Capping iterations leaves tasks half-finished. Removing the cap lets the agent run until task completion (`toolCalls.isEmpty()`) or explicit user cancellation.
+2. **Context Window & Memory Protection:** Unbounded file reads risk exhausting LLM context limits (e.g. 100k tokens) or triggering Android JVM `OutOfMemoryError` on large source files or minified bundles.
+3. **Antigravity-Inspired Pagination:** Enforcing an 800-line slice cap with explicit next-page guidance (`start_line=801`) and a 45 KB byte truncation guard ensures predictable token consumption while giving the model clear instructions on how to paginate through larger files.
+
+**Trade-off:** The agent must make multiple paginated calls with `start_line` and `end_line` when inspecting very large files.
+
+
