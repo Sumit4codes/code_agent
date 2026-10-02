@@ -85,6 +85,71 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun `execute read_file caps at 800 lines by default and includes pagination notice`() = runTest {
+        val lines = (1..1000).joinToString("\n") { "line $it" }
+        fs.putFile("large.txt", lines)
+
+        val result = executor.execute("read_file", """{"path":"large.txt"}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("line 1"))
+        assertTrue(result.output.contains("line 800"))
+        assertFalse(result.output.contains("line 801"))
+        assertTrue(result.output.contains("capped at 800 lines per read"))
+        assertTrue(result.output.contains("start_line=801"))
+    }
+
+    @Test
+    fun `execute read_file paginates with start_line and end_line`() = runTest {
+        val lines = (1..1000).joinToString("\n") { "line $it" }
+        fs.putFile("large.txt", lines)
+
+        val result = executor.execute("read_file", """{"path":"large.txt","start_line":801,"end_line":900}""")
+        assertTrue(result.success)
+        assertFalse(result.output.contains("line 800\n"))
+        assertTrue(result.output.contains("line 801"))
+        assertTrue(result.output.contains("line 900"))
+        assertFalse(result.output.contains("line 901"))
+        assertTrue(result.output.contains("(100 lines shown of 1000 total)"))
+    }
+
+    @Test
+    fun `execute read_file truncates at 45KB byte limit`() = runTest {
+        val longLine = "A".repeat(1000)
+        val lines = (1..100).joinToString("\n") { "$it: $longLine" }
+        fs.putFile("huge_bytes.txt", lines)
+
+        val result = executor.execute("read_file", """{"path":"huge_bytes.txt"}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("Content truncated at 45 KB (46,080 bytes) limit"))
+        assertTrue(result.output.toByteArray(Charsets.UTF_8).size <= 47_000)
+    }
+
+    @Test
+    fun `execute read_file rejects files exceeding 100MB`() = runTest {
+        val baseFs = FakeProjectFileSystem("content://test/root")
+        baseFs.putFile("giant.iso", "fake content")
+        val customFs = object : com.codeagent.core.files.ProjectFileSystem by baseFs {
+            override suspend fun fileSize(uri: android.net.Uri): Long? = 150L * 1024L * 1024L
+        }
+        val customExecutor = ToolExecutor()
+        customExecutor.bind(customFs, rootUri, tempDir)
+
+        val result = customExecutor.execute("read_file", """{"path":"giant.iso"}""")
+        assertFalse(result.success)
+        assertTrue(result.output.contains("exceeds maximum allowed size"))
+        assertTrue(result.output.contains("100 MB"))
+    }
+
+    @Test
+    fun `execute read_file handles empty file cleanly`() = runTest {
+        fs.putFile("empty.txt", "")
+        val result = executor.execute("read_file", """{"path":"empty.txt"}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("(0 lines)"))
+        assertTrue(result.output.contains("(empty file)"))
+    }
+
+    @Test
     fun `execute search_code finds matching occurrences`() = runTest {
         fs.putFile("src/App.kt", "fun searchTarget() {\n    println(\"hit\")\n}")
         fs.putFile("src/Other.kt", "fun irrelevant() {}")

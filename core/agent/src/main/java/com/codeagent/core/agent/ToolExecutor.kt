@@ -135,23 +135,89 @@ class ToolExecutor @Inject constructor(
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
             ?: return ToolResult(false, "File not found: $rawPath")
 
-        val content = fs.readTextFile(fileUri)
-            ?: return ToolResult(false, "Cannot read file: $relPath (may be binary or too large)")
-
-        val startLine = argInt(args, "start_line")
-        val endLine = argInt(args, "end_line")
-
-        val result = if (startLine != null || endLine != null) {
-            val lines = content.lines()
-            val start = ((startLine ?: 1) - 1).coerceIn(0, lines.size)
-            val end = (endLine ?: lines.size).coerceIn(0, lines.size)
-            lines.subList(start, end).joinToString("\n")
-        } else {
-            content
+        // 1. Enforce 100 MB max file size limit
+        val size = fs.fileSize(fileUri)
+        if (size != null && size > MAX_FILE_SIZE_BYTES) {
+            val sizeMb = size / (1024 * 1024)
+            return ToolResult(
+                false,
+                "File '$relPath' exceeds maximum allowed size (${sizeMb} MB > 100 MB). Files larger than 100 MB cannot be opened."
+            )
         }
 
-        val lineCount = content.lines().size
-        return ToolResult(true, "($lineCount lines)\n$result")
+        val content = fs.readTextFile(fileUri)
+            ?: return ToolResult(false, "Cannot read file: $relPath (may be binary or unreadable)")
+
+        if (content.isEmpty()) {
+            return ToolResult(true, "(0 lines)\n(empty file)")
+        }
+
+        val allLines = content.lines()
+        val totalLines = allLines.size
+        val requestedStart = argInt(args, "start_line")
+        val requestedEnd = argInt(args, "end_line")
+
+        // 2. Line bounds & 800 lines limit
+        val startLine = (requestedStart ?: 1).coerceAtLeast(1)
+        if (startLine > totalLines && totalLines > 0) {
+            return ToolResult(
+                true,
+                "(0 lines shown of $totalLines total)\n[start_line $startLine is beyond end of file ($totalLines lines total).]"
+            )
+        }
+
+        val maxAllowedEnd = startLine + MAX_LINES_PER_READ - 1
+        val targetEnd = requestedEnd ?: if (requestedStart != null) totalLines else minOf(totalLines, MAX_LINES_PER_READ)
+
+        var lineTruncated = false
+        val endLine = if (targetEnd > maxAllowedEnd) {
+            lineTruncated = true
+            maxAllowedEnd.coerceAtMost(totalLines)
+        } else {
+            targetEnd.coerceAtMost(totalLines)
+        }
+
+        if (requestedEnd == null && requestedStart == null && totalLines > MAX_LINES_PER_READ) {
+            lineTruncated = true
+        }
+
+        val startIndex = (startLine - 1).coerceIn(0, totalLines)
+        val endIndex = endLine.coerceIn(startIndex, totalLines)
+        val slicedLines = allLines.subList(startIndex, endIndex)
+        val linesText = slicedLines.joinToString("\n")
+
+        // 3. Byte limit: 45 KB (46,080 bytes)
+        var byteTruncated = false
+        var outputText = linesText
+        val utf8Bytes = linesText.toByteArray(Charsets.UTF_8)
+        if (utf8Bytes.size > MAX_BYTES_PER_READ) {
+            byteTruncated = true
+            val truncatedString = String(utf8Bytes, 0, MAX_BYTES_PER_READ, Charsets.UTF_8)
+            val lastNewline = truncatedString.lastIndexOf('\n')
+            outputText = if (lastNewline > MAX_BYTES_PER_READ / 2) {
+                truncatedString.substring(0, lastNewline)
+            } else {
+                truncatedString
+            }
+        }
+
+        val displayedLineCount = outputText.lines().size
+        val notice = buildString {
+            if (byteTruncated) {
+                append("\n\n[Content truncated at 45 KB (46,080 bytes) limit. Showing lines $startLine to ${startLine + displayedLineCount - 1} of $totalLines total lines. Specify a narrower line range using 'start_line' and 'end_line'.]")
+            } else if (lineTruncated) {
+                val nextStart = endLine + 1
+                append("\n\n[Showing lines $startLine to $endLine of $totalLines total lines (capped at $MAX_LINES_PER_READ lines per read). Specify 'start_line=$nextStart' to view remaining lines.]")
+            }
+        }
+
+        val header = if (lineTruncated || byteTruncated || requestedStart != null || requestedEnd != null) {
+            "($displayedLineCount lines shown of $totalLines total)"
+        } else {
+            "($totalLines lines)"
+        }
+
+        return ToolResult(true, "$header\n$outputText$notice")
     }
 
     private suspend fun executeSearchCode(fs: ProjectFileSystem, args: JsonObject): ToolResult {
@@ -379,5 +445,11 @@ class ToolExecutor @Inject constructor(
             is TerminalResult.Error -> ToolResult(false, res.message)
             is TerminalResult.Disabled -> ToolResult(false, "Terminal execution is disabled")
         }
+    }
+
+    companion object {
+        const val MAX_LINES_PER_READ = 800
+        const val MAX_BYTES_PER_READ = 46_080 // 45 KB (46,080 bytes)
+        const val MAX_FILE_SIZE_BYTES = 100L * 1024L * 1024L // 100 MB
     }
 }

@@ -42,12 +42,12 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = "read_file",
-                description = "Read the contents of a text file in the project.",
+                description = "Read the contents of a text file in the project. Returns up to 800 lines or 45 KB (46,080 bytes) at a time. If the file is larger, specify 'start_line' and 'end_line' to paginate through subsequent chunks. Maximum supported file size is 100 MB.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "path" to PropertyDef("string", "Relative file path from project root."),
-                        "start_line" to PropertyDef("integer", "Optional 1-based start line for partial reads."),
-                        "end_line" to PropertyDef("integer", "Optional 1-based end line (inclusive) for partial reads.")
+                        "start_line" to PropertyDef("integer", "Optional 1-based start line for pagination (inclusive). Defaults to 1."),
+                        "end_line" to PropertyDef("integer", "Optional 1-based end line for pagination (inclusive). Maximum 800 lines per call.")
                     ),
                     required = listOf("path")
                 )
