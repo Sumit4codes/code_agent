@@ -55,7 +55,6 @@ class AgentOrchestrator @Inject constructor(
     private val mutex = Mutex()
 
     companion object {
-        const val MAX_TOOL_ITERATIONS = 25
         const val MAX_CONTEXT_TOKENS = 100_000
     }
 
@@ -85,7 +84,7 @@ class AgentOrchestrator @Inject constructor(
         var iteration = 0
         var lastAssistantContent = ""
 
-        while (currentCoroutineContext().isActive && iteration < MAX_TOOL_ITERATIONS) {
+        while (currentCoroutineContext().isActive) {
             iteration++
 
             val request = ChatRequest(
@@ -219,16 +218,6 @@ class AgentOrchestrator @Inject constructor(
                 newMessages.add(toolMsg)
                 onEvent?.invoke(AgentEvent.MessageAdded(toolMsg))
             }
-        }
-
-        if (iteration >= MAX_TOOL_ITERATIONS) {
-            val maxMsg = ChatMessage(
-                role = ChatMessage.Role.ASSISTANT,
-                content = "I reached the maximum number of tool iterations ($MAX_TOOL_ITERATIONS). Please continue the conversation if you need more work done."
-            )
-            messages.add(maxMsg)
-            newMessages.add(maxMsg)
-            onEvent?.invoke(AgentEvent.MessageAdded(maxMsg))
         }
 
         AgentRunResult(
