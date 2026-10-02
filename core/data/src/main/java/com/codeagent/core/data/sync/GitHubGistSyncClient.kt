@@ -30,7 +30,7 @@ class GitHubGistSyncClient @Inject constructor() {
     private val json = Json { ignoreUnknownKeys = true }
 
     companion object {
-        const val DEFAULT_CLIENT_ID = "Ov23lit7n9oR2mYw8x4z"
+        const val DEFAULT_CLIENT_ID = "Ov23lib2U9yoyw4PICcJ"
         private const val GIST_FILENAME = "codeagent_encrypted_vault.json"
         private const val GIST_DESCRIPTION = "CodeAgent Encrypted Vault (Zero-Knowledge E2EE)"
     }
