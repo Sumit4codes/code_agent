@@ -7,6 +7,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
@@ -32,6 +34,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -140,9 +143,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     if (state.isConnectDialogOpen) {
         ConnectSyncDialog(
             isSyncing = state.isSyncing,
+            deviceAuthState = state.deviceAuthState,
             errorMessage = state.syncError,
             onDismiss = { viewModel.closeConnectSyncDialog() },
-            onConnect = { token, passphrase -> viewModel.connectSync(token, passphrase) }
+            onStartDeviceFlow = { passphrase -> viewModel.startGitHubDeviceFlow(passphrase) },
+            onCancelDeviceFlow = { viewModel.cancelGitHubDeviceFlow() },
+            onManualConnect = { token, passphrase -> viewModel.connectSync(token, passphrase) }
         )
     }
 
@@ -1410,19 +1416,46 @@ private fun CloudSyncCard(
 @Composable
 private fun ConnectSyncDialog(
     isSyncing: Boolean,
+    deviceAuthState: GitHubDeviceAuthState,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onConnect: (token: String, passphrase: String) -> Unit
+    onStartDeviceFlow: (passphrase: String) -> Unit,
+    onCancelDeviceFlow: () -> Unit,
+    onManualConnect: (token: String, passphrase: String) -> Unit
 ) {
-    var token by remember { mutableStateOf("") }
+    var tabIndex by remember { mutableIntStateOf(0) }
     var passphrase by remember { mutableStateOf("") }
     var confirmPassphrase by remember { mutableStateOf("") }
-    var showToken by remember { mutableStateOf(false) }
     var showPassphrase by remember { mutableStateOf(false) }
+    var manualToken by remember { mutableStateOf("") }
+    var showManualToken by remember { mutableStateOf(false) }
     var localValidation by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var codeCopied by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    // When a user code arrives from GitHub Device Flow, copy it to clipboard and open browser!
+    LaunchedEffect(deviceAuthState.userCode) {
+        val code = deviceAuthState.userCode
+        if (!code.isNullOrBlank()) {
+            clipboardManager.setText(AnnotatedString(code))
+            codeCopied = true
+            val uri = deviceAuthState.verificationUri ?: "https://github.com/login/device"
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                // Ignore if browser cannot be launched automatically
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = {
+        if (deviceAuthState.isAuthorizing) {
+            onCancelDeviceFlow()
+        }
+        onDismiss()
+    }) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surface,
@@ -1449,147 +1482,315 @@ private fun ConnectSyncDialog(
                         modifier = Modifier.size(24.dp)
                     )
                     Text(
-                        text = "Connect GitHub Sync",
+                        text = "GitHub Cloud Sync",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }
 
-                Text(
-                    text = "Your API keys and provider endpoints will be encrypted using Zero-Knowledge AES-256-GCM and stored in a private GitHub Gist on your own account.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Generate token helper button
-                OutlinedButton(
-                    onClick = {
-                        val url = "https://github.com/settings/tokens/new?scopes=gist&description=CodeAgent%20Sync"
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Generate Token on GitHub (gist scope)", style = MaterialTheme.typography.labelSmall)
-                }
-
-                // GitHub Token Field
-                OutlinedTextField(
-                    value = token,
-                    onValueChange = {
-                        token = it
-                        localValidation = null
-                    },
-                    label = { Text("GitHub Personal Access Token") },
-                    placeholder = { Text("ghp_xxxxxxxxxxxx") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { showToken = !showToken }) {
-                            Icon(
-                                imageVector = if (showToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showToken) "Hide" else "Show"
-                            )
-                        }
-                    }
-                )
-
-                // Sync Passphrase Field
-                OutlinedTextField(
-                    value = passphrase,
-                    onValueChange = {
-                        passphrase = it
-                        localValidation = null
-                    },
-                    label = { Text("Sync Passphrase (min 6 chars)") },
-                    placeholder = { Text("Enter a secure secret passphrase") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { showPassphrase = !showPassphrase }) {
-                            Icon(
-                                imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showPassphrase) "Hide" else "Show"
-                            )
-                        }
-                    }
-                )
-
-                // Confirm Passphrase Field
-                OutlinedTextField(
-                    value = confirmPassphrase,
-                    onValueChange = {
-                        confirmPassphrase = it
-                        localValidation = null
-                    },
-                    label = { Text("Confirm Sync Passphrase") },
-                    placeholder = { Text("Re-enter your secret passphrase") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation()
-                )
-
-                // Validation or Error Message
-                val activeError = localValidation ?: errorMessage
-                if (!activeError.isNullOrBlank()) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = activeError,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp)
+                if (!deviceAuthState.isAuthorizing) {
+                    PrimaryTabRow(selectedTabIndex = tabIndex) {
+                        Tab(
+                            selected = tabIndex == 0,
+                            onClick = { tabIndex = 0 },
+                            text = { Text("1-Tap Browser Sign-In") }
+                        )
+                        Tab(
+                            selected = tabIndex == 1,
+                            onClick = { tabIndex = 1 },
+                            text = { Text("Personal Token") }
                         )
                     }
                 }
 
-                // Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss, enabled = !isSyncing) {
-                        Text("Cancel")
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            if (token.isBlank()) {
-                                localValidation = "GitHub Token cannot be empty"
-                                return@Button
-                            }
-                            if (passphrase.length < 6) {
-                                localValidation = "Passphrase must be at least 6 characters"
-                                return@Button
-                            }
-                            if (passphrase != confirmPassphrase) {
-                                localValidation = "Passphrases do not match"
-                                return@Button
-                            }
-                            onConnect(token, passphrase)
-                        },
-                        enabled = !isSyncing
+                if (deviceAuthState.isAuthorizing) {
+                    // ACTIVE DEVICE FLOW IN PROGRESS
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Your GitHub Authorization Code",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Connecting...")
-                        } else {
+
+                            val code = deviceAuthState.userCode ?: "..."
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = MaterialTheme.shapes.small,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text(
+                                    text = code,
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 2.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+
+                            Text(
+                                text = if (codeCopied) "Code copied to clipboard! Paste it on GitHub." else "Copy the code and enter it on GitHub.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(code))
+                                        codeCopied = true
+                                    }
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Copy Code")
+                                }
+
+                                Button(
+                                    onClick = {
+                                        val uri = deviceAuthState.verificationUri ?: "https://github.com/login/device"
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                                        context.startActivity(intent)
+                                    }
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Open GitHub")
+                                }
+                            }
+
+                            Spacer(Modifier.height(4.dp))
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Text(
+                                    text = "Waiting for authorization in browser...",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = onCancelDeviceFlow) {
+                            Text("Cancel")
+                        }
+                    }
+                } else if (tabIndex == 0) {
+                    // TAB 0: 1-TAP BROWSER SIGN-IN
+                    Text(
+                        text = "Sign in via GitHub in your browser with zero manual token generation. Set your encryption passphrase below to secure your API keys with AES-256-GCM.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Sync Passphrase Field
+                    OutlinedTextField(
+                        value = passphrase,
+                        onValueChange = {
+                            passphrase = it
+                            localValidation = null
+                        },
+                        label = { Text("Encryption Passphrase (min 6 chars)") },
+                        placeholder = { Text("Secret passphrase for E2EE") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showPassphrase = !showPassphrase }) {
+                                Icon(
+                                    imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showPassphrase) "Hide" else "Show"
+                                )
+                            }
+                        }
+                    )
+
+                    // Confirm Passphrase Field
+                    OutlinedTextField(
+                        value = confirmPassphrase,
+                        onValueChange = {
+                            confirmPassphrase = it
+                            localValidation = null
+                        },
+                        label = { Text("Confirm Encryption Passphrase") },
+                        placeholder = { Text("Re-enter your secret passphrase") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation()
+                    )
+
+                    val activeError = localValidation ?: errorMessage
+                    if (!activeError.isNullOrBlank()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = activeError,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = onDismiss, enabled = !isSyncing) {
+                            Text("Cancel")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (passphrase.length < 6) {
+                                    localValidation = "Passphrase must be at least 6 characters"
+                                    return@Button
+                                }
+                                if (passphrase != confirmPassphrase) {
+                                    localValidation = "Passphrases do not match"
+                                    return@Button
+                                }
+                                onStartDeviceFlow(passphrase)
+                            },
+                            enabled = !isSyncing
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Sign in with GitHub")
+                        }
+                    }
+                } else {
+                    // TAB 1: MANUAL TOKEN
+                    Text(
+                        text = "Or paste an existing GitHub Personal Access Token (PAT) with 'gist' scope.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+                            val url = "https://github.com/settings/tokens/new?scopes=gist&description=CodeAgent%20Sync"
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Create Token on GitHub (gist scope)", style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    OutlinedTextField(
+                        value = manualToken,
+                        onValueChange = {
+                            manualToken = it
+                            localValidation = null
+                        },
+                        label = { Text("GitHub Personal Access Token") },
+                        placeholder = { Text("ghp_xxxxxxxxxxxx") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (showManualToken) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showManualToken = !showManualToken }) {
+                                Icon(
+                                    imageVector = if (showManualToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showManualToken) "Hide" else "Show"
+                                )
+                            }
+                        }
+                    )
+
+                    OutlinedTextField(
+                        value = passphrase,
+                        onValueChange = {
+                            passphrase = it
+                            localValidation = null
+                        },
+                        label = { Text("Encryption Passphrase (min 6 chars)") },
+                        placeholder = { Text("Secret passphrase for E2EE") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showPassphrase = !showPassphrase }) {
+                                Icon(
+                                    imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showPassphrase) "Hide" else "Show"
+                                )
+                            }
+                        }
+                    )
+
+                    val activeError = localValidation ?: errorMessage
+                    if (!activeError.isNullOrBlank()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = activeError,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = onDismiss, enabled = !isSyncing) {
+                            Text("Cancel")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (manualToken.isBlank()) {
+                                    localValidation = "Token cannot be empty"
+                                    return@Button
+                                }
+                                if (passphrase.length < 6) {
+                                    localValidation = "Passphrase must be at least 6 characters"
+                                    return@Button
+                                }
+                                onManualConnect(manualToken, passphrase)
+                            },
+                            enabled = !isSyncing
+                        ) {
                             Text("Connect & Sync")
                         }
                     }

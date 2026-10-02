@@ -48,3 +48,19 @@ data class SyncAccountInfo(
 ) {
     val isConnected: Boolean get() = provider != SyncAccountProvider.NONE && !username.isNullOrBlank()
 }
+
+@Serializable
+data class GitHubDeviceCodeResponse(
+    val deviceCode: String,
+    val userCode: String,
+    val verificationUri: String,
+    val expiresInSeconds: Int = 900,
+    val intervalSeconds: Int = 5
+)
+
+sealed interface GitHubDevicePollResult {
+    data class Success(val accessToken: String) : GitHubDevicePollResult
+    data object Pending : GitHubDevicePollResult
+    data class SlowDown(val newIntervalSeconds: Int) : GitHubDevicePollResult
+    data class Error(val message: String) : GitHubDevicePollResult
+}

@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -29,6 +30,7 @@ class GitHubGistSyncClient @Inject constructor() {
     private val json = Json { ignoreUnknownKeys = true }
 
     companion object {
+        const val DEFAULT_CLIENT_ID = "Ov23lit7n9oR2mYw8x4z"
         private const val GIST_FILENAME = "codeagent_encrypted_vault.json"
         private const val GIST_DESCRIPTION = "CodeAgent Encrypted Vault (Zero-Knowledge E2EE)"
     }
@@ -166,6 +168,97 @@ class GitHubGistSyncClient @Inject constructor() {
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun requestDeviceCode(clientId: String = DEFAULT_CLIENT_ID): Result<GitHubDeviceCodeResponse> = withContext(Dispatchers.IO) {
+        try {
+            val formBody = FormBody.Builder()
+                .add("client_id", clientId)
+                .add("scope", "gist")
+                .build()
+
+            val request = Request.Builder()
+                .url("https://github.com/login/device/code")
+                .header("Accept", "application/json")
+                .post(formBody)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val body = response.body.string()
+                val obj = json.parseToJsonElement(body).jsonObject
+
+                if (!response.isSuccessful || obj.containsKey("error")) {
+                    val desc = obj["error_description"]?.jsonPrimitive?.content
+                        ?: obj["error"]?.jsonPrimitive?.content
+                        ?: "Failed to initialize device authorization (${response.code})"
+                    return@withContext Result.failure(IOException(desc))
+                }
+
+                val deviceCode = obj["device_code"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(IOException("Missing device_code"))
+                val userCode = obj["user_code"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(IOException("Missing user_code"))
+                val verificationUri = obj["verification_uri"]?.jsonPrimitive?.content
+                    ?: "https://github.com/login/device"
+                val expiresIn = obj["expires_in"]?.jsonPrimitive?.content?.toIntOrNull() ?: 900
+                val interval = obj["interval"]?.jsonPrimitive?.content?.toIntOrNull() ?: 5
+
+                Result.success(
+                    GitHubDeviceCodeResponse(
+                        deviceCode = deviceCode,
+                        userCode = userCode,
+                        verificationUri = verificationUri,
+                        expiresInSeconds = expiresIn,
+                        intervalSeconds = interval
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun pollDeviceToken(clientId: String = DEFAULT_CLIENT_ID, deviceCode: String): GitHubDevicePollResult = withContext(Dispatchers.IO) {
+        try {
+            val formBody = FormBody.Builder()
+                .add("client_id", clientId)
+                .add("device_code", deviceCode)
+                .add("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
+                .build()
+
+            val request = Request.Builder()
+                .url("https://github.com/login/oauth/access_token")
+                .header("Accept", "application/json")
+                .post(formBody)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val body = response.body.string()
+                val obj = json.parseToJsonElement(body).jsonObject
+
+                if (obj.containsKey("access_token")) {
+                    val token = obj["access_token"]?.jsonPrimitive?.content ?: ""
+                    return@withContext GitHubDevicePollResult.Success(token)
+                }
+
+                val error = obj["error"]?.jsonPrimitive?.content ?: "unknown_error"
+                when (error) {
+                    "authorization_pending" -> GitHubDevicePollResult.Pending
+                    "slow_down" -> {
+                        val newInterval = (obj["interval"]?.jsonPrimitive?.content?.toIntOrNull() ?: 5) + 5
+                        GitHubDevicePollResult.SlowDown(newInterval)
+                    }
+                    "expired_token" -> GitHubDevicePollResult.Error("The verification code has expired. Please try again.")
+                    "access_denied" -> GitHubDevicePollResult.Error("Authorization was cancelled on GitHub.")
+                    else -> {
+                        val desc = obj["error_description"]?.jsonPrimitive?.content ?: error
+                        GitHubDevicePollResult.Error(desc)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            GitHubDevicePollResult.Error(e.message ?: "Network error during authorization")
         }
     }
 }

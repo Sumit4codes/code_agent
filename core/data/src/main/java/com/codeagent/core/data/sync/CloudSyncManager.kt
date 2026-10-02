@@ -17,6 +17,12 @@ interface CloudSyncManager {
     suspend fun exportEncryptedPayloadJson(passphrase: String): String
     suspend fun importEncryptedPayloadJson(payloadJson: String, passphrase: String): Result<Int>
     suspend fun connectGitHub(token: String, passphrase: String): Result<SyncAccountInfo>
+    suspend fun requestGitHubDeviceCode(clientId: String? = null): Result<GitHubDeviceCodeResponse>
+    suspend fun awaitGitHubDeviceLogin(
+        clientId: String? = null,
+        deviceCodeResponse: GitHubDeviceCodeResponse,
+        passphrase: String
+    ): Result<SyncAccountInfo>
     suspend fun syncToGitHub(passphrase: String): Result<SyncAccountInfo>
     suspend fun restoreFromGitHub(passphrase: String): Result<Int>
     fun logout()
@@ -166,6 +172,42 @@ class DefaultCloudSyncManager @Inject constructor(
         importRes
     }
 
+    override suspend fun requestGitHubDeviceCode(clientId: String?): Result<GitHubDeviceCodeResponse> {
+        val cid = clientId?.ifBlank { null } ?: GitHubGistSyncClient.DEFAULT_CLIENT_ID
+        return gitHubGistSyncClient.requestDeviceCode(cid)
+    }
+
+    override suspend fun awaitGitHubDeviceLogin(
+        clientId: String?,
+        deviceCodeResponse: GitHubDeviceCodeResponse,
+        passphrase: String
+    ): Result<SyncAccountInfo> = withContext(Dispatchers.IO) {
+        val cid = clientId?.ifBlank { null } ?: GitHubGistSyncClient.DEFAULT_CLIENT_ID
+        var currentIntervalSeconds = deviceCodeResponse.intervalSeconds.coerceAtLeast(3)
+        val startTime = System.currentTimeMillis()
+        val timeoutMs = deviceCodeResponse.expiresInSeconds * 1000L
+
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            kotlinx.coroutines.delay(currentIntervalSeconds * 1000L)
+
+            when (val pollResult = gitHubGistSyncClient.pollDeviceToken(cid, deviceCodeResponse.deviceCode)) {
+                is GitHubDevicePollResult.Success -> {
+                    return@withContext connectGitHub(pollResult.accessToken, passphrase)
+                }
+                is GitHubDevicePollResult.Pending -> {
+                    // Continue polling
+                }
+                is GitHubDevicePollResult.SlowDown -> {
+                    currentIntervalSeconds = pollResult.newIntervalSeconds
+                }
+                is GitHubDevicePollResult.Error -> {
+                    return@withContext Result.failure(Exception(pollResult.message))
+                }
+            }
+        }
+        Result.failure(Exception("GitHub device authorization timed out. Please try again."))
+    }
+
     override fun logout() {
         syncAccountStorage.clear()
         _accountInfo.value = SyncAccountInfo()
@@ -179,6 +221,10 @@ class NoOpCloudSyncManager : CloudSyncManager {
     override suspend fun exportEncryptedPayloadJson(passphrase: String): String = "{}"
     override suspend fun importEncryptedPayloadJson(payloadJson: String, passphrase: String): Result<Int> = Result.success(0)
     override suspend fun connectGitHub(token: String, passphrase: String): Result<SyncAccountInfo> = Result.success(SyncAccountInfo())
+    override suspend fun requestGitHubDeviceCode(clientId: String?): Result<GitHubDeviceCodeResponse> =
+        Result.success(GitHubDeviceCodeResponse("dev", "TEST-CODE", "https://github.com/login/device"))
+    override suspend fun awaitGitHubDeviceLogin(clientId: String?, deviceCodeResponse: GitHubDeviceCodeResponse, passphrase: String): Result<SyncAccountInfo> =
+        Result.success(SyncAccountInfo(provider = SyncAccountProvider.GITHUB, username = "testuser"))
     override suspend fun syncToGitHub(passphrase: String): Result<SyncAccountInfo> = Result.success(SyncAccountInfo())
     override suspend fun restoreFromGitHub(passphrase: String): Result<Int> = Result.success(0)
     override fun logout() {}

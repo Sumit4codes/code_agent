@@ -216,7 +216,13 @@ class AlpineBootstrapManager(
         arch: AlpineArchInfo,
         onProgress: ((String, Float) -> Unit)?
     ): InputStream {
-        // 1. Try bundled asset first
+        // 1. Try local archive in rootDir if already present (e.g. pre-cached or in test environments)
+        val localArchive = File(rootDir, "alpine.tar.gz")
+        if (localArchive.exists()) {
+            return localArchive.inputStream()
+        }
+
+        // 2. Try bundled asset
         val assetPath = "alpine_assets/${arch.assetDir}/alpine.rootfs"
         val assetStream = try {
             context?.assets?.open(assetPath)
@@ -228,13 +234,13 @@ class AlpineBootstrapManager(
             return assetStream
         }
 
-        // 2. Download from official Alpine CDN mirror
+        // 3. Download from official Alpine CDN mirror
         val downloadUrl = "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/${arch.alpineArch}/${arch.filename}"
         updateState("Downloading rootfs from Alpine CDN...", 0.20f, onProgress)
         val tempTarGz = File(rootDir, "alpine.tar.gz")
         val conn = URL(downloadUrl).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 30_000
+        conn.connectTimeout = 5_000
+        conn.readTimeout = 10_000
         conn.instanceFollowRedirects = true
 
         val contentLength = conn.contentLengthLong

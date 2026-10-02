@@ -305,6 +305,37 @@ class SettingsViewModelTest {
         assertFalse(viewModel.state.value.isBackupDialogOpen)
         assertTrue(viewModel.state.value.userMessage?.contains("imported and decrypted 2", ignoreCase = true) == true)
     }
+
+    @Test
+    fun `startGitHubDeviceFlow initiates device auth and completes login`() = runTest {
+        val fakeSync = FakeCloudSyncManager()
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        viewModel.openConnectSyncDialog()
+        assertTrue(viewModel.state.value.isConnectDialogOpen)
+
+        viewModel.startGitHubDeviceFlow("vault_pass_123")
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isConnectDialogOpen)
+        assertEquals("vault_pass_123", fakeSync.lastPassphrase)
+        assertTrue(viewModel.state.value.userMessage?.contains("Connected to GitHub as @octocat") == true)
+        assertFalse(viewModel.state.value.deviceAuthState.isPolling)
+    }
+
+    @Test
+    fun `cancelGitHubDeviceFlow resets device authorization state`() = runTest {
+        val fakeSync = FakeCloudSyncManager()
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        viewModel.startGitHubDeviceFlow("vault_pass_123")
+        viewModel.cancelGitHubDeviceFlow()
+
+        assertFalse(viewModel.state.value.deviceAuthState.isPolling)
+        assertFalse(viewModel.state.value.deviceAuthState.isAuthorizing)
+    }
 }
 
 private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManager {
@@ -330,6 +361,13 @@ private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManag
     var restoreResult: Result<Int> = Result.success(3)
     var exportPayloadText: String = "{\"version\":1,\"ciphertextBase64\":\"abc\"}"
     var importResult: Result<Int> = Result.success(2)
+    var deviceCodeResponse = com.codeagent.core.data.sync.GitHubDeviceCodeResponse(
+        deviceCode = "dev_1234",
+        userCode = "ABCD-1234",
+        verificationUri = "https://github.com/login/device",
+        expiresInSeconds = 900,
+        intervalSeconds = 5
+    )
 
     var lastConnectedToken: String? = null
     var lastPassphrase: String? = null
@@ -347,6 +385,20 @@ private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManag
     }
     override suspend fun connectGitHub(token: String, passphrase: String): Result<com.codeagent.core.data.sync.SyncAccountInfo> {
         lastConnectedToken = token
+        lastPassphrase = passphrase
+        if (connectResult.isSuccess) {
+            _account.value = connectResult.getOrThrow()
+        }
+        return connectResult
+    }
+    override suspend fun requestGitHubDeviceCode(clientId: String?): Result<com.codeagent.core.data.sync.GitHubDeviceCodeResponse> {
+        return Result.success(deviceCodeResponse)
+    }
+    override suspend fun awaitGitHubDeviceLogin(
+        clientId: String?,
+        deviceCodeResponse: com.codeagent.core.data.sync.GitHubDeviceCodeResponse,
+        passphrase: String
+    ): Result<com.codeagent.core.data.sync.SyncAccountInfo> {
         lastPassphrase = passphrase
         if (connectResult.isSuccess) {
             _account.value = connectResult.getOrThrow()

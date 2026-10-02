@@ -115,6 +115,7 @@ class PosixTerminalExecutorTest {
     @Test
     fun `setup-alpine command handles bootstrap execution`() = runTest {
         val root = File(tempDir, "root").apply { mkdirs() }
+        File(root, "alpine.tar.gz").createNewFile()
         val bootstrapManager = AlpineBootstrapManager(root)
         val alpineExecutor = PosixTerminalExecutor(
             context = null,

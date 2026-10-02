@@ -13,6 +13,7 @@ import com.codeagent.core.data.sync.NoOpCloudSyncManager
 import com.codeagent.core.data.sync.SyncAccountInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +58,14 @@ enum class SyncAction {
     RESTORE
 }
 
+data class GitHubDeviceAuthState(
+    val isAuthorizing: Boolean = false,
+    val userCode: String? = null,
+    val verificationUri: String? = null,
+    val isPolling: Boolean = false,
+    val error: String? = null
+)
+
 data class SettingsUiState(
     val providers: List<ProviderUiModel> = emptyList(),
     val activeProvider: ProviderUiModel? = null,
@@ -74,7 +83,8 @@ data class SettingsUiState(
     val isPassphrasePromptOpen: Boolean = false,
     val pendingSyncAction: SyncAction? = null,
     val isBackupDialogOpen: Boolean = false,
-    val backupExportText: String? = null
+    val backupExportText: String? = null,
+    val deviceAuthState: GitHubDeviceAuthState = GitHubDeviceAuthState()
 )
 
 @HiltViewModel
@@ -86,6 +96,7 @@ class SettingsViewModel @Inject constructor(
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
     private var cachedPassphrase: String? = null
+    private var deviceAuthJob: Job? = null
 
     constructor(
         settingsRepository: SettingsRepository,
@@ -518,14 +529,97 @@ class SettingsViewModel @Inject constructor(
     fun openConnectSyncDialog() {
         _state.value = _state.value.copy(
             isConnectDialogOpen = true,
-            syncError = null
+            syncError = null,
+            deviceAuthState = GitHubDeviceAuthState()
         )
     }
 
     fun closeConnectSyncDialog() {
+        cancelGitHubDeviceFlow()
         _state.value = _state.value.copy(
             isConnectDialogOpen = false,
-            syncError = null
+            syncError = null,
+            deviceAuthState = GitHubDeviceAuthState()
+        )
+    }
+
+    fun startGitHubDeviceFlow(passphrase: String, clientId: String? = null) {
+        if (passphrase.length < 6) {
+            _state.value = _state.value.copy(
+                syncError = "Encryption passphrase must be at least 6 characters"
+            )
+            return
+        }
+
+        viewModelScope.launch(ioDispatcher) {
+            _state.value = _state.value.copy(
+                isSyncing = true,
+                syncError = null,
+                deviceAuthState = GitHubDeviceAuthState(isAuthorizing = true)
+            )
+
+            val codeResult = cloudSyncManager.requestGitHubDeviceCode(clientId)
+            codeResult.fold(
+                onSuccess = { codeResponse ->
+                    _state.value = _state.value.copy(
+                        deviceAuthState = GitHubDeviceAuthState(
+                            isAuthorizing = true,
+                            userCode = codeResponse.userCode,
+                            verificationUri = codeResponse.verificationUri,
+                            isPolling = true
+                        )
+                    )
+
+                    deviceAuthJob?.cancel()
+                    deviceAuthJob = viewModelScope.launch(ioDispatcher) {
+                        val authResult = cloudSyncManager.awaitGitHubDeviceLogin(clientId, codeResponse, passphrase)
+                        authResult.fold(
+                            onSuccess = { info ->
+                                cachedPassphrase = passphrase
+                                _state.value = _state.value.copy(
+                                    isSyncing = false,
+                                    isConnectDialogOpen = false,
+                                    deviceAuthState = GitHubDeviceAuthState(),
+                                    syncError = null,
+                                    userMessage = "Connected to GitHub as @${info.username ?: "user"}! Vault synchronized.",
+                                    isErrorMessage = false
+                                )
+                            },
+                            onFailure = { error ->
+                                val msg = if (error.message?.contains("Tag", ignoreCase = true) == true ||
+                                    error.message?.contains("AEAD", ignoreCase = true) == true
+                                ) {
+                                    "Decryption failed: Incorrect passphrase for the existing vault on GitHub."
+                                } else {
+                                    error.message ?: "GitHub authorization failed"
+                                }
+                                _state.value = _state.value.copy(
+                                    isSyncing = false,
+                                    syncError = msg,
+                                    deviceAuthState = _state.value.deviceAuthState.copy(isPolling = false, error = msg)
+                                )
+                            }
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    val msg = error.message ?: "Failed to initiate GitHub authorization"
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        syncError = msg,
+                        deviceAuthState = GitHubDeviceAuthState(error = msg)
+                    )
+                }
+            )
+        }
+    }
+
+    fun cancelGitHubDeviceFlow() {
+        deviceAuthJob?.cancel()
+        deviceAuthJob = null
+        _state.value = _state.value.copy(
+            isSyncing = false,
+            deviceAuthState = GitHubDeviceAuthState()
         )
     }
 
