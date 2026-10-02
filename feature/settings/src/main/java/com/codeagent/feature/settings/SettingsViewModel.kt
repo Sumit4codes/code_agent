@@ -9,6 +9,8 @@ import com.codeagent.core.model.PopularProviders
 import com.codeagent.core.model.ProviderConfig
 import com.codeagent.core.model.ProviderType
 import com.codeagent.core.data.sync.CloudSyncManager
+import com.codeagent.core.data.sync.GitHubDeviceCodeResponse
+import com.codeagent.core.data.sync.GitHubDevicePollResult
 import com.codeagent.core.data.sync.NoOpCloudSyncManager
 import com.codeagent.core.data.sync.SyncAccountInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -543,6 +545,10 @@ class SettingsViewModel @Inject constructor(
         )
     }
 
+    private var activeDeviceCodeResponse: GitHubDeviceCodeResponse? = null
+    private var activeDevicePassphrase: String? = null
+    private var activeClientId: String? = null
+
     fun startGitHubDeviceFlow(passphrase: String, clientId: String? = null) {
         if (passphrase.length < 6) {
             _state.value = _state.value.copy(
@@ -550,6 +556,9 @@ class SettingsViewModel @Inject constructor(
             )
             return
         }
+
+        activeDevicePassphrase = passphrase
+        activeClientId = clientId
 
         viewModelScope.launch(ioDispatcher) {
             _state.value = _state.value.copy(
@@ -561,6 +570,7 @@ class SettingsViewModel @Inject constructor(
             val codeResult = cloudSyncManager.requestGitHubDeviceCode(clientId)
             codeResult.fold(
                 onSuccess = { codeResponse ->
+                    activeDeviceCodeResponse = codeResponse
                     _state.value = _state.value.copy(
                         deviceAuthState = GitHubDeviceAuthState(
                             isAuthorizing = true,
@@ -576,6 +586,8 @@ class SettingsViewModel @Inject constructor(
                         authResult.fold(
                             onSuccess = { info ->
                                 cachedPassphrase = passphrase
+                                activeDeviceCodeResponse = null
+                                activeDevicePassphrase = null
                                 _state.value = _state.value.copy(
                                     isSyncing = false,
                                     isConnectDialogOpen = false,
@@ -614,9 +626,84 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun checkGitHubDeviceAuthNow() {
+        val codeResponse = activeDeviceCodeResponse ?: return
+        val passphrase = activeDevicePassphrase ?: return
+        val clientId = activeClientId
+
+        viewModelScope.launch(ioDispatcher) {
+            _state.value = _state.value.copy(
+                isSyncing = true,
+                deviceAuthState = _state.value.deviceAuthState.copy(isPolling = true, error = null)
+            )
+
+            val pollResult = cloudSyncManager.pollGitHubDeviceOnce(clientId, codeResponse.deviceCode)
+            when (pollResult) {
+                is GitHubDevicePollResult.Success -> {
+                    val authResult = cloudSyncManager.connectGitHub(pollResult.accessToken, passphrase)
+                    authResult.fold(
+                        onSuccess = { info ->
+                            cachedPassphrase = passphrase
+                            activeDeviceCodeResponse = null
+                            activeDevicePassphrase = null
+                            deviceAuthJob?.cancel()
+                            deviceAuthJob = null
+                            _state.value = _state.value.copy(
+                                isSyncing = false,
+                                isConnectDialogOpen = false,
+                                deviceAuthState = GitHubDeviceAuthState(),
+                                syncError = null,
+                                userMessage = "Connected to GitHub as @${info.username ?: "user"}! Vault synchronized.",
+                                isErrorMessage = false
+                            )
+                        },
+                        onFailure = { error ->
+                            val msg = if (error.message?.contains("Tag", ignoreCase = true) == true ||
+                                error.message?.contains("AEAD", ignoreCase = true) == true
+                            ) {
+                                "Decryption failed: Incorrect passphrase for the existing vault on GitHub."
+                            } else {
+                                error.message ?: "Failed to connect to GitHub"
+                            }
+                            _state.value = _state.value.copy(
+                                isSyncing = false,
+                                syncError = msg,
+                                deviceAuthState = _state.value.deviceAuthState.copy(isPolling = false, error = msg)
+                            )
+                        }
+                    )
+                }
+                is GitHubDevicePollResult.Pending -> {
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        deviceAuthState = _state.value.deviceAuthState.copy(
+                            isPolling = true,
+                            error = "Authorization pending on GitHub. Make sure you tapped 'Authorize CodeAgent' in your browser."
+                        )
+                    )
+                }
+                is GitHubDevicePollResult.SlowDown -> {
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        deviceAuthState = _state.value.deviceAuthState.copy(isPolling = true)
+                    )
+                }
+                is GitHubDevicePollResult.Error -> {
+                    _state.value = _state.value.copy(
+                        isSyncing = false,
+                        syncError = pollResult.message,
+                        deviceAuthState = _state.value.deviceAuthState.copy(isPolling = false, error = pollResult.message)
+                    )
+                }
+            }
+        }
+    }
+
     fun cancelGitHubDeviceFlow() {
         deviceAuthJob?.cancel()
         deviceAuthJob = null
+        activeDeviceCodeResponse = null
+        activeDevicePassphrase = null
         _state.value = _state.value.copy(
             isSyncing = false,
             deviceAuthState = GitHubDeviceAuthState()

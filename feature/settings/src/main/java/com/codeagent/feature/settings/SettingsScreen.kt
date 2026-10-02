@@ -147,6 +147,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             errorMessage = state.syncError,
             onDismiss = { viewModel.closeConnectSyncDialog() },
             onStartDeviceFlow = { passphrase, clientId -> viewModel.startGitHubDeviceFlow(passphrase, clientId) },
+            onCheckDeviceFlowNow = { viewModel.checkGitHubDeviceAuthNow() },
             onCancelDeviceFlow = { viewModel.cancelGitHubDeviceFlow() },
             onManualConnect = { token, passphrase -> viewModel.connectSync(token, passphrase) }
         )
@@ -1420,6 +1421,7 @@ private fun ConnectSyncDialog(
     errorMessage: String?,
     onDismiss: () -> Unit,
     onStartDeviceFlow: (passphrase: String, clientId: String?) -> Unit,
+    onCheckDeviceFlowNow: () -> Unit,
     onCancelDeviceFlow: () -> Unit,
     onManualConnect: (token: String, passphrase: String) -> Unit
 ) {
@@ -1572,21 +1574,61 @@ private fun ConnectSyncDialog(
                                 }
                             }
 
-                            Spacer(Modifier.height(4.dp))
+                            Spacer(Modifier.height(6.dp))
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            // Immediate Check button so user can trigger verification directly upon returning from browser
+                            Button(
+                                onClick = onCheckDeviceFlowNow,
+                                enabled = !isSyncing,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp
-                                )
-                                Text(
-                                    text = "Waiting for authorization in browser...",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("I've Approved on GitHub (Check Now)")
+                            }
+
+                            val activeErr = deviceAuthState.error ?: errorMessage
+                            if (!activeErr.isNullOrBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = MaterialTheme.shapes.small,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = activeErr,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (deviceAuthState.isPolling && activeErr.isNullOrBlank()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        text = "Waiting for authorization in browser...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
                             }
                         }
                     }

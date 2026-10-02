@@ -23,6 +23,7 @@ interface CloudSyncManager {
         deviceCodeResponse: GitHubDeviceCodeResponse,
         passphrase: String
     ): Result<SyncAccountInfo>
+    suspend fun pollGitHubDeviceOnce(clientId: String? = null, deviceCode: String): GitHubDevicePollResult
     suspend fun syncToGitHub(passphrase: String): Result<SyncAccountInfo>
     suspend fun restoreFromGitHub(passphrase: String): Result<Int>
     fun logout()
@@ -208,6 +209,11 @@ class DefaultCloudSyncManager @Inject constructor(
         Result.failure(Exception("GitHub device authorization timed out. Please try again."))
     }
 
+    override suspend fun pollGitHubDeviceOnce(clientId: String?, deviceCode: String): GitHubDevicePollResult {
+        val cid = clientId?.ifBlank { null } ?: GitHubGistSyncClient.DEFAULT_CLIENT_ID
+        return gitHubGistSyncClient.pollDeviceToken(cid, deviceCode)
+    }
+
     override fun logout() {
         syncAccountStorage.clear()
         _accountInfo.value = SyncAccountInfo()
@@ -225,6 +231,8 @@ class NoOpCloudSyncManager : CloudSyncManager {
         Result.success(GitHubDeviceCodeResponse("dev", "TEST-CODE", "https://github.com/login/device"))
     override suspend fun awaitGitHubDeviceLogin(clientId: String?, deviceCodeResponse: GitHubDeviceCodeResponse, passphrase: String): Result<SyncAccountInfo> =
         Result.success(SyncAccountInfo(provider = SyncAccountProvider.GITHUB, username = "testuser"))
+    override suspend fun pollGitHubDeviceOnce(clientId: String?, deviceCode: String): GitHubDevicePollResult =
+        GitHubDevicePollResult.Success("fake_token")
     override suspend fun syncToGitHub(passphrase: String): Result<SyncAccountInfo> = Result.success(SyncAccountInfo())
     override suspend fun restoreFromGitHub(passphrase: String): Result<Int> = Result.success(0)
     override fun logout() {}

@@ -25,6 +25,12 @@ class GitHubGistSyncClient @Inject constructor() {
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val req = chain.request().newBuilder()
+                .header("User-Agent", "CodeAgent-Android/1.0 (https://github.com/codeagent)")
+                .build()
+            chain.proceed(req)
+        }
         .build()
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -254,7 +260,7 @@ class GitHubGistSyncClient @Inject constructor() {
                         val newInterval = (obj["interval"]?.jsonPrimitive?.content?.toIntOrNull() ?: 5) + 5
                         GitHubDevicePollResult.SlowDown(newInterval)
                     }
-                    "expired_token" -> GitHubDevicePollResult.Error("The verification code has expired. Please try again.")
+                    "expired_token", "token_expired" -> GitHubDevicePollResult.Error("The verification code has expired. Please try again.")
                     "access_denied" -> GitHubDevicePollResult.Error("Authorization was cancelled on GitHub.")
                     else -> {
                         val desc = obj["error_description"]?.jsonPrimitive?.content ?: error

@@ -336,6 +336,47 @@ class SettingsViewModelTest {
         assertFalse(viewModel.state.value.deviceAuthState.isPolling)
         assertFalse(viewModel.state.value.deviceAuthState.isAuthorizing)
     }
+
+    @Test
+    fun `checkGitHubDeviceAuthNow polls device flow and completes login on success`() = runTest {
+        val fakeSync = FakeCloudSyncManager().apply { awaitLoginHangs = true }
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        viewModel.openConnectSyncDialog()
+        viewModel.startGitHubDeviceFlow("vault_pass_123")
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.deviceAuthState.isPolling)
+
+        fakeSync.pollResult = com.codeagent.core.data.sync.GitHubDevicePollResult.Success("fake_approved_token")
+        viewModel.checkGitHubDeviceAuthNow()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isConnectDialogOpen)
+        assertEquals("vault_pass_123", fakeSync.lastPassphrase)
+        assertEquals("fake_approved_token", fakeSync.lastConnectedToken)
+        assertTrue(viewModel.state.value.userMessage?.contains("Connected to GitHub as @octocat") == true)
+    }
+
+    @Test
+    fun `checkGitHubDeviceAuthNow displays pending message when user has not approved yet`() = runTest {
+        val fakeSync = FakeCloudSyncManager().apply { awaitLoginHangs = true }
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher, fakeSync)
+        advanceUntilIdle()
+
+        viewModel.openConnectSyncDialog()
+        viewModel.startGitHubDeviceFlow("vault_pass_123")
+        advanceUntilIdle()
+
+        fakeSync.pollResult = com.codeagent.core.data.sync.GitHubDevicePollResult.Pending
+        viewModel.checkGitHubDeviceAuthNow()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isConnectDialogOpen)
+        assertTrue(viewModel.state.value.deviceAuthState.error?.contains("Authorization pending on GitHub") == true)
+        assertTrue(viewModel.state.value.deviceAuthState.isPolling)
+    }
 }
 
 private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManager {
@@ -368,6 +409,9 @@ private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManag
         expiresInSeconds = 900,
         intervalSeconds = 5
     )
+    var pollResult: com.codeagent.core.data.sync.GitHubDevicePollResult =
+        com.codeagent.core.data.sync.GitHubDevicePollResult.Success("fake_token_123")
+    var awaitLoginHangs: Boolean = false
 
     var lastConnectedToken: String? = null
     var lastPassphrase: String? = null
@@ -394,11 +438,19 @@ private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManag
     override suspend fun requestGitHubDeviceCode(clientId: String?): Result<com.codeagent.core.data.sync.GitHubDeviceCodeResponse> {
         return Result.success(deviceCodeResponse)
     }
+    override suspend fun pollGitHubDeviceOnce(
+        clientId: String?,
+        deviceCode: String
+    ): com.codeagent.core.data.sync.GitHubDevicePollResult = pollResult
+
     override suspend fun awaitGitHubDeviceLogin(
         clientId: String?,
         deviceCodeResponse: com.codeagent.core.data.sync.GitHubDeviceCodeResponse,
         passphrase: String
     ): Result<com.codeagent.core.data.sync.SyncAccountInfo> {
+        if (awaitLoginHangs) {
+            kotlinx.coroutines.awaitCancellation()
+        }
         lastPassphrase = passphrase
         if (connectResult.isSuccess) {
             _account.value = connectResult.getOrThrow()
