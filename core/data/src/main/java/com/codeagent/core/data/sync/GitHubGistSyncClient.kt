@@ -189,9 +189,14 @@ class GitHubGistSyncClient @Inject constructor() {
                 val obj = json.parseToJsonElement(body).jsonObject
 
                 if (!response.isSuccessful || obj.containsKey("error")) {
-                    val desc = obj["error_description"]?.jsonPrimitive?.content
+                    val rawDesc = obj["error_description"]?.jsonPrimitive?.content
                         ?: obj["error"]?.jsonPrimitive?.content
-                        ?: "Failed to initialize device authorization (${response.code})"
+                    val desc = when {
+                        rawDesc.equals("Not Found", ignoreCase = true) ->
+                            "GitHub returned 'Not Found'. This OAuth Client ID is not registered or does not have 'Enable Device Flow' checked on GitHub. Switch to the 'Personal Token' tab for instant setup or configure your Client ID under Advanced."
+                        !rawDesc.isNullOrBlank() -> rawDesc
+                        else -> "Failed to initialize device authorization (${response.code})"
+                    }
                     return@withContext Result.failure(IOException(desc))
                 }
 

@@ -146,7 +146,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             deviceAuthState = state.deviceAuthState,
             errorMessage = state.syncError,
             onDismiss = { viewModel.closeConnectSyncDialog() },
-            onStartDeviceFlow = { passphrase -> viewModel.startGitHubDeviceFlow(passphrase) },
+            onStartDeviceFlow = { passphrase, clientId -> viewModel.startGitHubDeviceFlow(passphrase, clientId) },
             onCancelDeviceFlow = { viewModel.cancelGitHubDeviceFlow() },
             onManualConnect = { token, passphrase -> viewModel.connectSync(token, passphrase) }
         )
@@ -1419,7 +1419,7 @@ private fun ConnectSyncDialog(
     deviceAuthState: GitHubDeviceAuthState,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onStartDeviceFlow: (passphrase: String) -> Unit,
+    onStartDeviceFlow: (passphrase: String, clientId: String?) -> Unit,
     onCancelDeviceFlow: () -> Unit,
     onManualConnect: (token: String, passphrase: String) -> Unit
 ) {
@@ -1429,6 +1429,8 @@ private fun ConnectSyncDialog(
     var showPassphrase by remember { mutableStateOf(false) }
     var manualToken by remember { mutableStateOf("") }
     var showManualToken by remember { mutableStateOf(false) }
+    var customClientId by remember { mutableStateOf("") }
+    var showAdvancedOAuth by remember { mutableStateOf(false) }
     var localValidation by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -1641,6 +1643,60 @@ private fun ConnectSyncDialog(
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation()
                     )
 
+                    // Expandable Advanced OAuth Configuration
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAdvancedOAuth = !showAdvancedOAuth }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "OAuth App Client ID (Advanced)",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            imageVector = if (showAdvancedOAuth) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    AnimatedVisibility(visible = showAdvancedOAuth) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "GitHub Device Flow requires a registered GitHub OAuth App with 'Enable Device Flow' checked. Enter your Client ID below, or create one for free.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            OutlinedTextField(
+                                value = customClientId,
+                                onValueChange = { customClientId = it },
+                                label = { Text("Custom GitHub OAuth Client ID") },
+                                placeholder = { Text(com.codeagent.core.data.sync.GitHubGistSyncClient.DEFAULT_CLIENT_ID) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            OutlinedButton(
+                                onClick = {
+                                    val url = "https://github.com/settings/applications/new"
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Register Free OAuth App on GitHub", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+
                     val activeError = localValidation ?: errorMessage
                     if (!activeError.isNullOrBlank()) {
                         Surface(
@@ -1676,7 +1732,7 @@ private fun ConnectSyncDialog(
                                     localValidation = "Passphrases do not match"
                                     return@Button
                                 }
-                                onStartDeviceFlow(passphrase)
+                                onStartDeviceFlow(passphrase, customClientId.trim().ifBlank { null })
                             },
                             enabled = !isSyncing
                         ) {
@@ -1688,7 +1744,7 @@ private fun ConnectSyncDialog(
                 } else {
                     // TAB 1: MANUAL TOKEN
                     Text(
-                        text = "Or paste an existing GitHub Personal Access Token (PAT) with 'gist' scope.",
+                        text = "Instant 10-second setup with 100% reliability! Paste an existing GitHub Personal Access Token (PAT) with 'gist' scope.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
