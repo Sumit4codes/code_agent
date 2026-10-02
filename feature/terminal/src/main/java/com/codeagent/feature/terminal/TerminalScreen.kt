@@ -299,7 +299,7 @@ private fun AccessoryKeyboardBar(
     val scrollState = rememberScrollState()
     val quickTokens = listOf(
         "|", "&&", ";", "-", "--", "/", "~", "$", ":", "'", "\"",
-        "apk", "git", "python3", "gcc", "make", "vim", "ls -la", "pwd", "clear"
+        "sh", "bash", "chmod +x", "apk", "git", "python3", "gcc", "make", "vim", "ls -la", "pwd", "clear"
     )
 
     Row(
