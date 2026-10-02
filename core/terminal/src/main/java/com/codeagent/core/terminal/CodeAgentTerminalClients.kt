@@ -81,19 +81,22 @@ class CodeAgentTerminalViewClient(
 
     var isControlKeyPressed: Boolean = false
     var isAltKeyPressed: Boolean = false
+    var enforceCharBasedInput: Boolean = false
 
     override fun onScale(scale: Float): Float = scale
 
     override fun onSingleTapUp(e: MotionEvent) {
         val view = terminalViewProvider() ?: return
+        view.isFocusable = true
+        view.isFocusableInTouchMode = true
         view.requestFocus()
         val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        imm?.showSoftInput(view, 0)
     }
 
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
 
-    override fun shouldEnforceCharBasedInput(): Boolean = true
+    override fun shouldEnforceCharBasedInput(): Boolean = enforceCharBasedInput
 
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
 

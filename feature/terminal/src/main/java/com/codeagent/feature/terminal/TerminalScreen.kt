@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -49,11 +53,17 @@ fun TerminalScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var terminalViewInstance by remember { mutableStateOf<TerminalView?>(null) }
+    val focusRequester = remember { FocusRequester() }
+    val isKeyboardOpen = WindowInsets.isImeVisible
 
     LaunchedEffect(projectId) {
         if (!projectId.isNullOrBlank()) {
             viewModel.openProject(projectId)
         }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
     }
 
     Scaffold(
@@ -133,9 +143,15 @@ fun TerminalScreen(
                         onClick = {
                             val view = terminalViewInstance
                             if (view != null) {
-                                view.requestFocus()
                                 val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                                if (isKeyboardOpen) {
+                                    imm?.hideSoftInputFromWindow(view.windowToken, 0)
+                                } else {
+                                    view.isFocusable = true
+                                    view.isFocusableInTouchMode = true
+                                    view.requestFocus()
+                                    imm?.showSoftInput(view, 0)
+                                }
                             }
                         }
                     ) {
@@ -214,32 +230,61 @@ fun TerminalScreen(
             AndroidView(
                 factory = { ctx ->
                     TerminalView(ctx, null).apply {
+                        isFocusable = true
+                        isFocusableInTouchMode = true
                         setTextSize(14)
                         setTypeface(Typeface.MONOSPACE)
                         setBackgroundColor(android.graphics.Color.parseColor("#0D1117"))
                         viewModel.registerTerminalView(this)
                         terminalViewInstance = this
+                        setOnFocusChangeListener { _, hasFocus ->
+                            if (hasFocus) {
+                                val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                imm?.showSoftInput(this, 0)
+                            }
+                        }
+                        setOnTouchListener { v, event ->
+                            if (event.action == android.view.MotionEvent.ACTION_UP) {
+                                v.isFocusable = true
+                                v.isFocusableInTouchMode = true
+                                v.requestFocus()
+                                val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                imm?.showSoftInput(v, 0)
+                            }
+                            false
+                        }
                         post {
+                            isFocusable = true
+                            isFocusableInTouchMode = true
                             requestFocus()
                             val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                            imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+                            imm?.showSoftInput(this, 0)
                         }
                     }
                 },
                 update = { view ->
                     val session = viewModel.terminalSession
-                    if (session != null && view.currentSession != session) {
-                        view.attachSession(session)
+                    if (session != null) {
+                        if (view.currentSession != session) {
+                            view.attachSession(session)
+                        } else if (view.mEmulator == null && view.width > 0 && view.height > 0) {
+                            view.updateSize()
+                        }
                     }
                 },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .focusable()
             )
 
             // Quick Accessory Bar
             AccessoryKeyboardBar(
-                onKeyPress = { viewModel.sendAccessoryKey(it) },
+                onKeyPress = {
+                    viewModel.sendAccessoryKey(it)
+                    terminalViewInstance?.requestFocus()
+                },
                 isControlActive = viewModel.viewClient.isControlKeyPressed
             )
         }
@@ -262,6 +307,7 @@ private fun AccessoryKeyboardBar(
             .fillMaxWidth()
             .background(Color(0xFF161B22))
             .horizontalScroll(scrollState)
+            .focusProperties { canFocus = false }
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
