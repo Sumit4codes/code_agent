@@ -6,10 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.codeagent.core.data.ProjectDao
 import com.codeagent.core.files.ProjectFileSystem
 import com.codeagent.core.terminal.AlpineBootstrapManager
+import com.codeagent.core.terminal.CodeAgentTerminalSessionClient
+import com.codeagent.core.terminal.CodeAgentTerminalViewClient
 import com.codeagent.core.terminal.NativeBinaryManager
 import com.codeagent.core.terminal.PosixTerminalExecutor
 import com.codeagent.core.terminal.TerminalExecutor
 import com.codeagent.core.terminal.TerminalResult
+import com.codeagent.core.terminal.TermuxSessionManager
+import com.termux.terminal.TerminalSession
+import com.termux.view.TerminalView
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.lang.ref.WeakReference
 import javax.inject.Inject
 
 @HiltViewModel
@@ -27,6 +33,7 @@ class TerminalViewModel @Inject constructor(
     val terminalExecutor: TerminalExecutor,
     private val nativeBinaryManager: NativeBinaryManager,
     val alpineBootstrapManager: AlpineBootstrapManager? = null,
+    val termuxSessionManager: TermuxSessionManager? = null,
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
 ) : ViewModel() {
 
@@ -36,12 +43,29 @@ class TerminalViewModel @Inject constructor(
         terminalExecutor: TerminalExecutor,
         nativeBinaryManager: NativeBinaryManager,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
-    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null, ioDispatcher)
+    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null, null, ioDispatcher)
 
     private val _uiState = MutableStateFlow(TerminalUiState())
     val uiState: StateFlow<TerminalUiState> = _uiState.asStateFlow()
 
     private var activeJob: Job? = null
+
+    var terminalSession: TerminalSession? = null
+        private set
+
+    val sessionClient = CodeAgentTerminalSessionClient(
+        onTitleChangedCallback = { title ->
+            if (title.isNotBlank()) {
+                _uiState.update { it.copy(projectName = title) }
+            }
+        },
+        onSessionFinishedCallback = { _ ->
+            _uiState.update { it.copy(isRunning = false) }
+        }
+    )
+
+    private var terminalViewRef: WeakReference<TerminalView>? = null
+    val viewClient = CodeAgentTerminalViewClient { terminalViewRef?.get() }
 
     init {
         initializeTerminal()
@@ -117,6 +141,41 @@ class TerminalViewModel @Inject constructor(
                         type = TerminalEntryType.SYSTEM
                     )
                 )
+            }
+            restartSession()
+        }
+    }
+
+    fun registerTerminalView(view: TerminalView) {
+        terminalViewRef = WeakReference(view)
+        sessionClient.attachView(view)
+        view.setTerminalViewClient(viewClient)
+        val session = getOrCreateSession()
+        if (session != null) {
+            view.attachSession(session)
+        }
+    }
+
+    fun getOrCreateSession(): TerminalSession? {
+        val current = terminalSession
+        if (current != null && current.isRunning) {
+            return current
+        }
+        val mgr = termuxSessionManager ?: return null
+        val workDir = terminalExecutor.activeDirectory
+        val session = mgr.createSession(workDir, sessionClient)
+        this.terminalSession = session
+        _uiState.update { it.copy(isRunning = true) }
+        return session
+    }
+
+    fun restartSession() {
+        terminalSession?.finishIfRunning()
+        terminalSession = null
+        val newSession = getOrCreateSession()
+        terminalViewRef?.get()?.let { view ->
+            if (newSession != null) {
+                view.attachSession(newSession)
             }
         }
     }
@@ -342,7 +401,67 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    fun sendAccessoryKey(key: String) {
+        val session = terminalSession
+        if (session != null && session.isRunning) {
+            when (key.uppercase()) {
+                "ESC" -> session.write(byteArrayOf(0x1B), 0, 1)
+                "TAB" -> session.write(byteArrayOf(0x09), 0, 1)
+                "CTRL-C" -> session.write(byteArrayOf(0x03), 0, 1)
+                "CTRL-D" -> session.write(byteArrayOf(0x04), 0, 1)
+                "CTRL-Z" -> session.write(byteArrayOf(0x1A), 0, 1)
+                "CTRL" -> {
+                    viewClient.isControlKeyPressed = !viewClient.isControlKeyPressed
+                }
+                "ALT" -> {
+                    viewClient.isAltKeyPressed = !viewClient.isAltKeyPressed
+                }
+                "↑", "UP" -> {
+                    val bytes = "\u001b[A".toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+                "↓", "DOWN" -> {
+                    val bytes = "\u001b[B".toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+                "→", "RIGHT" -> {
+                    val bytes = "\u001b[C".toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+                "←", "LEFT" -> {
+                    val bytes = "\u001b[D".toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+                "CLEAR" -> {
+                    val bytes = "clear\r".toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+                "PWD" -> {
+                    val bytes = "pwd\r".toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+                "LS -LA" -> {
+                    val bytes = "ls -la\r".toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+                else -> {
+                    val text = if (key.endsWith(" ") || key.startsWith("-") || key == "|" || key == "&&" || key == ";" || key == "/" || key == "~") key else "$key "
+                    val bytes = text.toByteArray(Charsets.UTF_8)
+                    session.write(bytes, 0, bytes.size)
+                }
+            }
+        } else {
+            insertAccessoryKey(key)
+        }
+    }
+
     fun clearHistory() {
         _uiState.update { it.copy(entries = emptyList()) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        terminalSession?.finishIfRunning()
+        terminalSession = null
     }
 }

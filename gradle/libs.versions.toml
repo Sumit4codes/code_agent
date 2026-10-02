@@ -54,6 +54,8 @@ security-crypto = { group = "androidx.security", name = "security-crypto", versi
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesTest" }
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+termux-terminal-view = { group = "com.github.termux.termux-app", name = "terminal-view", version = "v0.118.0" }
+termux-terminal-emulator = { group = "com.github.termux.termux-app", name = "terminal-emulator", version = "v0.118.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

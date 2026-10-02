@@ -29,6 +29,8 @@ dependencies {
     implementation(project(":core:git"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.commons.compress)
+    api(libs.termux.terminal.view)
+    api(libs.termux.terminal.emulator)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     testImplementation(project(":core:testing"))

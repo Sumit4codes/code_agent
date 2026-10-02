@@ -1,45 +1,43 @@
 package com.codeagent.feature.terminal
 
+import android.content.Context
+import android.graphics.Typeface
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termux.view.TerminalView
 
 private val TerminalBg = Color(0xFF0D1117)
 private val TerminalPrompt = Color(0xFF39D353)
-private val TerminalStdout = Color(0xFFE6EDF3)
 private val TerminalStderr = Color(0xFFF85149)
-private val TerminalSystem = Color(0xFF58A6FF)
 private val AccessoryKeyBg = Color(0xFF21262D)
 private val AccessoryKeyContent = Color(0xFFC9D1D9)
+private val EscKeyBg = Color(0xFF1F6FEB)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -49,27 +47,12 @@ fun TerminalScreen(
     viewModel: TerminalViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val listState = rememberLazyListState()
-    val density = LocalDensity.current
-    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
+    val context = LocalContext.current
+    var terminalViewInstance by remember { mutableStateOf<TerminalView?>(null) }
 
     LaunchedEffect(projectId) {
         if (!projectId.isNullOrBlank()) {
             viewModel.openProject(projectId)
-        }
-    }
-
-    // Auto-scroll when new output arrives
-    LaunchedEffect(uiState.entries.size) {
-        if (uiState.entries.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.entries.size - 1)
-        }
-    }
-
-    // Auto-scroll when soft keyboard appears so command line and latest logs remain visible
-    LaunchedEffect(isImeVisible) {
-        if (isImeVisible && uiState.entries.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.entries.size - 1)
         }
     }
 
@@ -145,10 +128,28 @@ fun TerminalScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.clearHistory() }) {
+                    // Soft keyboard toggle
+                    IconButton(
+                        onClick = {
+                            val view = terminalViewInstance
+                            if (view != null) {
+                                view.requestFocus()
+                                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                            }
+                        }
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.ClearAll,
-                            contentDescription = "Clear Terminal"
+                            imageVector = Icons.Default.Keyboard,
+                            contentDescription = "Toggle Keyboard"
+                        )
+                    }
+
+                    // Restart interactive shell session
+                    IconButton(onClick = { viewModel.restartSession() }) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Restart Session"
                         )
                     }
                 },
@@ -187,7 +188,7 @@ fun TerminalScreen(
                                 color = TerminalPrompt
                             )
                             Text(
-                                text = "Enable apk to install git, python3, gcc, g++, make.",
+                                text = "Enable apk to install git, python3, gcc, g++, make, and vim.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AccessoryKeyContent
                             )
@@ -209,82 +210,52 @@ fun TerminalScreen(
                 }
             }
 
-            // Scrollable Console Log
-            SelectionContainer(
+            // Real Linux Terminal Emulator Canvas (Termux TerminalView)
+            AndroidView(
+                factory = { ctx ->
+                    TerminalView(ctx, null).apply {
+                        setTextSize(14)
+                        setTypeface(Typeface.MONOSPACE)
+                        setBackgroundColor(android.graphics.Color.parseColor("#0D1117"))
+                        viewModel.registerTerminalView(this)
+                        terminalViewInstance = this
+                        post {
+                            requestFocus()
+                            val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                            imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+                        }
+                    }
+                },
+                update = { view ->
+                    val session = viewModel.terminalSession
+                    if (session != null && view.currentSession != session) {
+                        view.attachSession(session)
+                    }
+                },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-            ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                        .imeNestedScroll(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    items(uiState.entries, key = { it.id }) { entry ->
-                        TerminalLineItem(entry = entry)
-                    }
-                }
-            }
+            )
 
             // Quick Accessory Bar
             AccessoryKeyboardBar(
-                onKeyPress = { viewModel.insertAccessoryKey(it) },
-                onHistoryUp = { viewModel.navigateHistoryPrevious() },
-                onHistoryDown = { viewModel.navigateHistoryNext() },
-                isRunning = uiState.isRunning,
-                isAlpine = uiState.isAlpineReady,
-                onCancel = { viewModel.cancelRunningCommand() }
-            )
-
-            // Command Input Line
-            TerminalInputBar(
-                input = uiState.commandInput,
-                onInputChange = { viewModel.onCommandInputChange(it) },
-                onExecute = { viewModel.executeCommand() },
-                isRunning = uiState.isRunning,
-                onCancel = { viewModel.cancelRunningCommand() }
+                onKeyPress = { viewModel.sendAccessoryKey(it) },
+                isControlActive = viewModel.viewClient.isControlKeyPressed
             )
         }
     }
 }
 
 @Composable
-private fun TerminalLineItem(entry: TerminalEntry) {
-    val color = when (entry.type) {
-        TerminalEntryType.COMMAND -> TerminalPrompt
-        TerminalEntryType.STDOUT -> TerminalStdout
-        TerminalEntryType.STDERR -> TerminalStderr
-        TerminalEntryType.SYSTEM -> TerminalSystem
-    }
-
-    Text(
-        text = entry.text,
-        color = color,
-        fontFamily = FontFamily.Monospace,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        fontWeight = if (entry.type == TerminalEntryType.COMMAND) FontWeight.Bold else FontWeight.Normal
-    )
-}
-
-@Composable
 private fun AccessoryKeyboardBar(
     onKeyPress: (String) -> Unit,
-    onHistoryUp: () -> Unit,
-    onHistoryDown: () -> Unit,
-    isRunning: Boolean,
-    isAlpine: Boolean,
-    onCancel: () -> Unit
+    isControlActive: Boolean
 ) {
     val scrollState = rememberScrollState()
-    val keys = if (isAlpine) {
-        listOf("TAB", "apk", "git", "python3", "gcc", "make", "|", "&&", ";", "-", "--", "/", "~", "ls -la", "pwd", "clear")
-    } else {
-        listOf("TAB", "setup-alpine", "git", "|", "&&", ";", "-", "--", "/", "~", "ls -la", "pwd", "clear")
-    }
+    val quickTokens = listOf(
+        "|", "&&", ";", "-", "--", "/", "~", "$", ":", "'", "\"",
+        "apk", "git", "python3", "gcc", "make", "vim", "ls -la", "pwd", "clear"
+    )
 
     Row(
         modifier = Modifier
@@ -295,14 +266,69 @@ private fun AccessoryKeyboardBar(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Ctrl-C / Cancel key
+        // ESC key (crucial for Vim mode switching)
         Button(
-            onClick = {
-                if (isRunning) onCancel() else onKeyPress("CTRL-C")
-            },
+            onClick = { onKeyPress("ESC") },
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isRunning) TerminalStderr else AccessoryKeyBg,
-                contentColor = if (isRunning) Color.White else AccessoryKeyContent
+                containerColor = EscKeyBg,
+                contentColor = Color.White
+            ),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+            shape = RoundedCornerShape(4.dp),
+            modifier = Modifier.height(28.dp)
+        ) {
+            Text(
+                text = "ESC",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // TAB key (autocompletion)
+        Button(
+            onClick = { onKeyPress("TAB") },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AccessoryKeyBg,
+                contentColor = AccessoryKeyContent
+            ),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+            shape = RoundedCornerShape(4.dp),
+            modifier = Modifier.height(28.dp)
+        ) {
+            Text(
+                text = "TAB",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // CTRL toggle modifier
+        Button(
+            onClick = { onKeyPress("CTRL") },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isControlActive) TerminalPrompt else AccessoryKeyBg,
+                contentColor = if (isControlActive) Color.Black else AccessoryKeyContent
+            ),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+            shape = RoundedCornerShape(4.dp),
+            modifier = Modifier.height(28.dp)
+        ) {
+            Text(
+                text = "CTRL",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // CTRL-C interrupt key
+        Button(
+            onClick = { onKeyPress("CTRL-C") },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = TerminalStderr,
+                contentColor = Color.White
             ),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
             shape = RoundedCornerShape(4.dp),
@@ -316,130 +342,71 @@ private fun AccessoryKeyboardBar(
             )
         }
 
-        // History Up
+        // Arrow Left
         IconButton(
-            onClick = onHistoryUp,
+            onClick = { onKeyPress("LEFT") },
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Left Arrow",
+                tint = AccessoryKeyContent
+            )
+        }
+
+        // Arrow Up
+        IconButton(
+            onClick = { onKeyPress("UP") },
             modifier = Modifier.size(28.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.KeyboardArrowUp,
-                contentDescription = "Previous Command",
+                contentDescription = "Up Arrow",
                 tint = AccessoryKeyContent
             )
         }
 
-        // History Down
+        // Arrow Down
         IconButton(
-            onClick = onHistoryDown,
+            onClick = { onKeyPress("DOWN") },
             modifier = Modifier.size(28.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = "Next Command",
+                contentDescription = "Down Arrow",
                 tint = AccessoryKeyContent
             )
         }
 
-        // Quick keys
-        keys.forEach { key ->
+        // Arrow Right
+        IconButton(
+            onClick = { onKeyPress("RIGHT") },
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Right Arrow",
+                tint = AccessoryKeyContent
+            )
+        }
+
+        // Quick keys & tokens
+        quickTokens.forEach { token ->
             Button(
-                onClick = { onKeyPress(key) },
+                onClick = { onKeyPress(token) },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AccessoryKeyBg,
                     contentColor = AccessoryKeyContent
                 ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                 shape = RoundedCornerShape(4.dp),
                 modifier = Modifier.height(28.dp)
             ) {
                 Text(
-                    text = key,
+                    text = token,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TerminalInputBar(
-    input: String,
-    onInputChange: (String) -> Unit,
-    onExecute: () -> Unit,
-    isRunning: Boolean,
-    onCancel: () -> Unit
-) {
-    Surface(
-        color = Color(0xFF161B22),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "$ ",
-                color = TerminalPrompt,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
-
-            TextField(
-                value = input,
-                onValueChange = onInputChange,
-                placeholder = {
-                    Text(
-                        "Enter command...",
-                        color = Color(0xFF8B949E),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp
-                    )
-                },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onExecute() }),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace,
-                    color = TerminalStdout,
-                    fontSize = 13.sp
-                ),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = TerminalPrompt
-                )
-            )
-
-            if (isRunning) {
-                IconButton(
-                    onClick = onCancel,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Stop,
-                        contentDescription = "Stop command",
-                        tint = TerminalStderr
-                    )
-                }
-            } else {
-                IconButton(
-                    onClick = onExecute,
-                    enabled = input.isNotBlank(),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Run command",
-                        tint = if (input.isNotBlank()) TerminalPrompt else Color(0xFF484F58)
-                    )
-                }
             }
         }
     }

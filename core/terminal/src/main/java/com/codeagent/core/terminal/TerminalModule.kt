@@ -36,4 +36,12 @@ object TerminalModule {
     @Provides
     @Singleton
     fun provideTerminalExecutor(impl: PosixTerminalExecutor): TerminalExecutor = impl
+
+    @Provides
+    @Singleton
+    fun provideTermuxSessionManager(
+        @ApplicationContext context: Context,
+        nativeBinaryManager: NativeBinaryManager,
+        alpineBootstrapManager: AlpineBootstrapManager
+    ): TermuxSessionManager = TermuxSessionManager(context, nativeBinaryManager, alpineBootstrapManager)
 }
