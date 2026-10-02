@@ -290,7 +290,9 @@ private fun ActiveProviderBanner(
                         Text(
                             text = activeProvider.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = activeProvider.baseUrl,
@@ -324,7 +326,9 @@ private fun ActiveProviderBanner(
                             Text(
                                 text = if (activeProvider.hasApiKey) "Key configured" else "No key set",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                color = if (activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -512,7 +516,10 @@ private fun ProviderCard(
                     Text(
                         text = provider.name,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     if (isActive) {
                         Surface(
@@ -523,13 +530,15 @@ private fun ProviderCard(
                                 text = "ACTIVE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
                 }
 
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(4.dp))
 
                 // Model & Endpoint
                 Row(
@@ -538,7 +547,8 @@ private fun ProviderCard(
                 ) {
                     Surface(
                         shape = MaterialTheme.shapes.extraSmall,
-                        color = MaterialTheme.colorScheme.secondaryContainer
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
                         Text(
                             text = provider.model.ifBlank { "No model" },
@@ -546,20 +556,26 @@ private fun ProviderCard(
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false
                         )
                     }
 
                     Text(
                         text = if (provider.hasApiKey) "• Key set" else "• No key",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (provider.hasApiKey) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
+                        color = if (provider.hasApiKey) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
 
             // Actions
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.Default.Edit,
