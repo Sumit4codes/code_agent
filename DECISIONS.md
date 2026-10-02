@@ -60,3 +60,13 @@
 
 **Trade-off:** The execution environment operates within the Android app's sandbox user ID (UID) and available system/bundled CLI utilities.
 
+## D10: Relicense to GNU General Public License v3.0 (GPL-3.0)
+**Decision:** Relicense the CodeAgent project from Apache-2.0 to GNU General Public License v3.0 (GPL-3.0).
+
+**Rationale:**
+1. **Enables Termux Terminal Engine (`terminal-view` & `terminal-emulator`):** Termux's native terminal emulation ecosystem is licensed under GPL-3.0. Moving CodeAgent to GPL-3.0 allows direct integration of Termux's battle-tested Xterm/VT100 screen buffer, alternate screen handling (`\e[?1049h`), 24-bit truecolor, and JNI pseudo-terminal (PTY) lifecycle needed for full-screen CLI tools like `vim`, `nano`, `htop`, and interactive shells.
+2. **Harmonizes LGPL-2.1 Components:** Removes license friction with LGPL-2.1 components (such as `sora-editor`, previously noted in D2), enabling future upgrades to full mobile code editing and LSP integration.
+3. **Copyleft Protection:** Protects the open-source community by ensuring all forks, modifications, and distributed derivatives of CodeAgent remain free and open source.
+
+**Trade-off:** Strong copyleft enforcement prevents proprietary, closed-source commercial distribution of derivative versions.
+

@@ -159,4 +159,4 @@ You can install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK 
 
 ## License
 
-Apache-2.0
+This project is licensed under the [GNU General Public License v3.0](LICENSE) (GPL-3.0).
