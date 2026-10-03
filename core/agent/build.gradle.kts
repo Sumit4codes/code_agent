@@ -34,6 +34,7 @@ dependencies {
     implementation(project(":core:terminal"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     testImplementation(project(":core:testing"))

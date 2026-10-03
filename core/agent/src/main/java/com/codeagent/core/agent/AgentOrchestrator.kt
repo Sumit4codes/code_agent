@@ -65,6 +65,7 @@ class AgentOrchestrator @Inject constructor(
         temperature: Float = 0.7f,
         maxTokens: Int = 4096,
         systemPrompt: String? = null,
+        isGoalMode: Boolean = false,
         onEvent: ((AgentEvent) -> Unit)? = null,
         onDelta: ((String) -> Unit)? = null
     ): AgentRunResult = mutex.withLock {
@@ -73,10 +74,28 @@ class AgentOrchestrator @Inject constructor(
         val newMessages = mutableListOf<ChatMessage>()
         var totalTokens = 0
 
+        val effectiveSystemPrompt = buildString {
+            if (systemPrompt != null) {
+                append(systemPrompt)
+                append("\n\n")
+            }
+            if (isGoalMode) {
+                append("""
+                    AUTONOMOUS GOAL MODE ACTIVE:
+                    You are running autonomously to achieve the user's objective: "$userMessage".
+                    Guidelines:
+                    1. Formulate a plan and execute changes step-by-step.
+                    2. After modifying files, verify your changes using `execute_command` (e.g., run test suites, linters, or compiler commands).
+                    3. If any test or command fails, inspect the error output, diagnose the issue, and apply fixes until all verifications pass.
+                    4. Do not stop until the objective is fully satisfied and all verification tests pass.
+                """.trimIndent())
+            }
+        }.trim().takeIf { it.isNotBlank() }
+
         // Add system prompt if provided
         val messages = mutableListOf<ChatMessage>()
-        if (systemPrompt != null) {
-            messages.add(ChatMessage(role = ChatMessage.Role.SYSTEM, content = systemPrompt))
+        if (effectiveSystemPrompt != null) {
+            messages.add(ChatMessage(role = ChatMessage.Role.SYSTEM, content = effectiveSystemPrompt))
         }
         messages.addAll(history)
         messages.add(ChatMessage(role = ChatMessage.Role.USER, content = userMessage))
