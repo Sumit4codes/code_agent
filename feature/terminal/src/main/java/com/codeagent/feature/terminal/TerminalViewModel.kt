@@ -69,7 +69,19 @@ class TerminalViewModel @Inject constructor(
     )
 
     private val sessionHolders = mutableListOf<SessionHolder>()
-    private var sessionCounter = 1
+
+    private fun getNextSessionIndex(): Int {
+        val usedIndices = sessionHolders.mapNotNull { holder ->
+            val match = Regex("""^Session (\d+)$""").matchEntire(holder.title)
+            match?.groupValues?.get(1)?.toIntOrNull()
+        }.toSet()
+
+        var candidate = 1
+        while (candidate in usedIndices) {
+            candidate++
+        }
+        return candidate
+    }
 
     val terminalSession: TerminalSession?
         get() = sessionHolders.firstOrNull { it.id == _uiState.value.activeSessionId }?.session
@@ -199,7 +211,7 @@ class TerminalViewModel @Inject constructor(
 
     fun addNewSession(title: String? = null): TerminalSession? {
         val id = UUID.randomUUID().toString()
-        val sessionIndex = sessionCounter++
+        val sessionIndex = getNextSessionIndex()
         val sessionTitle = if (!title.isNullOrBlank()) title else "Session $sessionIndex"
 
         val client = CodeAgentTerminalSessionClient(

@@ -107,7 +107,7 @@ Run unit tests using `./test.sh` (with automatic test result summaries and HTML 
 
 ```bash
 # Using test helper script:
-./test.sh                             # Run all 129 unit tests
+./test.sh                             # Run all 131 unit tests
 ./test.sh -m core:agent               # Run tests for specific module
 ./test.sh -c ToolExecutorTest         # Run a specific test class
 ./test.sh --fail-fast --report        # Stop on first failure and show reports

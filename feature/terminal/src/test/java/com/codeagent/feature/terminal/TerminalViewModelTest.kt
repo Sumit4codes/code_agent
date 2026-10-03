@@ -350,6 +350,41 @@ class TerminalViewModelTest {
         assertEquals(1, state.sessions.size)
         assertNotEquals(s1Id, state.activeSessionId)
         assertEquals(state.sessions[0].id, state.activeSessionId)
+        assertEquals("Session 1", state.sessions[0].title)
+    }
+
+    @Test
+    fun `closing the last remaining session repeatedly always resets session number to 1`() = runTest(testDispatcher) {
+        assertEquals("Session 1", viewModel.uiState.value.sessions.first().title)
+
+        // Close it first time
+        val firstId = viewModel.uiState.value.sessions.first().id
+        viewModel.closeSession(firstId)
+        assertEquals("Session 1", viewModel.uiState.value.sessions.first().title)
+
+        // Close it a second time
+        val secondId = viewModel.uiState.value.sessions.first().id
+        viewModel.closeSession(secondId)
+        assertEquals("Session 1", viewModel.uiState.value.sessions.first().title)
+
+        // Close it a third time
+        val thirdId = viewModel.uiState.value.sessions.first().id
+        viewModel.closeSession(thirdId)
+        assertEquals("Session 1", viewModel.uiState.value.sessions.first().title)
+    }
+
+    @Test
+    fun `addNewSession reuses lowest available session number when gaps exist`() = runTest(testDispatcher) {
+        viewModel.addNewSession() // Session 2
+        viewModel.addNewSession() // Session 3
+        assertEquals(listOf("Session 1", "Session 2", "Session 3"), viewModel.uiState.value.sessions.map { it.title })
+
+        val s2Id = viewModel.uiState.value.sessions[1].id
+        viewModel.closeSession(s2Id)
+        assertEquals(listOf("Session 1", "Session 3"), viewModel.uiState.value.sessions.map { it.title })
+
+        viewModel.addNewSession()
+        assertEquals(listOf("Session 1", "Session 3", "Session 2"), viewModel.uiState.value.sessions.map { it.title })
     }
 
     @Test
