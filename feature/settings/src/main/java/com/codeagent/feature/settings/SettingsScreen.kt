@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,9 +26,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -50,6 +53,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val snackbarHostState = remember { SnackbarHostState() }
     var providerToDelete by remember { mutableStateOf<ProviderUiModel?>(null) }
     var preferencesExpanded by remember { mutableStateOf(false) }
+    var terminalPreferencesExpanded by remember { mutableStateOf(true) }
 
     LaunchedEffect(state.userMessage) {
         val msg = state.userMessage
@@ -121,7 +125,15 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onSystemPromptChange = { viewModel.updateGlobalSystemPrompt(it) }
             )
 
-            // 4. CROSS-DEVICE CLOUD SYNC CARD
+            // 4. TERMINAL DISPLAY & FONT SIZE PREFERENCES
+            TerminalPreferencesCard(
+                isExpanded = terminalPreferencesExpanded,
+                onToggleExpand = { terminalPreferencesExpanded = !terminalPreferencesExpanded },
+                fontSizeSp = state.terminalFontSizeSp,
+                onFontSizeChange = { viewModel.updateTerminalFontSize(it) }
+            )
+
+            // 5. CROSS-DEVICE CLOUD SYNC CARD
             CloudSyncCard(
                 syncAccount = state.syncAccount,
                 isSyncing = state.isSyncing,
@@ -762,6 +774,232 @@ private fun AgentPreferencesCard(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TerminalPreferencesCard(
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    fontSizeSp: Int,
+    onFontSizeChange: (Int) -> Unit
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header Row (Toggleable)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleExpand() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Terminal,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Terminal Display & Font",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                        Text(
+                            text = "Text scale, readability & terminal zoom ($fontSizeSp sp)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                IconButton(onClick = onToggleExpand) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand"
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Font Size Steppers + Slider
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Font Size",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                            )
+                            val label = when {
+                                fontSizeSp <= 11 -> "Compact"
+                                fontSizeSp == 14 -> "Default"
+                                fontSizeSp in 15..17 -> "Medium"
+                                fontSizeSp in 18..21 -> "Large"
+                                else -> "Extra Large"
+                            }
+                            Surface(
+                                shape = MaterialTheme.shapes.extraSmall,
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    text = "$fontSizeSp sp · $label",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilledTonalIconButton(
+                                onClick = { onFontSizeChange(fontSizeSp - 1) },
+                                enabled = fontSizeSp > 9,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "Decrease font size", modifier = Modifier.size(18.dp))
+                            }
+
+                            Slider(
+                                value = fontSizeSp.toFloat(),
+                                onValueChange = { onFontSizeChange(it.toInt()) },
+                                valueRange = 9f..28f,
+                                steps = 18,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            FilledTonalIconButton(
+                                onClick = { onFontSizeChange(fontSizeSp + 1) },
+                                enabled = fontSizeSp < 28,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Increase font size", modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        // Presets
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                11 to "Compact",
+                                14 to "Default",
+                                16 to "Medium",
+                                18 to "Large",
+                                22 to "Huge"
+                            ).forEach { (size, presetLabel) ->
+                                FilterChip(
+                                    selected = fontSizeSp == size,
+                                    onClick = { onFontSizeChange(size) },
+                                    label = { Text("$size sp ($presetLabel)", fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Live Interactive Preview Box
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Live Terminal Preview",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Surface(
+                            color = Color(0xFF0D1117),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "codeagent:~/workspace$ ",
+                                        color = Color(0xFF39D353),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = fontSizeSp.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "ls -la",
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = fontSizeSp.sp
+                                    )
+                                }
+                                Text(
+                                    text = "drwxr-xr-x 4 user user 4096 Oct 2 17:40 src/\n-rw-r--r-- 1 user user 1820 Oct 2 17:40 main.py",
+                                    color = Color(0xFFC9D1D9),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = fontSizeSp.sp
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "codeagent:~/workspace$ ",
+                                        color = Color(0xFF39D353),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = fontSizeSp.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "python3 main.py",
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = fontSizeSp.sp
+                                    )
+                                }
+                                Text(
+                                    text = "Ready to code! Terminal render OK.",
+                                    color = Color(0xFF58A6FF),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = fontSizeSp.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "Tip: Inside the terminal screen, you can also pinch-to-zoom with two fingers or tap the 'TT' text size icon in the top bar to adjust text on the fly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

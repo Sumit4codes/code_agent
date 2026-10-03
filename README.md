@@ -67,6 +67,7 @@ A clean-room, Android-native AI coding agent inspired by [OpenCode](https://gith
 - **Embedded PRoot Alpine Linux & Termux Terminal Engine** — Integrates Termux's `TerminalView` and VT100 terminal emulator for complete ANSI escape code, truecolor, and alternate screen handling (`vim`, `nano`, interactive TUIs). Runs inside an Alpine Linux rootfs via PRoot, giving users access to `apk` packages (`git`, `python3`, `gcc`, `make`, `vim`) while strictly respecting Android API 29+ `W^X` SELinux restrictions.
 - **Autonomous Unbounded Agent Loop with Safety-Bounded Reading** — Removed artificial tool iteration limits so the agent can autonomously complete multi-step refactoring, builds, and verification workflows. Reading files is protected by an 800-line slice limit, 45 KB byte limit, and 100 MB max file size to prevent LLM context blowups while providing explicit pagination instructions.
 - **Dual-Surface Developer Interface** — Headless streaming execution for AI agent tool calls + dedicated interactive visual terminal screen (`feature:terminal`) for developer control with programmer keys (`Esc`, `Tab`, `Ctrl-C`, `|`, `git`, `clear`, history up/down).
+- **Terminal Display Scaling & Adjustable Text Size** — Full control over terminal font size (9 sp to 28 sp) with live preview in Settings, dynamic density-aware rendering (`scaledDensity` SP-to-pixel mapping), two-finger pinch-to-zoom in the terminal canvas, and a quick `FormatSize` action dialog in the terminal top bar.
 - **Multi-Provider Architecture & Live Model Discovery** — Store and switch between multiple AI providers independently with encrypted API keys and dynamic `/models` querying.
 - **Full Device File Access (`MANAGE_EXTERNAL_STORAGE`)** — Direct `java.io.File` access without Storage Access Framework bottlenecks, enabling seamless path handling for AI agents, Git CLI, and terminal execution.
 - **Pending Changes Safety Model** — Edits are never applied automatically; every change must be explicitly reviewed and approved by the user.
@@ -138,6 +139,7 @@ Install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK locally 
 3. Enter your API key (stored encrypted at rest).
 4. Tap **Fetch Models** to automatically discover available models.
 5. *(Optional)* Set up **Cloud Sync** using 1-tap GitHub browser sign-in and an encryption passphrase to sync your configurations across devices.
+6. Customize **Terminal Display & Font Size** (9 sp to 28 sp) using the interactive slider, steppers, and preset chips with live terminal preview.
 
 ## Tech Stack
 

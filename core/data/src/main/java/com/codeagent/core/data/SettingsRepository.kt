@@ -3,6 +3,7 @@ package com.codeagent.core.data
 import com.codeagent.core.model.ProviderConfig
 import com.codeagent.core.model.ProviderType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -10,8 +11,29 @@ import javax.inject.Singleton
 @Singleton
 class SettingsRepository @Inject constructor(
     private val providerConfigDao: ProviderConfigDao,
-    private val apiKeyStorage: ApiKeyStorage
+    private val apiKeyStorage: ApiKeyStorage,
+    private val terminalPreferencesRepository: TerminalPreferencesRepository? = null
 ) {
+    private val inMemoryFontSize = MutableStateFlow(TerminalPreferencesRepository.DEFAULT_FONT_SIZE_SP)
+
+    fun getTerminalFontSizeFlow(): Flow<Int> =
+        terminalPreferencesRepository?.fontSizeSpFlow ?: inMemoryFontSize
+
+    fun getTerminalFontSize(): Int =
+        terminalPreferencesRepository?.getFontSizeSp() ?: inMemoryFontSize.value
+
+    suspend fun saveTerminalFontSize(sizeSp: Int) {
+        val clamped = sizeSp.coerceIn(
+            TerminalPreferencesRepository.MIN_FONT_SIZE_SP,
+            TerminalPreferencesRepository.MAX_FONT_SIZE_SP
+        )
+        if (terminalPreferencesRepository != null) {
+            terminalPreferencesRepository.setFontSizeSp(clamped)
+        } else {
+            inMemoryFontSize.value = clamped
+        }
+    }
+
     suspend fun getActiveProvider(): ProviderConfig? {
         return providerConfigDao.getDefault()?.toModel()
     }

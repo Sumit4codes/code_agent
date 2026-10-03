@@ -13,10 +13,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,6 +56,7 @@ fun TerminalScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var terminalViewInstance by remember { mutableStateOf<TerminalView?>(null) }
+    var showFontSizeDialog by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val isKeyboardOpen = WindowInsets.isImeVisible
 
@@ -138,6 +142,14 @@ fun TerminalScreen(
                     }
                 },
                 actions = {
+                    // Text size adjuster
+                    IconButton(onClick = { showFontSizeDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.FormatSize,
+                            contentDescription = "Adjust Font Size"
+                        )
+                    }
+
                     // Soft keyboard toggle
                     IconButton(
                         onClick = {
@@ -232,7 +244,10 @@ fun TerminalScreen(
                     TerminalView(ctx, null).apply {
                         isFocusable = true
                         isFocusableInTouchMode = true
-                        setTextSize(14)
+                        val density = ctx.resources.displayMetrics.scaledDensity
+                        val initialPx = (uiState.fontSizeSp * density).toInt().coerceAtLeast(16)
+                        setTextSize(initialPx)
+                        tag = initialPx
                         setTypeface(Typeface.MONOSPACE)
                         setBackgroundColor(android.graphics.Color.parseColor("#0D1117"))
                         viewModel.registerTerminalView(this)
@@ -264,6 +279,14 @@ fun TerminalScreen(
                 },
                 update = { view ->
                     try {
+                        val density = view.context.resources.displayMetrics.scaledDensity
+                        val targetPx = (uiState.fontSizeSp * density).toInt().coerceAtLeast(16)
+                        val currentPx = (view.tag as? Int) ?: -1
+                        if (currentPx != targetPx) {
+                            view.setTextSize(targetPx)
+                            view.tag = targetPx
+                        }
+
                         val session = viewModel.terminalSession
                         if (session != null) {
                             if (view.currentSession != session) {
@@ -293,6 +316,156 @@ fun TerminalScreen(
             )
         }
     }
+
+    if (showFontSizeDialog) {
+        TerminalFontSizeDialog(
+            currentFontSizeSp = uiState.fontSizeSp,
+            onFontSizeChange = { viewModel.setFontSize(it) },
+            onDismiss = { showFontSizeDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun TerminalFontSizeDialog(
+    currentFontSizeSp: Int,
+    onFontSizeChange: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FormatSize,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Terminal Text Size",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Current Size",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = "$currentFontSizeSp sp",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                // Steppers + Slider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { onFontSizeChange(currentFontSizeSp - 1) },
+                        enabled = currentFontSizeSp > 9,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease", modifier = Modifier.size(18.dp))
+                    }
+
+                    Slider(
+                        value = currentFontSizeSp.toFloat(),
+                        onValueChange = { onFontSizeChange(it.toInt()) },
+                        valueRange = 9f..28f,
+                        steps = 18,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    FilledTonalIconButton(
+                        onClick = { onFontSizeChange(currentFontSizeSp + 1) },
+                        enabled = currentFontSizeSp < 28,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase", modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                // Quick Presets
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        11 to "Compact",
+                        14 to "Default",
+                        16 to "Medium",
+                        18 to "Large",
+                        22 to "Huge"
+                    ).forEach { (size, label) ->
+                        FilterChip(
+                            selected = currentFontSizeSp == size,
+                            onClick = { onFontSizeChange(size) },
+                            label = { Text("$size sp ($label)", fontSize = 11.sp) }
+                        )
+                    }
+                }
+
+                // Live Preview box
+                Surface(
+                    color = Color(0xFF0D1117),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "$ ls -la",
+                            color = Color(0xFF39D353),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = currentFontSizeSp.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "total 24\n-rw-r--r-- 1 user 1024 main.py",
+                            color = Color(0xFFC9D1D9),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = currentFontSizeSp.sp
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Tip: You can also pinch-to-zoom with two fingers directly on the terminal screen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
 }
 
 @Composable

@@ -100,4 +100,15 @@
 
 **Trade-off:** The agent must make multiple paginated calls with `start_line` and `end_line` when inspecting very large files.
 
+## D14: Terminal Display Scaling & User-Configurable Text Size (SP-to-Pixel Density Mapping, Real-Time Preview, and Gesture Zoom)
+**Decision:** Store terminal font size preferences in `TerminalPreferencesRepository` (defaulting to 14 sp, clamped between 9 sp and 28 sp), translate SP values dynamically to Android device display density (`(fontSizeSp * scaledDensity).roundToInt()`), provide a dedicated settings panel with live terminal preview in `SettingsScreen`, and enable two-finger pinch-to-zoom and an in-terminal font size dialog in `TerminalScreen`.
+
+**Rationale:**
+1. **Raw Pixel Fix:** The underlying Termux `TerminalView.setTextSize(int)` expects raw pixels (`px`), rather than scale-independent points (`sp`). Passing unscaled integer literals (e.g. `14`) resulted in microscopic font rendering (~5 sp on modern 440 dpi screens). Multiplying the configured `fontSizeSp` by `displayMetrics.scaledDensity` ensures standard, crisp readability across all display densities.
+2. **Settings Screen Discovery:** Developers need a dedicated setting to customize terminal text scaling according to their visual preference. `TerminalPreferencesCard` provides an interactive slider, step increment buttons, quick preset chips (`Compact (11 sp)`, `Default (14 sp)`, `Medium (16 sp)`, `Large (18 sp)`, `Huge (22 sp)`), and a real-time dark terminal preview box showing immediate text changes.
+3. **In-Session Flexibility:** In addition to the Settings screen, developers can dynamically scale the terminal canvas during active coding sessions via two-finger pinch-to-zoom gestures (detected by `CodeAgentTerminalViewClient.onScale`) or via the top-bar `FormatSize` action dialog.
+4. **Clean Decoupling:** `TerminalPreferencesRepository` encapsulates persistence via Android `SharedPreferences`, exposing both reactive `Flow<Int>` and synchronous getters, with graceful in-memory fallbacks during unit testing.
+
+**Trade-off:** Very large font sizes (>24 sp) reduce the number of columns and lines visible on compact smartphone screens in portrait orientation.
+
 

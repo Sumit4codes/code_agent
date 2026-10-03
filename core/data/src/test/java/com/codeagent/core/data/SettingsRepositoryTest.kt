@@ -167,4 +167,41 @@ class SettingsRepositoryTest {
         assertEquals(1, repository.getAllProviders().size)
         assertEquals("openai", repository.getActiveProvider()?.id)
     }
+
+    @Test
+    fun `terminal font size defaults to 14 and can be updated with clamping`() = runTest {
+        val fakeTerminalPrefs = FakeTerminalPreferencesRepository()
+        val repoWithPrefs = SettingsRepository(dao, keyStorage, fakeTerminalPrefs)
+
+        assertEquals(14, repoWithPrefs.getTerminalFontSize())
+        assertEquals(14, repoWithPrefs.getTerminalFontSizeFlow().first())
+
+        repoWithPrefs.saveTerminalFontSize(18)
+        assertEquals(18, repoWithPrefs.getTerminalFontSize())
+        assertEquals(18, repoWithPrefs.getTerminalFontSizeFlow().first())
+
+        // Clamp minimum
+        repoWithPrefs.saveTerminalFontSize(5)
+        assertEquals(TerminalPreferencesRepository.MIN_FONT_SIZE_SP, repoWithPrefs.getTerminalFontSize())
+
+        // Clamp maximum
+        repoWithPrefs.saveTerminalFontSize(50)
+        assertEquals(TerminalPreferencesRepository.MAX_FONT_SIZE_SP, repoWithPrefs.getTerminalFontSize())
+    }
 }
+
+class FakeTerminalPreferencesRepository : TerminalPreferencesRepository {
+    private val _flow = MutableStateFlow(TerminalPreferencesRepository.DEFAULT_FONT_SIZE_SP)
+    override val fontSizeSpFlow: Flow<Int> = _flow
+
+    override fun getFontSizeSp(): Int = _flow.value
+
+    override suspend fun setFontSizeSp(sizeSp: Int) {
+        val clamped = sizeSp.coerceIn(
+            TerminalPreferencesRepository.MIN_FONT_SIZE_SP,
+            TerminalPreferencesRepository.MAX_FONT_SIZE_SP
+        )
+        _flow.value = clamped
+    }
+}
+

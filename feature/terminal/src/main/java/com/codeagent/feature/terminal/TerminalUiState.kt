@@ -35,5 +35,6 @@ data class TerminalUiState(
     val isAlpineReady: Boolean = false,
     val isBootstrapping: Boolean = false,
     val bootstrapProgress: Float = -1f,
-    val bootstrapMessage: String = ""
+    val bootstrapMessage: String = "",
+    val fontSizeSp: Int = 14
 )

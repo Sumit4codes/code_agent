@@ -76,14 +76,24 @@ class CodeAgentTerminalSessionClient(
 }
 
 class CodeAgentTerminalViewClient(
+    private val onScaleChange: ((Boolean) -> Unit)? = null,
     private val terminalViewProvider: () -> TerminalView?
 ) : TerminalViewClient {
+
+    constructor(terminalViewProvider: () -> TerminalView?) : this(null, terminalViewProvider)
 
     var isControlKeyPressed: Boolean = false
     var isAltKeyPressed: Boolean = false
     var enforceCharBasedInput: Boolean = false
 
-    override fun onScale(scale: Float): Float = scale
+    override fun onScale(scale: Float): Float {
+        if (scale < 0.9f || scale > 1.1f) {
+            val increase = scale > 1.0f
+            onScaleChange?.invoke(increase)
+            return 1.0f
+        }
+        return scale
+    }
 
     override fun onSingleTapUp(e: MotionEvent) {
         val view = terminalViewProvider() ?: return

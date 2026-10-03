@@ -259,4 +259,46 @@ class TerminalViewModelTest {
         assertNotNull(errEntry)
         assertTrue(errEntry!!.text.contains("Android SELinux blocks directory enumeration"))
     }
+
+    @Test
+    fun `terminal font size can be increased, decreased, and clamped`() = runTest(testDispatcher) {
+        assertEquals(14, viewModel.uiState.value.fontSizeSp)
+
+        viewModel.increaseFontSize()
+        assertEquals(15, viewModel.uiState.value.fontSizeSp)
+
+        viewModel.decreaseFontSize()
+        assertEquals(14, viewModel.uiState.value.fontSizeSp)
+
+        viewModel.setFontSize(22)
+        assertEquals(22, viewModel.uiState.value.fontSizeSp)
+
+        // Clamping min & max
+        viewModel.setFontSize(5)
+        assertEquals(9, viewModel.uiState.value.fontSizeSp)
+
+        viewModel.setFontSize(50)
+        assertEquals(28, viewModel.uiState.value.fontSizeSp)
+    }
+
+    @Test
+    fun `viewClient pinch zoom scales font size`() = runTest(testDispatcher) {
+        assertEquals(14, viewModel.uiState.value.fontSizeSp)
+
+        // Pinch zoom in (scale > 1.1)
+        val resetScale1 = viewModel.viewClient.onScale(1.2f)
+        assertEquals(1.0f, resetScale1, 0.001f)
+        assertEquals(15, viewModel.uiState.value.fontSizeSp)
+
+        // Pinch zoom out (scale < 0.9)
+        val resetScale2 = viewModel.viewClient.onScale(0.8f)
+        assertEquals(1.0f, resetScale2, 0.001f)
+        assertEquals(14, viewModel.uiState.value.fontSizeSp)
+
+        // Normal small movement does not trigger scale threshold
+        val normalScale = viewModel.viewClient.onScale(1.02f)
+        assertEquals(1.02f, normalScale, 0.001f)
+        assertEquals(14, viewModel.uiState.value.fontSizeSp)
+    }
 }
+

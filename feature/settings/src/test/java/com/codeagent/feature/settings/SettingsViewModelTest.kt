@@ -377,6 +377,20 @@ class SettingsViewModelTest {
         assertTrue(viewModel.state.value.deviceAuthState.error?.contains("Authorization pending on GitHub") == true)
         assertTrue(viewModel.state.value.deviceAuthState.isPolling)
     }
+
+    @Test
+    fun `terminal font size defaults to 14 and updates when changed`() = runTest {
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher)
+        advanceUntilIdle()
+
+        assertEquals(14, viewModel.state.value.terminalFontSizeSp)
+
+        viewModel.updateTerminalFontSize(18)
+        advanceUntilIdle()
+
+        assertEquals(18, viewModel.state.value.terminalFontSizeSp)
+        assertEquals(18, repository.getTerminalFontSize())
+    }
 }
 
 private class FakeCloudSyncManager : com.codeagent.core.data.sync.CloudSyncManager {

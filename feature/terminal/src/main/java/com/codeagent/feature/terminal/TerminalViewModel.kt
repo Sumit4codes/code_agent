@@ -22,6 +22,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.codeagent.core.data.TerminalPreferencesRepository
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -36,6 +37,7 @@ class TerminalViewModel @Inject constructor(
     private val nativeBinaryManager: NativeBinaryManager,
     val alpineBootstrapManager: AlpineBootstrapManager? = null,
     val termuxSessionManager: TermuxSessionManager? = null,
+    val terminalPreferencesRepository: TerminalPreferencesRepository? = null,
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
 ) : ViewModel() {
 
@@ -45,9 +47,14 @@ class TerminalViewModel @Inject constructor(
         terminalExecutor: TerminalExecutor,
         nativeBinaryManager: NativeBinaryManager,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
-    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null, null, ioDispatcher)
+    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null, null, null, ioDispatcher)
 
-    private val _uiState = MutableStateFlow(TerminalUiState())
+    private val _uiState = MutableStateFlow(
+        TerminalUiState(
+            fontSizeSp = terminalPreferencesRepository?.getFontSizeSp()
+                ?: TerminalPreferencesRepository.DEFAULT_FONT_SIZE_SP
+        )
+    )
     val uiState: StateFlow<TerminalUiState> = _uiState.asStateFlow()
 
     private var activeJob: Job? = null
@@ -67,10 +74,46 @@ class TerminalViewModel @Inject constructor(
     )
 
     private var terminalViewRef: WeakReference<TerminalView>? = null
-    val viewClient = CodeAgentTerminalViewClient { terminalViewRef?.get() }
+    val viewClient = CodeAgentTerminalViewClient(
+        onScaleChange = { increase ->
+            if (increase) increaseFontSize() else decreaseFontSize()
+        },
+        terminalViewProvider = { terminalViewRef?.get() }
+    )
 
     init {
+        observeTerminalPreferences()
         initializeTerminal()
+    }
+
+    private fun observeTerminalPreferences() {
+        val repo = terminalPreferencesRepository ?: return
+        viewModelScope.launch {
+            repo.fontSizeSpFlow.collect { sizeSp ->
+                _uiState.update { it.copy(fontSizeSp = sizeSp) }
+            }
+        }
+    }
+
+    fun setFontSize(sizeSp: Int) {
+        val clamped = sizeSp.coerceIn(
+            TerminalPreferencesRepository.MIN_FONT_SIZE_SP,
+            TerminalPreferencesRepository.MAX_FONT_SIZE_SP
+        )
+        _uiState.update { it.copy(fontSizeSp = clamped) }
+        viewModelScope.launch {
+            terminalPreferencesRepository?.setFontSizeSp(clamped)
+        }
+    }
+
+    fun increaseFontSize() {
+        val current = _uiState.value.fontSizeSp
+        setFontSize(current + 1)
+    }
+
+    fun decreaseFontSize() {
+        val current = _uiState.value.fontSizeSp
+        setFontSize(current - 1)
     }
 
     fun initializeTerminal() {

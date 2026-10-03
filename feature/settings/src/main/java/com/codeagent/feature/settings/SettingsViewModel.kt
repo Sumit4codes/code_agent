@@ -86,7 +86,8 @@ data class SettingsUiState(
     val pendingSyncAction: SyncAction? = null,
     val isBackupDialogOpen: Boolean = false,
     val backupExportText: String? = null,
-    val deviceAuthState: GitHubDeviceAuthState = GitHubDeviceAuthState()
+    val deviceAuthState: GitHubDeviceAuthState = GitHubDeviceAuthState(),
+    val terminalFontSizeSp: Int = 14
 )
 
 @HiltViewModel
@@ -117,12 +118,32 @@ class SettingsViewModel @Inject constructor(
         this.ioDispatcher = ioDispatcher
     }
 
-    private val _state = MutableStateFlow(SettingsUiState())
+    private val _state = MutableStateFlow(
+        SettingsUiState(
+            terminalFontSizeSp = settingsRepository.getTerminalFontSize()
+        )
+    )
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
 
     init {
         observeProviders()
         observeSyncAccount()
+        observeTerminalFontSize()
+    }
+
+    private fun observeTerminalFontSize() {
+        viewModelScope.launch {
+            settingsRepository.getTerminalFontSizeFlow().collect { sizeSp ->
+                _state.value = _state.value.copy(terminalFontSizeSp = sizeSp)
+            }
+        }
+    }
+
+    fun updateTerminalFontSize(newSizeSp: Int) {
+        _state.value = _state.value.copy(terminalFontSizeSp = newSizeSp)
+        viewModelScope.launch {
+            settingsRepository.saveTerminalFontSize(newSizeSp)
+        }
     }
 
     private fun observeSyncAccount() {

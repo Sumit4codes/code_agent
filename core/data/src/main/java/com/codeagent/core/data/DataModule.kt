@@ -104,4 +104,8 @@ object DataModule {
     @Provides
     @Singleton
     fun provideCloudSyncManager(impl: com.codeagent.core.data.sync.DefaultCloudSyncManager): com.codeagent.core.data.sync.CloudSyncManager = impl
+
+    @Provides
+    @Singleton
+    fun provideTerminalPreferencesRepository(impl: DefaultTerminalPreferencesRepository): TerminalPreferencesRepository = impl
 }
