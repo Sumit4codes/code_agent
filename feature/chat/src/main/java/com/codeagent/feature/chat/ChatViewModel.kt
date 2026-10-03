@@ -4,7 +4,9 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codeagent.core.agent.AgentContext
 import com.codeagent.core.agent.AgentEvent
+import com.codeagent.core.agent.AgentOrchestrator
 import com.codeagent.core.agent.PendingChangeManager
 import com.codeagent.core.agent.ToolExecutor
 import com.codeagent.core.agent.service.AgentWorkManager
@@ -63,6 +65,7 @@ data class ChatState(
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
+    private val agentOrchestrator: AgentOrchestrator,
     private val agentWorkManager: AgentWorkManager,
     private val toolExecutor: ToolExecutor,
     private val pendingChangeManager: PendingChangeManager,
@@ -77,6 +80,8 @@ class ChatViewModel @Inject constructor(
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
 
+    private var chatHistory: List<ChatMessage> = emptyList()
+    private var agentJob: Job? = null
     private var sessionsJob: Job? = null
 
     init {
@@ -88,6 +93,26 @@ class ChatViewModel @Inject constructor(
             }
         }
 
+        // Ensure an initial session exists so messages are never dropped
+        val initialSessionId = UUID.randomUUID().toString()
+        _state.value = _state.value.copy(sessionId = initialSessionId, sessionTitle = "New Chat")
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                sessionDao.upsert(
+                    SessionEntity(
+                        id = initialSessionId,
+                        projectId = "",
+                        title = "New Chat",
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            } catch (e: Exception) {
+                Log.w("ChatViewModel", "Could not initialize default session", e)
+            }
+        }
+
+        // Observe background service tasks (Goal mode or background runs)
         viewModelScope.launch {
             agentWorkManager.activeTaskState.collect { taskState ->
                 if (taskState == null) return@collect
@@ -105,7 +130,7 @@ class ChatViewModel @Inject constructor(
 
                         current.copy(
                             isStreaming = isNowRunning,
-                            isGoalMode = if (isNowRunning) taskState.isGoalMode else false,
+                            isGoalMode = isNowRunning && taskState.isGoalMode,
                             activeStepCount = taskState.stepCount,
                             streamingText = if (isNowRunning) taskState.streamingDelta else "",
                             activeTool = if (!isNowRunning) null else current.activeTool,
@@ -115,16 +140,19 @@ class ChatViewModel @Inject constructor(
                     }
 
                     if (!isNowRunning && taskState.completedSuccessfully == true) {
-                        sessionDao.updateTitle(
-                            id = currentSessionId,
-                            title = _state.value.sessionTitle.ifBlank { "Chat with ${_state.value.projectName}" },
-                            updatedAt = System.currentTimeMillis()
-                        )
+                        try {
+                            sessionDao.updateTitle(
+                                id = currentSessionId,
+                                title = _state.value.sessionTitle.ifBlank { "Chat with ${_state.value.projectName}" },
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        } catch (_: Exception) {}
                     }
                 }
             }
         }
 
+        // Observe live events from background work manager
         viewModelScope.launch {
             agentWorkManager.liveEvents.collect { event ->
                 val currentSessionId = _state.value.sessionId ?: return@collect
@@ -133,7 +161,7 @@ class ChatViewModel @Inject constructor(
 
                 when (event) {
                     is AgentEvent.TextDelta -> {
-                        // Streaming text is kept updated via activeTaskState streamingDelta
+                        _state.update { it.copy(streamingText = it.streamingText + event.text) }
                     }
                     is AgentEvent.ToolCallStart -> {
                         _state.update {
@@ -253,7 +281,7 @@ class ChatViewModel @Inject constructor(
             }
         }
 
-        // Try to restore last session for this project, or create new
+        // Restore last session for this project, or create new
         viewModelScope.launch {
             val existing = sessionDao.getByProject(projectId)
             val lastSession = existing.first().firstOrNull()
@@ -288,15 +316,20 @@ class ChatViewModel @Inject constructor(
             isGoalMode = false,
             activeStepCount = 0
         )
-        sessionDao.upsert(
-            SessionEntity(
-                id = sessionId,
-                projectId = projectId,
-                title = title,
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
+        chatHistory = emptyList()
+        try {
+            sessionDao.upsert(
+                SessionEntity(
+                    id = sessionId,
+                    projectId = projectId,
+                    title = title,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
             )
-        )
+        } catch (e: Exception) {
+            Log.w("ChatViewModel", "Could not upsert new session", e)
+        }
     }
 
     private suspend fun restoreSession(sessionId: String, treeUri: Uri, name: String, projectId: String) {
@@ -341,6 +374,23 @@ class ChatViewModel @Inject constructor(
             } else msg
         }
 
+        // Rebuild in-memory chat history from persisted messages
+        chatHistory = linkedMessages.map { msg ->
+            ChatMessage(
+                role = when (msg.role) {
+                    MessageRole.SYSTEM -> ChatMessage.Role.SYSTEM
+                    MessageRole.USER -> ChatMessage.Role.USER
+                    MessageRole.ASSISTANT -> ChatMessage.Role.ASSISTANT
+                    MessageRole.TOOL -> ChatMessage.Role.TOOL
+                },
+                content = msg.content,
+                toolCalls = msg.toolCalls.map { tc ->
+                    com.codeagent.core.ai.ToolCall(id = tc.id, name = tc.name, arguments = tc.arguments)
+                },
+                toolCallId = msg.toolCallId
+            )
+        }
+
         // Load pending changes
         val pendingEntities = pendingChangeDao.getPendingBySessionList(sessionId)
         val restoredPending = pendingEntities.map { entity ->
@@ -373,33 +423,28 @@ class ChatViewModel @Inject constructor(
         if (text.isBlank() || _state.value.isStreaming) return
 
         val isGoal = text.trimStart().startsWith("/goal")
+        val displayPrompt = if (isGoal) text.trimStart().removePrefix("/goal").trim().ifBlank { text } else text
+
+        // Ensure session exists
+        val currentSessionId = _state.value.sessionId ?: UUID.randomUUID().toString()
+        val isFirstMessage = _state.value.messages.isEmpty()
+        val currentTitle = _state.value.sessionTitle
+        val generatedTitle = displayPrompt.lines().firstOrNull()?.take(40)?.trimEnd() ?: "New Chat"
+        val shouldAutoTitle = isFirstMessage && (currentTitle.isBlank() || currentTitle == "New Chat" || currentTitle.startsWith("Chat with "))
+        val activeTitle = if (shouldAutoTitle) generatedTitle else currentTitle.ifBlank { "New Chat" }
 
         val userMsg = Message(
             id = UUID.randomUUID().toString(),
-            sessionId = _state.value.sessionId ?: "local",
+            sessionId = currentSessionId,
             role = MessageRole.USER,
             content = text,
             timestamp = System.currentTimeMillis()
         )
 
-        val isFirstMessage = _state.value.messages.isEmpty()
-        val currentTitle = _state.value.sessionTitle
-        val displayPrompt = if (isGoal) text.trimStart().removePrefix("/goal").trim().ifBlank { text } else text
-        val generatedTitle = displayPrompt.lines().firstOrNull()?.take(40)?.trimEnd() ?: "New Chat"
-        val shouldAutoTitle = isFirstMessage && (currentTitle.isBlank() || currentTitle == "New Chat" || currentTitle.startsWith("Chat with "))
-        val activeTitle = if (shouldAutoTitle) generatedTitle else currentTitle.ifBlank { "New Chat" }
-
-        if (shouldAutoTitle) {
-            _state.update { it.copy(sessionTitle = activeTitle) }
-            _state.value.sessionId?.let { sid ->
-                viewModelScope.launch(Dispatchers.IO) {
-                    sessionDao.updateTitle(sid, activeTitle)
-                }
-            }
-        }
-
         _state.update {
             it.copy(
+                sessionId = currentSessionId,
+                sessionTitle = activeTitle,
                 messages = it.messages + userMsg,
                 isStreaming = true,
                 isGoalMode = isGoal,
@@ -409,44 +454,270 @@ class ChatViewModel @Inject constructor(
             )
         }
 
-        val sessionId = _state.value.sessionId ?: "local"
+        // Upsert session record in Room
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (sessionDao.getById(currentSessionId) == null) {
+                    sessionDao.upsert(
+                        SessionEntity(
+                            id = currentSessionId,
+                            projectId = _state.value.projectId,
+                            title = activeTitle,
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                } else if (shouldAutoTitle) {
+                    sessionDao.updateTitle(currentSessionId, activeTitle)
+                }
+            } catch (e: Exception) {
+                Log.w("ChatViewModel", "Could not upsert session record", e)
+            }
+        }
+
         val projectId = _state.value.projectId
         val projectName = _state.value.projectName
         val projectUri = _state.value.projectUri
 
-        viewModelScope.launch(Dispatchers.IO) {
-            val activeConfig = settingsRepository.getActiveProvider()
-            val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
-            val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
+        if (isGoal) {
+            // Milestone 14: Background Headless Goal Mode Execution
+            viewModelScope.launch(Dispatchers.IO) {
+                val activeConfig = settingsRepository.getActiveProvider()
+                val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
+                val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
+                val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
 
-            val effectiveSystemPrompt = buildString {
-                append("You are an expert coding assistant working within the project '$projectName'.\n")
-                append("Use the available tools to inspect, execute commands, and modify files.\n\n")
-                append("FILE EDITING RULES:\n")
-                append("1. Always use `read_file` to read the file before editing it.\n")
-                append("2. When calling `propose_file_edit`:\n")
-                append("   - For partial/targeted edits, specify `old_content` with the exact code snippet to replace, and `content` with the replacement code. This preserves all surrounding code.\n")
-                append("   - If `old_content` is omitted, `content` MUST be the 100% complete new file content including all unchanged lines. NEVER truncate unchanged code or use placeholders like '// ... existing code ...'.\n")
-                append("3. Always preserve existing code structure and indentation.\n")
-                if (custom != null) {
-                    append("\nUser Instructions:\n$custom\n")
+                agentWorkManager.startTask(
+                    sessionId = currentSessionId,
+                    projectId = projectId,
+                    projectName = projectName,
+                    projectUri = projectUri,
+                    prompt = text,
+                    model = currentModel,
+                    isGoalMode = true,
+                    systemPrompt = effectiveSystemPrompt
+                )
+            }
+        } else {
+            // Interactive conversational execution directly in ViewModel for smooth real-time streaming
+            persistMessage(userMsg)
+            chatHistory = chatHistory + ChatMessage(ChatMessage.Role.USER, text)
+
+            agentJob = viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val activeConfig = settingsRepository.getActiveProvider()
+                    val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
+                    val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
+                    val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
+
+                    val streamBuffer = StringBuilder()
+                    var lastDeltaTime = 0L
+                    val toolOutputBuffer = StringBuilder()
+                    var lastToolChunkTime = 0L
+                    val maxToolOutputPreview = 24_000
+
+                    fun flushStreamBuffer() {
+                        if (streamBuffer.isNotEmpty()) {
+                            val flushed = streamBuffer.toString()
+                            _state.update { it.copy(streamingText = flushed) }
+                        }
+                    }
+
+                    val result = agentOrchestrator.run(
+                        userMessage = text,
+                        context = AgentContext(
+                            sessionId = currentSessionId,
+                            projectId = projectId,
+                            history = chatHistory.dropLast(1)
+                        ),
+                        model = currentModel,
+                        systemPrompt = effectiveSystemPrompt,
+                        isGoalMode = false,
+                        onEvent = { event ->
+                            when (event) {
+                                is AgentEvent.TextDelta -> {
+                                    streamBuffer.append(event.text)
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastDeltaTime >= 50L) {
+                                        lastDeltaTime = now
+                                        val textSnapshot = streamBuffer.toString()
+                                        _state.update { it.copy(streamingText = textSnapshot) }
+                                    }
+                                }
+                                is AgentEvent.ToolCallStart -> {
+                                    flushStreamBuffer()
+                                    streamBuffer.clear()
+                                    toolOutputBuffer.clear()
+                                    _state.update {
+                                        it.copy(
+                                            activeTool = ActiveToolExecution(
+                                                id = event.toolCallId,
+                                                name = event.toolName,
+                                                arguments = event.arguments,
+                                                status = ToolExecutionStatus.RUNNING,
+                                                output = "",
+                                                startTime = System.currentTimeMillis()
+                                            ),
+                                            streamingText = ""
+                                        )
+                                    }
+                                }
+                                is AgentEvent.ToolCallOutputChunk -> {
+                                    toolOutputBuffer.append(event.chunk).append('\n')
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastToolChunkTime >= 60L) {
+                                        lastToolChunkTime = now
+                                        val currentStr = if (toolOutputBuffer.length > maxToolOutputPreview) {
+                                            toolOutputBuffer.substring(toolOutputBuffer.length - maxToolOutputPreview)
+                                        } else {
+                                            toolOutputBuffer.toString()
+                                        }
+                                        _state.update { state ->
+                                            val current = state.activeTool
+                                            if (current != null && current.id == event.toolCallId) {
+                                                state.copy(activeTool = current.copy(output = currentStr))
+                                            } else state
+                                        }
+                                    }
+                                }
+                                is AgentEvent.ToolCallComplete -> {
+                                    toolOutputBuffer.clear()
+                                    _state.update { state ->
+                                        val current = state.activeTool
+                                        if (current != null && current.id == event.toolCallId) {
+                                            state.copy(
+                                                activeTool = current.copy(
+                                                    status = if (event.success) ToolExecutionStatus.SUCCESS else ToolExecutionStatus.ERROR,
+                                                    output = event.output,
+                                                    durationMs = event.durationMs
+                                                )
+                                            )
+                                        } else state
+                                    }
+                                }
+                                is AgentEvent.MessageAdded -> {
+                                    streamBuffer.clear()
+                                    toolOutputBuffer.clear()
+                                    val msg = event.message
+                                    val uiMsg = Message(
+                                        id = UUID.randomUUID().toString(),
+                                        sessionId = currentSessionId,
+                                        role = when (msg.role) {
+                                            ChatMessage.Role.ASSISTANT -> MessageRole.ASSISTANT
+                                            ChatMessage.Role.TOOL -> MessageRole.TOOL
+                                            ChatMessage.Role.USER -> MessageRole.USER
+                                            ChatMessage.Role.SYSTEM -> MessageRole.SYSTEM
+                                        },
+                                        content = msg.content,
+                                        toolCalls = msg.toolCalls.map { tc ->
+                                            ToolCallData(
+                                                id = tc.id,
+                                                name = tc.name,
+                                                arguments = tc.arguments,
+                                                result = if (msg.role == ChatMessage.Role.ASSISTANT) null else msg.content
+                                            )
+                                        },
+                                        toolCallId = msg.toolCallId,
+                                        timestamp = System.currentTimeMillis()
+                                    )
+
+                                    _state.update { state ->
+                                        val updatedMessages = if (uiMsg.role == MessageRole.TOOL && uiMsg.toolCallId != null) {
+                                            state.messages.map { existing ->
+                                                if (existing.role == MessageRole.ASSISTANT && existing.toolCalls.any { it.id == uiMsg.toolCallId }) {
+                                                    existing.copy(
+                                                        toolCalls = existing.toolCalls.map { tc ->
+                                                            if (tc.id == uiMsg.toolCallId) tc.copy(result = uiMsg.content) else tc
+                                                        }
+                                                    )
+                                                } else existing
+                                            } + uiMsg
+                                        } else {
+                                            state.messages + uiMsg
+                                        }
+
+                                        state.copy(
+                                            messages = updatedMessages,
+                                            activeTool = if (uiMsg.role == MessageRole.TOOL) null else state.activeTool,
+                                            streamingText = ""
+                                        )
+                                    }
+                                    persistMessage(uiMsg)
+                                }
+                            }
+                        }
+                    )
+
+                    chatHistory = chatHistory + result.newMessages
+
+                    for (change in result.pendingChanges) {
+                        pendingChangeManager.addChange(change.copy(sessionId = currentSessionId))
+                    }
+
+                    _state.update {
+                        it.copy(
+                            isStreaming = false,
+                            streamingText = "",
+                            activeTool = null,
+                            pendingChanges = it.pendingChanges + result.pendingChanges.map { ch -> ch.copy(sessionId = currentSessionId) }
+                        )
+                    }
+
+                    try {
+                        sessionDao.updateTitle(
+                            id = currentSessionId,
+                            title = _state.value.sessionTitle.ifBlank { "Chat with ${_state.value.projectName}" },
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } catch (_: Exception) {}
+
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    _state.update {
+                        it.copy(
+                            isStreaming = false,
+                            streamingText = "",
+                            activeTool = null,
+                            error = "Generation cancelled"
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e("ChatViewModel", "Error running agent", e)
+                    _state.update {
+                        it.copy(
+                            isStreaming = false,
+                            streamingText = "",
+                            activeTool = null,
+                            error = "Agent error: ${e.message ?: "Unknown error"}"
+                        )
+                    }
                 }
             }
+        }
+    }
 
-            agentWorkManager.startTask(
-                sessionId = sessionId,
-                projectId = projectId,
-                projectName = projectName,
-                projectUri = projectUri,
-                prompt = text,
-                model = currentModel,
-                isGoalMode = isGoal,
-                systemPrompt = effectiveSystemPrompt
-            )
+    private fun buildSystemPrompt(projectName: String, custom: String?): String {
+        return buildString {
+            if (projectName.isNotBlank()) {
+                append("You are an expert coding assistant working within the project '$projectName'.\n")
+            } else {
+                append("You are an expert coding assistant.\n")
+            }
+            append("Use the available tools to inspect, execute commands, and modify files.\n\n")
+            append("FILE EDITING RULES:\n")
+            append("1. Always use `read_file` to read the file before editing it.\n")
+            append("2. When calling `propose_file_edit`:\n")
+            append("   - For partial/targeted edits, specify `old_content` with the exact code snippet to replace, and `content` with the replacement code. This preserves all surrounding code.\n")
+            append("   - If `old_content` is omitted, `content` MUST be the 100% complete new file content including all unchanged lines. NEVER truncate unchanged code or use placeholders like '// ... existing code ...'.\n")
+            append("3. Always preserve existing code structure and indentation.\n")
+            if (custom != null) {
+                append("\nUser Instructions:\n$custom\n")
+            }
         }
     }
 
     fun cancelGeneration() {
+        agentJob?.cancel()
+        agentJob = null
         agentWorkManager.cancelCurrentTask()
         _state.update {
             it.copy(
@@ -508,12 +779,35 @@ class ChatViewModel @Inject constructor(
     }
 
     fun startNewSession() {
-        val treeUri = _state.value.projectUri ?: return
+        val treeUri = _state.value.projectUri
         val name = _state.value.projectName
         val projectId = _state.value.projectId
         cancelGeneration()
         viewModelScope.launch {
-            createNewSession(treeUri, name, projectId)
+            if (treeUri != null) {
+                createNewSession(treeUri, name, projectId)
+            } else {
+                val newSessionId = UUID.randomUUID().toString()
+                _state.value = _state.value.copy(
+                    sessionId = newSessionId,
+                    sessionTitle = "New Chat",
+                    messages = emptyList(),
+                    pendingChanges = emptyList(),
+                    error = null
+                )
+                chatHistory = emptyList()
+                try {
+                    sessionDao.upsert(
+                        SessionEntity(
+                            id = newSessionId,
+                            projectId = "",
+                            title = "New Chat",
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -532,7 +826,9 @@ class ChatViewModel @Inject constructor(
         val trimmed = newTitle.trim()
         if (trimmed.isBlank()) return
         viewModelScope.launch {
-            sessionDao.updateTitle(sessionId, trimmed)
+            try {
+                sessionDao.updateTitle(sessionId, trimmed)
+            } catch (_: Exception) {}
             if (_state.value.sessionId == sessionId) {
                 _state.value = _state.value.copy(sessionTitle = trimmed)
             }
@@ -542,7 +838,9 @@ class ChatViewModel @Inject constructor(
     fun deleteSession(sessionId: String) {
         viewModelScope.launch {
             val isCurrent = _state.value.sessionId == sessionId
-            sessionDao.deleteById(sessionId)
+            try {
+                sessionDao.deleteById(sessionId)
+            } catch (_: Exception) {}
             if (isCurrent) {
                 val remaining = _state.value.sessions.filter { it.id != sessionId }
                 if (remaining.isNotEmpty()) {
@@ -550,9 +848,61 @@ class ChatViewModel @Inject constructor(
                     val treeUri = _state.value.projectUri ?: return@launch
                     restoreSession(next.id, treeUri, _state.value.projectName, _state.value.projectId)
                 } else {
-                    val treeUri = _state.value.projectUri ?: return@launch
-                    createNewSession(treeUri, _state.value.projectName, _state.value.projectId)
+                    val treeUri = _state.value.projectUri
+                    if (treeUri != null) {
+                        createNewSession(treeUri, _state.value.projectName, _state.value.projectId)
+                    } else {
+                        startNewSession()
+                    }
                 }
+            }
+        }
+    }
+
+    private fun persistMessage(message: Message) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Ensure session exists
+                if (sessionDao.getById(sessionId) == null) {
+                    sessionDao.upsert(
+                        SessionEntity(
+                            id = sessionId,
+                            projectId = _state.value.projectId,
+                            title = _state.value.sessionTitle.ifBlank { "New Chat" },
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+
+                val toolCallsJson = if (message.toolCalls.isNotEmpty()) {
+                    Json.encodeToString(
+                        kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.json.JsonElement.serializer()),
+                        message.toolCalls.map { tc ->
+                            buildJsonObject {
+                                put("id", tc.id)
+                                put("name", tc.name)
+                                put("arguments", tc.arguments)
+                                if (tc.result != null) put("result", tc.result)
+                            }
+                        }
+                    )
+                } else null
+
+                messageDao.insert(
+                    MessageEntity(
+                        id = message.id,
+                        sessionId = sessionId,
+                        role = message.role.name,
+                        content = message.content,
+                        toolCallsJson = toolCallsJson,
+                        toolCallId = message.toolCallId,
+                        timestamp = message.timestamp
+                    )
+                )
+            } catch (e: Exception) {
+                Log.w("ChatViewModel", "Could not persist message", e)
             }
         }
     }

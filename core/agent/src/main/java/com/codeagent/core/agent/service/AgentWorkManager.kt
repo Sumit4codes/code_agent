@@ -77,7 +77,10 @@ class AgentWorkManager @Inject constructor(
     private val _activeTaskState = MutableStateFlow<AgentTaskState?>(null)
     val activeTaskState: StateFlow<AgentTaskState?> = _activeTaskState.asStateFlow()
 
-    private val _liveEvents = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 64)
+    private val _liveEvents = MutableSharedFlow<AgentEvent>(
+        extraBufferCapacity = 1024,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
     val liveEvents: SharedFlow<AgentEvent> = _liveEvents.asSharedFlow()
 
     private var activeJob: Job? = null
@@ -174,7 +177,24 @@ class AgentWorkManager @Inject constructor(
                 )
             }
 
-            // Persist the user message first
+            // Ensure session exists in DB to prevent foreign key violations
+            try {
+                if (sessionDao.getById(task.sessionId) == null) {
+                    sessionDao.upsert(
+                        com.codeagent.core.data.SessionEntity(
+                            id = task.sessionId,
+                            projectId = task.projectId,
+                            title = task.userPrompt.lines().firstOrNull()?.take(40)?.trim()?.ifBlank { "New Chat" } ?: "New Chat",
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w("AgentWorkManager", "Failed to ensure session entity", e)
+            }
+
+            // Persist the user message
             val userMsgEntity = MessageEntity(
                 id = UUID.randomUUID().toString(),
                 sessionId = task.sessionId,
@@ -184,7 +204,11 @@ class AgentWorkManager @Inject constructor(
                 toolCallId = null,
                 timestamp = System.currentTimeMillis()
             )
-            messageDao.insert(userMsgEntity)
+            try {
+                messageDao.insert(userMsgEntity)
+            } catch (e: Exception) {
+                Log.w("AgentWorkManager", "Failed to insert user message entity", e)
+            }
 
             val contextObj = AgentContext(
                 sessionId = task.sessionId,
@@ -241,7 +265,11 @@ class AgentWorkManager @Inject constructor(
                                 timestamp = System.currentTimeMillis()
                             )
                             coroutineScope.launch(ioDispatcher) {
-                                messageDao.insert(entity)
+                                try {
+                                    messageDao.insert(entity)
+                                } catch (e: Exception) {
+                                    Log.w("AgentWorkManager", "Failed to insert message entity", e)
+                                }
                             }
                         }
                         else -> {}
@@ -251,17 +279,21 @@ class AgentWorkManager @Inject constructor(
 
             // Persist pending changes
             for (pc in result.pendingChanges) {
-                val pcEntity = PendingChangeEntity(
-                    id = pc.id,
-                    sessionId = task.sessionId,
-                    filePath = pc.filePath,
-                    changeType = pc.changeType.name,
-                    originalContent = pc.originalContent,
-                    proposedContent = pc.proposedContent,
-                    createdAt = pc.createdAt,
-                    status = pc.status.name
-                )
-                pendingChangeDao.upsert(pcEntity)
+                try {
+                    val pcEntity = PendingChangeEntity(
+                        id = pc.id,
+                        sessionId = task.sessionId,
+                        filePath = pc.filePath,
+                        changeType = pc.changeType.name,
+                        originalContent = pc.originalContent,
+                        proposedContent = pc.proposedContent,
+                        createdAt = pc.createdAt,
+                        status = pc.status.name
+                    )
+                    pendingChangeDao.upsert(pcEntity)
+                } catch (e: Exception) {
+                    Log.w("AgentWorkManager", "Failed to upsert pending change entity", e)
+                }
             }
 
             val duration = System.currentTimeMillis() - task.startTimeMs
