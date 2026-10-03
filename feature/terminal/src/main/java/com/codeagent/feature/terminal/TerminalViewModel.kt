@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import java.lang.ref.WeakReference
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -59,19 +60,23 @@ class TerminalViewModel @Inject constructor(
 
     private var activeJob: Job? = null
 
-    var terminalSession: TerminalSession? = null
-        private set
-
-    val sessionClient = CodeAgentTerminalSessionClient(
-        onTitleChangedCallback = { title ->
-            if (title.isNotBlank()) {
-                _uiState.update { it.copy(projectName = title) }
-            }
-        },
-        onSessionFinishedCallback = { _ ->
-            _uiState.update { it.copy(isRunning = false) }
-        }
+    private data class SessionHolder(
+        val id: String,
+        var title: String,
+        val session: TerminalSession?,
+        val client: CodeAgentTerminalSessionClient,
+        var isRunning: Boolean = true
     )
+
+    private val sessionHolders = mutableListOf<SessionHolder>()
+    private var sessionCounter = 1
+
+    val terminalSession: TerminalSession?
+        get() = sessionHolders.firstOrNull { it.id == _uiState.value.activeSessionId }?.session
+
+    private val defaultSessionClient = CodeAgentTerminalSessionClient()
+    val sessionClient: CodeAgentTerminalSessionClient
+        get() = sessionHolders.firstOrNull { it.id == _uiState.value.activeSessionId }?.client ?: defaultSessionClient
 
     private var terminalViewRef: WeakReference<TerminalView>? = null
     val viewClient = CodeAgentTerminalViewClient(
@@ -84,6 +89,7 @@ class TerminalViewModel @Inject constructor(
     init {
         observeTerminalPreferences()
         initializeTerminal()
+        addNewSession()
     }
 
     private fun observeTerminalPreferences() {
@@ -191,14 +197,179 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    fun addNewSession(title: String? = null): TerminalSession? {
+        val id = UUID.randomUUID().toString()
+        val sessionIndex = sessionCounter++
+        val sessionTitle = if (!title.isNullOrBlank()) title else "Session $sessionIndex"
+
+        val client = CodeAgentTerminalSessionClient(
+            onTitleChangedCallback = { newTitle ->
+                if (newTitle.isNotBlank()) {
+                    updateSessionTitle(id, newTitle)
+                }
+            },
+            onSessionFinishedCallback = { finishedSession ->
+                onSessionFinished(id, finishedSession)
+            }
+        )
+
+        terminalViewRef?.get()?.let { client.attachView(it) }
+
+        var session: TerminalSession? = null
+        val mgr = termuxSessionManager
+        if (mgr != null) {
+            val workDir = terminalExecutor.activeDirectory
+            try {
+                session = mgr.createSession(workDir, client)
+            } catch (e: Throwable) {
+                android.util.Log.e("TerminalViewModel", "Failed to create terminal session", e)
+            }
+        }
+
+        val isRunning = session?.isRunning ?: false
+        val holder = SessionHolder(
+            id = id,
+            title = sessionTitle,
+            session = session,
+            client = client,
+            isRunning = isRunning
+        )
+        sessionHolders.add(holder)
+
+        syncSessionsUi(activeId = id)
+
+        terminalViewRef?.get()?.let { view ->
+            if (session != null) {
+                try {
+                    view.attachSession(session)
+                } catch (e: Throwable) {
+                    android.util.Log.e("TerminalViewModel", "Failed to attach session to view", e)
+                }
+            }
+        }
+
+        return session
+    }
+
+    fun switchSession(sessionId: String) {
+        val holder = sessionHolders.firstOrNull { it.id == sessionId } ?: return
+        syncSessionsUi(activeId = sessionId)
+
+        terminalViewRef?.get()?.let { view ->
+            holder.session?.let { session ->
+                if (view.currentSession != session) {
+                    try {
+                        view.attachSession(session)
+                    } catch (e: Throwable) {
+                        android.util.Log.e("TerminalViewModel", "Failed to attach session on switch", e)
+                    }
+                }
+            }
+        }
+    }
+
+    fun closeSession(sessionId: String) {
+        val index = sessionHolders.indexOfFirst { it.id == sessionId }
+        if (index == -1) return
+
+        val holder = sessionHolders.removeAt(index)
+        try {
+            holder.session?.finishIfRunning()
+        } catch (e: Throwable) {
+            android.util.Log.w("TerminalViewModel", "Failed to finish session $sessionId", e)
+        }
+
+        if (sessionHolders.isEmpty()) {
+            addNewSession()
+            return
+        }
+
+        val currentActiveId = _uiState.value.activeSessionId
+        val nextActiveId = if (currentActiveId == sessionId) {
+            val nextIndex = index.coerceAtMost(sessionHolders.size - 1)
+            sessionHolders[nextIndex].id
+        } else {
+            currentActiveId
+        }
+
+        syncSessionsUi(activeId = nextActiveId)
+
+        if (currentActiveId == sessionId) {
+            val nextHolder = sessionHolders.firstOrNull { it.id == nextActiveId }
+            terminalViewRef?.get()?.let { view ->
+                nextHolder?.session?.let { session ->
+                    try {
+                        view.attachSession(session)
+                    } catch (e: Throwable) {
+                        android.util.Log.e("TerminalViewModel", "Failed to attach session on close", e)
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateSessionTitle(sessionId: String, newTitle: String) {
+        val trimmed = newTitle.trim()
+        if (trimmed.isBlank()) return
+        val holder = sessionHolders.firstOrNull { it.id == sessionId } ?: return
+        holder.title = trimmed
+        if (sessionId == _uiState.value.activeSessionId && _uiState.value.projectId == null) {
+            _uiState.update { it.copy(projectName = trimmed) }
+        }
+        syncSessionsUi()
+    }
+
+    private fun onSessionFinished(sessionId: String, session: TerminalSession) {
+        val holder = sessionHolders.firstOrNull { it.id == sessionId } ?: return
+        holder.isRunning = false
+        syncSessionsUi()
+    }
+
+    private fun syncSessionsUi(activeId: String? = _uiState.value.activeSessionId) {
+        val resolvedActiveId = if (sessionHolders.any { it.id == activeId }) {
+            activeId
+        } else {
+            sessionHolders.lastOrNull()?.id
+        }
+
+        val tabs = sessionHolders.map {
+            TerminalSessionTab(
+                id = it.id,
+                title = it.title,
+                isRunning = it.isRunning
+            )
+        }
+
+        val activeHolder = sessionHolders.firstOrNull { it.id == resolvedActiveId }
+        val activeRunning = activeHolder?.isRunning ?: false
+
+        _uiState.update { current ->
+            current.copy(
+                sessions = tabs,
+                activeSessionId = resolvedActiveId,
+                isRunning = activeRunning
+            )
+        }
+    }
+
     fun registerTerminalView(view: TerminalView) {
         terminalViewRef = WeakReference(view)
-        sessionClient.attachView(view)
         view.setTerminalViewClient(viewClient)
+        sessionHolders.forEach { it.client.attachView(view) }
         try {
-            val session = getOrCreateSession()
-            if (session != null) {
-                view.attachSession(session)
+            if (sessionHolders.isEmpty()) {
+                val session = addNewSession()
+                if (session != null) {
+                    view.attachSession(session)
+                }
+            } else {
+                val active = sessionHolders.firstOrNull { it.id == _uiState.value.activeSessionId }
+                    ?: sessionHolders.first()
+                if (active.session != null) {
+                    view.attachSession(active.session)
+                } else if (termuxSessionManager != null) {
+                    restartSession(active.id)
+                }
             }
         } catch (e: Throwable) {
             android.util.Log.e("TerminalViewModel", "Failed to attach terminal session on register", e)
@@ -206,49 +377,73 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun getOrCreateSession(): TerminalSession? {
-        val current = terminalSession
-        if (current != null && current.isRunning) {
-            return current
+        val active = sessionHolders.firstOrNull { it.id == _uiState.value.activeSessionId }
+        if (active?.session != null && active.session.isRunning) {
+            return active.session
         }
-        val mgr = termuxSessionManager ?: return null
-        val workDir = terminalExecutor.activeDirectory
-        return try {
-            val session = mgr.createSession(workDir, sessionClient)
-            this.terminalSession = session
-            _uiState.update { it.copy(isRunning = true) }
-            session
-        } catch (e: Throwable) {
-            android.util.Log.e("TerminalViewModel", "Failed to create terminal session", e)
-            _uiState.update { currentUi ->
-                currentUi.copy(
-                    isRunning = false,
-                    entries = currentUi.entries + TerminalEntry(
-                        text = "Failed to launch interactive terminal: ${e.message ?: e.javaClass.simpleName}",
-                        type = TerminalEntryType.STDERR
-                    )
-                )
-            }
-            null
+        if (sessionHolders.isEmpty()) {
+            return addNewSession()
         }
+        return active?.session
     }
 
-    fun restartSession() {
+    fun restartSession(sessionId: String? = _uiState.value.activeSessionId) {
         viewModelScope.launch(Dispatchers.Main) {
+            if (sessionHolders.isEmpty()) {
+                addNewSession()
+                return@launch
+            }
+            val targetId = sessionId ?: sessionHolders.first().id
+            val index = sessionHolders.indexOfFirst { it.id == targetId }
+            if (index == -1) return@launch
+
+            val oldHolder = sessionHolders[index]
             try {
-                terminalSession?.finishIfRunning()
-                terminalSession = null
-                val newSession = getOrCreateSession()
+                oldHolder.session?.finishIfRunning()
+            } catch (_: Throwable) {}
+
+            val client = CodeAgentTerminalSessionClient(
+                onTitleChangedCallback = { newTitle ->
+                    if (newTitle.isNotBlank()) {
+                        updateSessionTitle(targetId, newTitle)
+                    }
+                },
+                onSessionFinishedCallback = { finishedSession ->
+                    onSessionFinished(targetId, finishedSession)
+                }
+            )
+            terminalViewRef?.get()?.let { client.attachView(it) }
+
+            var newSession: TerminalSession? = null
+            val mgr = termuxSessionManager
+            if (mgr != null) {
+                val workDir = terminalExecutor.activeDirectory
+                try {
+                    newSession = mgr.createSession(workDir, client)
+                } catch (e: Throwable) {
+                    android.util.Log.e("TerminalViewModel", "Failed to restart session $targetId", e)
+                }
+            }
+
+            val isRunning = newSession?.isRunning ?: false
+            sessionHolders[index] = oldHolder.copy(
+                session = newSession,
+                client = client,
+                isRunning = isRunning
+            )
+
+            syncSessionsUi(activeId = targetId)
+
+            if (_uiState.value.activeSessionId == targetId) {
                 terminalViewRef?.get()?.let { view ->
                     if (newSession != null) {
                         try {
                             view.attachSession(newSession)
                         } catch (e: Throwable) {
-                            android.util.Log.e("TerminalViewModel", "Failed to attach session to view", e)
+                            android.util.Log.e("TerminalViewModel", "Failed to attach restarted session", e)
                         }
                     }
                 }
-            } catch (e: Throwable) {
-                android.util.Log.e("TerminalViewModel", "Failed to restart session", e)
             }
         }
     }
@@ -534,7 +729,11 @@ class TerminalViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        terminalSession?.finishIfRunning()
-        terminalSession = null
+        sessionHolders.forEach { holder ->
+            try {
+                holder.session?.finishIfRunning()
+            } catch (_: Throwable) {}
+        }
+        sessionHolders.clear()
     }
 }

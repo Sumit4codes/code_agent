@@ -111,4 +111,15 @@
 
 **Trade-off:** Very large font sizes (>24 sp) reduce the number of columns and lines visible on compact smartphone screens in portrait orientation.
 
+## D15: Concurrent Multi-Session Terminal Architecture (Tabs, Independent PTYs, Dynamic View Attachment, and Background Process Isolation)
+**Decision:** Support multiple concurrent terminal sessions (tabs) managed within `TerminalViewModel` and displayed via `TerminalSessionTabBar` in `TerminalScreen`. Each session maintains its own shell process, pseudoterminal (PTY), emulator buffer, and `CodeAgentTerminalSessionClient`. The single `TerminalView` canvas dynamically reattaches to whichever session is active via `TerminalView.attachSession(session)`.
+
+**Rationale:**
+1. **Developer Multitasking:** Developers on mobile frequently run multiple tasks simultaneously (e.g. running a build or local server in one tab while editing files in Vim or querying Git in another tab). Single-session terminals force users to exit tools or open external apps.
+2. **Dynamic Canvas Reattachment:** Termux's `TerminalView.attachSession(newSession)` detaches from the current session and recalculates emulator dimensions, scrollback, and cursor for the incoming session without destroying the underlying PTY process. Sessions running in the background continue executing uninterrupted.
+3. **Selective Screen Update Dispatching:** In `CodeAgentTerminalSessionClient.onTextChanged` and `onColorsChanged`, updates are only forwarded to `terminalView.onScreenUpdated()` if the calling session is the active attached session (`terminalView.currentSession == changedSession`). This isolates canvas redrawing and saves CPU cycles when background sessions emit large volumes of output.
+4. **Automatic Title Sync & Clean Lifecycle:** Sessions automatically update tab labels when child processes emit OSC title escapes (e.g. `vim`, `bash`, `python3`). Closing a tab safely terminates its PTY process, and closing the only tab automatically provisions a fresh session so the user is never stranded. On ViewModel teardown (`onCleared()`), all running sessions are cleaned up to prevent orphan processes or PTY descriptor leaks.
+
+**Trade-off:** Multiple concurrent shell processes consume RAM and CPU resources on low-end Android hardware.
+
 

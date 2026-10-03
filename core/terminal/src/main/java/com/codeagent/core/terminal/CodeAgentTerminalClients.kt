@@ -24,7 +24,9 @@ class CodeAgentTerminalSessionClient(
     }
 
     override fun onTextChanged(changedSession: TerminalSession) {
-        terminalView?.onScreenUpdated()
+        if (terminalView?.currentSession == null || terminalView?.currentSession == changedSession) {
+            terminalView?.onScreenUpdated()
+        }
     }
 
     override fun onTitleChanged(changedSession: TerminalSession) {
@@ -57,7 +59,9 @@ class CodeAgentTerminalSessionClient(
     override fun onBell(session: TerminalSession) {}
 
     override fun onColorsChanged(session: TerminalSession) {
-        terminalView?.onScreenUpdated()
+        if (terminalView?.currentSession == null || terminalView?.currentSession == session) {
+            terminalView?.onScreenUpdated()
+        }
     }
 
     override fun onTerminalCursorStateChange(state: Boolean) {

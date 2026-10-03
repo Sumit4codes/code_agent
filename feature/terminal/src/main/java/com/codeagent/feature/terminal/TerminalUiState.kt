@@ -17,6 +17,12 @@ data class TerminalEntry(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class TerminalSessionTab(
+    val id: String,
+    val title: String,
+    val isRunning: Boolean = true
+)
+
 data class TerminalUiState(
     val projectName: String = "Terminal",
     val projectId: String? = null,
@@ -36,5 +42,7 @@ data class TerminalUiState(
     val isBootstrapping: Boolean = false,
     val bootstrapProgress: Float = -1f,
     val bootstrapMessage: String = "",
-    val fontSizeSp: Int = 14
+    val fontSizeSp: Int = 14,
+    val sessions: List<TerminalSessionTab> = emptyList(),
+    val activeSessionId: String? = null
 )

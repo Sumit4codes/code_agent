@@ -68,6 +68,7 @@ A clean-room, Android-native AI coding agent inspired by [OpenCode](https://gith
 - **Autonomous Unbounded Agent Loop with Safety-Bounded Reading** — Removed artificial tool iteration limits so the agent can autonomously complete multi-step refactoring, builds, and verification workflows. Reading files is protected by an 800-line slice limit, 45 KB byte limit, and 100 MB max file size to prevent LLM context blowups while providing explicit pagination instructions.
 - **Dual-Surface Developer Interface** — Headless streaming execution for AI agent tool calls + dedicated interactive visual terminal screen (`feature:terminal`) for developer control with programmer keys (`Esc`, `Tab`, `Ctrl-C`, `|`, `git`, `clear`, history up/down).
 - **Terminal Display Scaling & Adjustable Text Size** — Full control over terminal font size (9 sp to 28 sp) with live preview in Settings, dynamic density-aware rendering (`scaledDensity` SP-to-pixel mapping), two-finger pinch-to-zoom in the terminal canvas, and a quick `FormatSize` action dialog in the terminal top bar.
+- **Concurrent Multi-Session Terminal (Tabbed PTY Architecture)** — Run multiple independent shell sessions concurrently in tabbed views with live process status dots, custom/OSC-synced titles, quick tab switching, close management, and non-blocking background process execution.
 - **Multi-Provider Architecture & Live Model Discovery** — Store and switch between multiple AI providers independently with encrypted API keys and dynamic `/models` querying.
 - **Full Device File Access (`MANAGE_EXTERNAL_STORAGE`)** — Direct `java.io.File` access without Storage Access Framework bottlenecks, enabling seamless path handling for AI agents, Git CLI, and terminal execution.
 - **Pending Changes Safety Model** — Edits are never applied automatically; every change must be explicitly reviewed and approved by the user.
@@ -106,7 +107,7 @@ Run unit tests using `./test.sh` (with automatic test result summaries and HTML 
 
 ```bash
 # Using test helper script:
-./test.sh                             # Run all 119 unit tests
+./test.sh                             # Run all 129 unit tests
 ./test.sh -m core:agent               # Run tests for specific module
 ./test.sh -c ToolExecutorTest         # Run a specific test class
 ./test.sh --fail-fast --report        # Stop on first failure and show reports

@@ -3,7 +3,9 @@ package com.codeagent.feature.terminal
 import android.content.Context
 import android.graphics.Typeface
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -14,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -236,6 +239,26 @@ fun TerminalScreen(
                         }
                     }
                 }
+            }
+
+            // Terminal Session Tab Bar
+            if (uiState.sessions.isNotEmpty()) {
+                TerminalSessionTabBar(
+                    sessions = uiState.sessions,
+                    activeSessionId = uiState.activeSessionId,
+                    onTabClick = { sessionId ->
+                        viewModel.switchSession(sessionId)
+                        terminalViewInstance?.requestFocus()
+                    },
+                    onCloseClick = { sessionId ->
+                        viewModel.closeSession(sessionId)
+                        terminalViewInstance?.requestFocus()
+                    },
+                    onAddSession = {
+                        viewModel.addNewSession()
+                        terminalViewInstance?.requestFocus()
+                    }
+                )
             }
 
             // Real Linux Terminal Emulator Canvas (Termux TerminalView)
@@ -634,3 +657,107 @@ private fun AccessoryKeyboardBar(
         }
     }
 }
+
+@Composable
+fun TerminalSessionTabBar(
+    sessions: List<TerminalSessionTab>,
+    activeSessionId: String?,
+    onTabClick: (String) -> Unit,
+    onCloseClick: (String) -> Unit,
+    onAddSession: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color(0xFF161B22),
+        modifier = modifier
+            .fillMaxWidth()
+            .focusProperties { canFocus = false }
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                sessions.forEach { tab ->
+                    val isSelected = tab.id == activeSessionId
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isSelected) Color(0xFF21262D) else Color.Transparent,
+                        border = if (isSelected) BorderStroke(1.dp, Color(0xFF388BFD)) else null,
+                        modifier = Modifier
+                            .height(30.dp)
+                            .clickable { onTabClick(tab.id) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Status dot
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(
+                                        color = if (tab.isRunning) TerminalPrompt else Color(0xFF8B949E),
+                                        shape = RoundedCornerShape(3.dp)
+                                    )
+                            )
+
+                            // Title
+                            Text(
+                                text = tab.title,
+                                color = if (isSelected) Color.White else AccessoryKeyContent,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            // Close button
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable { onCloseClick(tab.id) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close ${tab.title}",
+                                    tint = if (isSelected) Color.White.copy(alpha = 0.8f) else AccessoryKeyContent.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Add session button
+                FilledTonalIconButton(
+                    onClick = onAddSession,
+                    modifier = Modifier.size(28.dp),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = Color(0xFF21262D),
+                        contentColor = AccessoryKeyContent
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "New Terminal Session",
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = Color(0xFF30363D)
+            )
+        }
+    }
+}
+

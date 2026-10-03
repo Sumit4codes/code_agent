@@ -300,5 +300,65 @@ class TerminalViewModelTest {
         assertEquals(1.02f, normalScale, 0.001f)
         assertEquals(14, viewModel.uiState.value.fontSizeSp)
     }
+
+    @Test
+    fun `initial state initializes with default session tab`() = runTest(testDispatcher) {
+        val state = viewModel.uiState.value
+        assertEquals(1, state.sessions.size)
+        assertEquals("Session 1", state.sessions.first().title)
+        assertEquals(state.sessions.first().id, state.activeSessionId)
+    }
+
+    @Test
+    fun `addNewSession adds a second session tab and activates it`() = runTest(testDispatcher) {
+        viewModel.addNewSession()
+        val state = viewModel.uiState.value
+        assertEquals(2, state.sessions.size)
+        assertEquals("Session 2", state.sessions[1].title)
+        assertEquals(state.sessions[1].id, state.activeSessionId)
+    }
+
+    @Test
+    fun `switchSession changes active session`() = runTest(testDispatcher) {
+        viewModel.addNewSession()
+        val s1Id = viewModel.uiState.value.sessions[0].id
+        val s2Id = viewModel.uiState.value.sessions[1].id
+        assertEquals(s2Id, viewModel.uiState.value.activeSessionId)
+
+        viewModel.switchSession(s1Id)
+        assertEquals(s1Id, viewModel.uiState.value.activeSessionId)
+    }
+
+    @Test
+    fun `closeSession removes session and selects remaining session`() = runTest(testDispatcher) {
+        viewModel.addNewSession()
+        val s1Id = viewModel.uiState.value.sessions[0].id
+        val s2Id = viewModel.uiState.value.sessions[1].id
+        assertEquals(2, viewModel.uiState.value.sessions.size)
+
+        viewModel.closeSession(s2Id)
+        val state = viewModel.uiState.value
+        assertEquals(1, state.sessions.size)
+        assertEquals(s1Id, state.activeSessionId)
+    }
+
+    @Test
+    fun `closing only remaining session automatically creates fresh session`() = runTest(testDispatcher) {
+        val s1Id = viewModel.uiState.value.sessions[0].id
+        viewModel.closeSession(s1Id)
+        val state = viewModel.uiState.value
+        assertEquals(1, state.sessions.size)
+        assertNotEquals(s1Id, state.activeSessionId)
+        assertEquals(state.sessions[0].id, state.activeSessionId)
+    }
+
+    @Test
+    fun `updateSessionTitle updates title of corresponding tab`() = runTest(testDispatcher) {
+        val activeId = viewModel.uiState.value.activeSessionId!!
+        viewModel.updateSessionTitle(activeId, "Vim")
+        val state = viewModel.uiState.value
+        assertEquals("Vim", state.sessions.first { it.id == activeId }.title)
+        assertEquals("Vim", state.projectName)
+    }
 }
 
