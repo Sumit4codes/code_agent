@@ -132,7 +132,9 @@ class ChatViewModel @Inject constructor(
                             isStreaming = isNowRunning,
                             isGoalMode = isNowRunning && taskState.isGoalMode,
                             activeStepCount = taskState.stepCount,
-                            streamingText = if (isNowRunning) taskState.streamingDelta else "",
+                            streamingText = if (isNowRunning) {
+                                if (taskState.streamingDelta.isNotBlank()) taskState.streamingDelta else current.streamingText
+                            } else "",
                             activeTool = if (!isNowRunning) null else current.activeTool,
                             error = if (!isNowRunning && taskState.completedSuccessfully == false) taskState.error else current.error,
                             pendingChanges = newPending
@@ -154,16 +156,26 @@ class ChatViewModel @Inject constructor(
 
         // Observe live events from background work manager
         viewModelScope.launch {
+            val streamBuffer = StringBuilder()
+            var lastDeltaTime = 0L
+
             agentWorkManager.liveEvents.collect { event ->
                 val currentSessionId = _state.value.sessionId ?: return@collect
                 val activeTask = agentWorkManager.activeTaskState.value
-                if (activeTask?.sessionId != currentSessionId) return@collect
+                if (activeTask != null && activeTask.sessionId != currentSessionId) return@collect
 
                 when (event) {
                     is AgentEvent.TextDelta -> {
-                        _state.update { it.copy(streamingText = it.streamingText + event.text) }
+                        streamBuffer.append(event.text)
+                        val now = System.currentTimeMillis()
+                        if (now - lastDeltaTime >= 40L) {
+                            lastDeltaTime = now
+                            val textSnapshot = streamBuffer.toString()
+                            _state.update { it.copy(streamingText = textSnapshot) }
+                        }
                     }
                     is AgentEvent.ToolCallStart -> {
+                        streamBuffer.clear()
                         _state.update {
                             it.copy(
                                 activeTool = ActiveToolExecution(
@@ -201,6 +213,7 @@ class ChatViewModel @Inject constructor(
                         }
                     }
                     is AgentEvent.MessageAdded -> {
+                        streamBuffer.clear()
                         val msg = event.message
                         val uiMsg = Message(
                             id = UUID.randomUUID().toString(),
@@ -247,6 +260,9 @@ class ChatViewModel @Inject constructor(
                                 streamingText = ""
                             )
                         }
+
+                        // Keep in-memory chatHistory in sync for ViewModel
+                        chatHistory = chatHistory + msg
                     }
                 }
             }
@@ -423,7 +439,8 @@ class ChatViewModel @Inject constructor(
         if (text.isBlank() || _state.value.isStreaming) return
 
         val isGoal = text.trimStart().startsWith("/goal")
-        val displayPrompt = if (isGoal) text.trimStart().removePrefix("/goal").trim().ifBlank { text } else text
+        val cleanGoalPrompt = if (isGoal) text.trimStart().removePrefix("/goal").trim() else text
+        val displayPrompt = if (isGoal) cleanGoalPrompt.ifBlank { text } else text
 
         // Ensure session exists
         val currentSessionId = _state.value.sessionId ?: UUID.randomUUID().toString()
@@ -440,6 +457,56 @@ class ChatViewModel @Inject constructor(
             content = text,
             timestamp = System.currentTimeMillis()
         )
+
+        // If user typed only "/goal" with no objective, show helpful guidance immediately
+        if (isGoal && cleanGoalPrompt.isBlank()) {
+            val helpMsg = Message(
+                id = UUID.randomUUID().toString(),
+                sessionId = currentSessionId,
+                role = MessageRole.ASSISTANT,
+                content = """
+                    **Autonomous Goal Mode (`/goal`)**
+
+                    Goal Mode autonomously formulates plans, executes edits across files, and verifies work with tests until your objective is met.
+
+                    To start, specify your objective after `/goal`, for example:
+                    • `/goal Create a README.md explaining the codebase architecture`
+                    • `/goal Write unit tests for all domain models`
+                    • `/goal Refactor network calls to include retry handling`
+                """.trimIndent(),
+                timestamp = System.currentTimeMillis()
+            )
+            _state.update {
+                it.copy(
+                    sessionId = currentSessionId,
+                    sessionTitle = activeTitle,
+                    messages = it.messages + userMsg + helpMsg,
+                    isStreaming = false,
+                    isGoalMode = false,
+                    streamingText = "",
+                    activeTool = null,
+                    error = null
+                )
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    if (sessionDao.getById(currentSessionId) == null) {
+                        sessionDao.upsert(
+                            SessionEntity(
+                                id = currentSessionId,
+                                projectId = _state.value.projectId,
+                                title = activeTitle,
+                                createdAt = System.currentTimeMillis(),
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                } catch (_: Exception) {}
+                persistMessage(userMsg)
+                persistMessage(helpMsg)
+            }
+            return
+        }
 
         _state.update {
             it.copy(
@@ -481,22 +548,36 @@ class ChatViewModel @Inject constructor(
 
         if (isGoal) {
             // Milestone 14: Background Headless Goal Mode Execution
-            viewModelScope.launch(Dispatchers.IO) {
-                val activeConfig = settingsRepository.getActiveProvider()
-                val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
-                val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
-                val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
+            persistMessage(userMsg)
+            chatHistory = chatHistory + ChatMessage(ChatMessage.Role.USER, cleanGoalPrompt)
 
-                agentWorkManager.startTask(
-                    sessionId = currentSessionId,
-                    projectId = projectId,
-                    projectName = projectName,
-                    projectUri = projectUri,
-                    prompt = text,
-                    model = currentModel,
-                    isGoalMode = true,
-                    systemPrompt = effectiveSystemPrompt
-                )
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val activeConfig = settingsRepository.getActiveProvider()
+                    val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
+                    val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
+                    val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
+
+                    agentWorkManager.startTask(
+                        sessionId = currentSessionId,
+                        projectId = projectId,
+                        projectName = projectName,
+                        projectUri = projectUri,
+                        prompt = cleanGoalPrompt,
+                        model = currentModel,
+                        isGoalMode = true,
+                        systemPrompt = effectiveSystemPrompt
+                    )
+                } catch (e: Exception) {
+                    Log.e("ChatViewModel", "Failed to launch goal task", e)
+                    _state.update {
+                        it.copy(
+                            isStreaming = false,
+                            isGoalMode = false,
+                            error = "Failed to start Goal Mode: ${e.message ?: "Unknown error"}"
+                        )
+                    }
+                }
             }
         } else {
             // Interactive conversational execution directly in ViewModel for smooth real-time streaming

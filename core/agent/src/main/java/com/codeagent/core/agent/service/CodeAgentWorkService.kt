@@ -74,6 +74,8 @@ class CodeAgentWorkService : Service() {
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to startForeground", e)
+                    stopSelf()
+                    return START_NOT_STICKY
                 }
 
                 startObservingState()
@@ -357,17 +359,21 @@ class CodeAgentWorkService : Service() {
             prompt: String,
             isGoalMode: Boolean
         ) {
-            val intent = Intent(context, CodeAgentWorkService::class.java).apply {
-                action = ACTION_START
-                putExtra(EXTRA_TASK_ID, taskId)
-                putExtra(EXTRA_PROJECT_NAME, projectName)
-                putExtra(EXTRA_PROMPT, prompt)
-                putExtra(EXTRA_IS_GOAL_MODE, isGoalMode)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                val intent = Intent(context, CodeAgentWorkService::class.java).apply {
+                    action = ACTION_START
+                    putExtra(EXTRA_TASK_ID, taskId)
+                    putExtra(EXTRA_PROJECT_NAME, projectName)
+                    putExtra(EXTRA_PROMPT, prompt)
+                    putExtra(EXTRA_IS_GOAL_MODE, isGoalMode)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "Could not start CodeAgentWorkService", e)
             }
         }
 

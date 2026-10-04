@@ -161,7 +161,13 @@ class AgentWorkManager @Inject constructor(
         try {
             // Reconstruct chat history from DB
             val existingEntities = messageDao.getBySessionList(task.sessionId)
-            val history = existingEntities.map { entity ->
+            val isUserMsgAlreadyPersisted = existingEntities.lastOrNull()?.let {
+                it.role == "USER" && it.content == task.userPrompt
+            } ?: false
+
+            val historyEntities = if (isUserMsgAlreadyPersisted) existingEntities.dropLast(1) else existingEntities
+
+            val history = historyEntities.map { entity ->
                 val toolCalls = parseToolCalls(entity.toolCallsJson)
                 ChatMessage(
                     role = when (entity.role) {
@@ -194,20 +200,22 @@ class AgentWorkManager @Inject constructor(
                 Log.w("AgentWorkManager", "Failed to ensure session entity", e)
             }
 
-            // Persist the user message
-            val userMsgEntity = MessageEntity(
-                id = UUID.randomUUID().toString(),
-                sessionId = task.sessionId,
-                role = "USER",
-                content = task.userPrompt,
-                toolCallsJson = null,
-                toolCallId = null,
-                timestamp = System.currentTimeMillis()
-            )
-            try {
-                messageDao.insert(userMsgEntity)
-            } catch (e: Exception) {
-                Log.w("AgentWorkManager", "Failed to insert user message entity", e)
+            // Persist the user message if not already persisted
+            if (!isUserMsgAlreadyPersisted) {
+                val userMsgEntity = MessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    sessionId = task.sessionId,
+                    role = "USER",
+                    content = task.userPrompt,
+                    toolCallsJson = null,
+                    toolCallId = null,
+                    timestamp = System.currentTimeMillis()
+                )
+                try {
+                    messageDao.insert(userMsgEntity)
+                } catch (e: Exception) {
+                    Log.w("AgentWorkManager", "Failed to insert user message entity", e)
+                }
             }
 
             val contextObj = AgentContext(
@@ -234,12 +242,14 @@ class AgentWorkManager @Inject constructor(
                     _liveEvents.tryEmit(event)
                     when (event) {
                         is AgentEvent.ToolCallStart -> {
+                            streamBuffer.clear()
                             stepCounter++
                             val actionDesc = formatToolAction(event.toolName, event.arguments)
                             _activeTaskState.update { current ->
                                 current?.copy(
                                     stepCount = stepCounter,
-                                    currentAction = actionDesc
+                                    currentAction = actionDesc,
+                                    streamingDelta = ""
                                 )
                             }
                         }
@@ -249,6 +259,10 @@ class AgentWorkManager @Inject constructor(
                             }
                         }
                         is AgentEvent.MessageAdded -> {
+                            streamBuffer.clear()
+                            _activeTaskState.update { current ->
+                                current?.copy(streamingDelta = "")
+                            }
                             val msg = event.message
                             val entity = MessageEntity(
                                 id = UUID.randomUUID().toString(),
@@ -302,6 +316,7 @@ class AgentWorkManager @Inject constructor(
                     isRunning = false,
                     completedSuccessfully = true,
                     currentAction = "Completed in ${formatDuration(duration)}",
+                    streamingDelta = "",
                     durationMs = duration,
                     pendingChanges = result.pendingChanges
                 )
@@ -323,6 +338,7 @@ class AgentWorkManager @Inject constructor(
                     isRunning = false,
                     isCancelled = true,
                     currentAction = "Task cancelled",
+                    streamingDelta = "",
                     durationMs = duration
                 )
             }
@@ -339,6 +355,7 @@ class AgentWorkManager @Inject constructor(
                     completedSuccessfully = false,
                     error = errorMsg,
                     currentAction = "Failed: $errorMsg",
+                    streamingDelta = "",
                     durationMs = duration
                 )
             }
