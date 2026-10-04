@@ -19,8 +19,10 @@ import com.codeagent.core.testing.FakeProjectFileSystem
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -243,5 +245,86 @@ class AgentWorkManagerTest {
         assertFalse(cancelled?.isRunning ?: true)
         assertTrue(cancelled?.isCancelled ?: false)
         assertEquals("Cancelled by user", cancelled?.currentAction)
+    }
+
+    @Test
+    fun `startTask does not duplicate user message if already persisted in Room DB`() = runTest(testDispatcher) {
+        // Simulate ChatViewModel persisting the user message first
+        messageDao.insert(
+            com.codeagent.core.data.MessageEntity(
+                id = "pre-persisted-user-msg",
+                sessionId = "s4",
+                role = "USER",
+                content = "Autonomous Goal Objective",
+                toolCallsJson = null,
+                toolCallId = null,
+                timestamp = System.currentTimeMillis()
+            )
+        )
+
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Goal fully achieved!"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        workManager.startTask(
+            sessionId = "s4",
+            projectId = "p1",
+            projectName = "DedupeProj",
+            projectUri = rootUri,
+            prompt = "Autonomous Goal Objective",
+            model = "gpt-4o",
+            isGoalMode = true
+        )
+
+        advanceUntilIdle()
+
+        val savedMessages = messageDao.getBySessionList("s4")
+        assertEquals(2, savedMessages.size)
+        assertEquals("USER", savedMessages[0].role)
+        assertEquals("Autonomous Goal Objective", savedMessages[0].content)
+        assertEquals("ASSISTANT", savedMessages[1].role)
+        assertEquals("Goal fully achieved!", savedMessages[1].content)
+    }
+
+    @Test
+    fun `startTask resets streamingDelta on completion and emits liveEvents`() = runTest(testDispatcher) {
+        val receivedEvents = mutableListOf<com.codeagent.core.agent.AgentEvent>()
+        val job = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            workManager.liveEvents.collect { receivedEvents.add(it) }
+        }
+
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Step 1 "),
+                ChatStreamEvent.TextDelta("in progress"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        workManager.startTask(
+            sessionId = "s5",
+            projectId = "p1",
+            projectName = "StreamingProj",
+            projectUri = rootUri,
+            prompt = "Stream this task",
+            model = "gpt-4o",
+            isGoalMode = true
+        )
+
+        advanceUntilIdle()
+
+        val completed = workManager.activeTaskState.value
+        assertNotNull(completed)
+        assertEquals("", completed?.streamingDelta)
+        assertEquals(true, completed?.completedSuccessfully)
+
+        assertTrue(receivedEvents.any { it is com.codeagent.core.agent.AgentEvent.TextDelta && it.text == "Step 1 " })
+        assertTrue(receivedEvents.any { it is com.codeagent.core.agent.AgentEvent.TextDelta && it.text == "in progress" })
+        assertTrue(receivedEvents.any { it is com.codeagent.core.agent.AgentEvent.MessageAdded })
+
+        job.cancel()
     }
 }
