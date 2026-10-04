@@ -20,10 +20,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -34,12 +38,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatInputBar(
     inputText: String,
@@ -50,8 +59,21 @@ fun ChatInputBar(
     hasProject: Boolean,
     projectName: String,
     modelName: String,
+    onSelectGoal: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var showOptionsSheet by remember { mutableStateOf(false) }
+
+    if (showOptionsSheet) {
+        ChatActionOptionsSheet(
+            onDismiss = { showOptionsSheet = false },
+            onSelectGoal = {
+                onSelectGoal()
+                showOptionsSheet = false
+            }
+        )
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 3.dp,
@@ -107,12 +129,73 @@ fun ChatInputBar(
                 }
             }
 
+            // Goal Mode indicator badge above text field when active
+            AnimatedVisibility(
+                visible = inputText.trimStart().startsWith("/goal", ignoreCase = true),
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "🎯 Goal Mode Active",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        IconButton(
+                            onClick = {
+                                val stripped = inputText.trimStart()
+                                    .removePrefix("/goal")
+                                    .removePrefix("/Goal")
+                                    .removePrefix("/GOAL")
+                                    .trimStart()
+                                onInputChange(stripped)
+                            },
+                            modifier = Modifier.size(16.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Remove Goal Mode",
+                                modifier = Modifier.size(12.dp),
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+
             // Input field and action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // "+" Options Button
+                FilledTonalIconButton(
+                    onClick = { showOptionsSheet = true },
+                    modifier = Modifier.size(48.dp),
+                    shape = CircleShape,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.primary
+                    ),
+                    enabled = !isStreaming
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Options",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = onInputChange,

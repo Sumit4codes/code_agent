@@ -267,7 +267,9 @@ fun ChatScreen(
                                         else -> state.model
                                     },
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (state.isStreaming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (state.isStreaming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -317,7 +319,18 @@ fun ChatScreen(
                 isStreaming = state.isStreaming,
                 hasProject = state.projectUri != null,
                 projectName = state.projectName,
-                modelName = state.model
+                modelName = state.model,
+                onSelectGoal = {
+                    val current = inputText.trim()
+                    val newText = if (current.startsWith("/goal", ignoreCase = true)) {
+                        inputText
+                    } else if (current.isBlank()) {
+                        "/goal "
+                    } else {
+                        "/goal $current"
+                    }
+                    inputText = newText
+                }
             )
         }
     ) { padding ->
