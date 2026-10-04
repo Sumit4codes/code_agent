@@ -97,7 +97,17 @@ class AgentOrchestrator @Inject constructor(
         if (effectiveSystemPrompt != null) {
             messages.add(ChatMessage(role = ChatMessage.Role.SYSTEM, content = effectiveSystemPrompt))
         }
-        messages.addAll(history)
+        val sanitizedHistory = if (history.lastOrNull()?.let {
+            it.role == ChatMessage.Role.USER && (
+                it.content.trim() == userMessage.trim() ||
+                it.content.trim().removePrefix("/goal").trim() == userMessage.trim()
+            )
+        } == true) {
+            history.dropLast(1)
+        } else {
+            history
+        }
+        messages.addAll(sanitizedHistory)
         messages.add(ChatMessage(role = ChatMessage.Role.USER, content = userMessage))
 
         var iteration = 0

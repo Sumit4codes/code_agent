@@ -97,7 +97,9 @@ class AgentWorkManager @Inject constructor(
         systemPrompt: String? = null,
         temperature: Float = 0.7f
     ): String {
-        cancelCurrentTask()
+        // Cancel in-flight job if any, but do not send stop intent to service since we are starting a new task
+        activeJob?.cancel()
+        activeJob = null
 
         val taskId = UUID.randomUUID().toString()
         val initialTask = AgentTaskState(
@@ -146,7 +148,7 @@ class AgentWorkManager @Inject constructor(
             )
         }
         try {
-            CodeAgentWorkService.cancelWork(context)
+            CodeAgentWorkService.stopWork(context)
         } catch (_: Throwable) {}
     }
 
@@ -162,7 +164,10 @@ class AgentWorkManager @Inject constructor(
             // Reconstruct chat history from DB
             val existingEntities = messageDao.getBySessionList(task.sessionId)
             val isUserMsgAlreadyPersisted = existingEntities.lastOrNull()?.let {
-                it.role == "USER" && it.content == task.userPrompt
+                it.role == "USER" && (
+                    it.content.trim() == task.userPrompt.trim() ||
+                    it.content.trim().removePrefix("/goal").trim() == task.userPrompt.trim()
+                )
             } ?: false
 
             val historyEntities = if (isUserMsgAlreadyPersisted) existingEntities.dropLast(1) else existingEntities
@@ -311,11 +316,16 @@ class AgentWorkManager @Inject constructor(
             }
 
             val duration = System.currentTimeMillis() - task.startTimeMs
+            val lastAssistantMsg = result.newMessages.lastOrNull { it.role == ChatMessage.Role.ASSISTANT }
+            val errorText = lastAssistantMsg?.content?.takeIf { it.startsWith("Error: ") }?.removePrefix("Error: ")?.trim()
+            val hasError = errorText != null
+
             _activeTaskState.update { current ->
                 current?.copy(
                     isRunning = false,
-                    completedSuccessfully = true,
-                    currentAction = "Completed in ${formatDuration(duration)}",
+                    completedSuccessfully = !hasError,
+                    error = errorText,
+                    currentAction = if (hasError) "Failed: $errorText" else "Completed in ${formatDuration(duration)}",
                     streamingDelta = "",
                     durationMs = duration,
                     pendingChanges = result.pendingChanges
@@ -323,12 +333,20 @@ class AgentWorkManager @Inject constructor(
             }
 
             try {
-                CodeAgentWorkService.completeWork(
-                    context = context,
-                    projectName = task.projectName,
-                    changesCount = result.pendingChanges.size,
-                    durationMs = duration
-                )
+                if (hasError && errorText != null) {
+                    CodeAgentWorkService.failWork(
+                        context = context,
+                        projectName = task.projectName,
+                        errorMessage = errorText
+                    )
+                } else {
+                    CodeAgentWorkService.completeWork(
+                        context = context,
+                        projectName = task.projectName,
+                        changesCount = result.pendingChanges.size,
+                        durationMs = duration
+                    )
+                }
             } catch (_: Throwable) {}
 
         } catch (e: CancellationException) {

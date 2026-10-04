@@ -45,6 +45,7 @@ class CodeAgentWorkService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                val taskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
                 val projectName = intent.getStringExtra(EXTRA_PROJECT_NAME) ?: "Project"
                 val prompt = intent.getStringExtra(EXTRA_PROMPT) ?: ""
                 val isGoalMode = intent.getBooleanExtra(EXTRA_IS_GOAL_MODE, false)
@@ -78,11 +79,17 @@ class CodeAgentWorkService : Service() {
                     return START_NOT_STICKY
                 }
 
-                startObservingState()
+                startObservingState(taskId)
             }
             ACTION_CANCEL -> {
-                Log.d(TAG, "Received ACTION_CANCEL")
+                Log.d(TAG, "Received ACTION_CANCEL from notification")
                 agentWorkManager.cancelCurrentTask()
+                releaseWakeLock()
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            ACTION_STOP -> {
+                Log.d(TAG, "Received ACTION_STOP")
                 releaseWakeLock()
                 ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -109,11 +116,12 @@ class CodeAgentWorkService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startObservingState() {
+    private fun startObservingState(targetTaskId: String) {
         observationJob?.cancel()
         observationJob = serviceScope.launch {
             agentWorkManager.activeTaskState.collectLatest { taskState ->
                 if (taskState == null) return@collectLatest
+                if (targetTaskId.isNotEmpty() && taskState.taskId != targetTaskId) return@collectLatest
 
                 if (taskState.isRunning) {
                     val updatedNotification = buildProgressNotification(
@@ -341,6 +349,7 @@ class CodeAgentWorkService : Service() {
 
         const val ACTION_START = "com.codeagent.core.agent.service.START"
         const val ACTION_CANCEL = "com.codeagent.core.agent.service.CANCEL"
+        const val ACTION_STOP = "com.codeagent.core.agent.service.STOP"
         const val ACTION_COMPLETE = "com.codeagent.core.agent.service.COMPLETE"
         const val ACTION_FAIL = "com.codeagent.core.agent.service.FAIL"
 
@@ -374,6 +383,17 @@ class CodeAgentWorkService : Service() {
                 }
             } catch (e: Throwable) {
                 Log.w(TAG, "Could not start CodeAgentWorkService", e)
+            }
+        }
+
+        fun stopWork(context: Context) {
+            val intent = Intent(context, CodeAgentWorkService::class.java).apply {
+                action = ACTION_STOP
+            }
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not send stop action", e)
             }
         }
 

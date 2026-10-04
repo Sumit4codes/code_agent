@@ -83,6 +83,7 @@ class ChatViewModel @Inject constructor(
     private var chatHistory: List<ChatMessage> = emptyList()
     private var agentJob: Job? = null
     private var sessionsJob: Job? = null
+    private var activeGoalTaskId: String? = null
 
     init {
         viewModelScope.launch {
@@ -119,6 +120,16 @@ class ChatViewModel @Inject constructor(
                 val currentSessionId = _state.value.sessionId ?: return@collect
                 if (taskState.sessionId == currentSessionId) {
                     val isNowRunning = taskState.isRunning
+                    val currentGoalId = activeGoalTaskId
+
+                    // Ignore stale/completed tasks from previous runs if they don't match activeGoalTaskId
+                    if (!isNowRunning && currentGoalId != null && taskState.taskId != currentGoalId) {
+                        return@collect
+                    }
+                    if (!isNowRunning && currentGoalId == taskState.taskId) {
+                        activeGoalTaskId = null
+                    }
+
                     _state.update { current ->
                         val newPending = if (!isNowRunning && taskState.completedSuccessfully == true && taskState.pendingChanges.isNotEmpty()) {
                             val existingIds = current.pendingChanges.map { it.id }.toSet()
@@ -158,6 +169,16 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val streamBuffer = StringBuilder()
             var lastDeltaTime = 0L
+            val toolOutputBuffer = StringBuilder()
+            var lastToolChunkTime = 0L
+            val maxToolOutputPreview = 24_000
+
+            fun flushStreamBuffer() {
+                if (streamBuffer.isNotEmpty()) {
+                    val flushed = streamBuffer.toString()
+                    _state.update { it.copy(streamingText = flushed) }
+                }
+            }
 
             agentWorkManager.liveEvents.collect { event ->
                 val currentSessionId = _state.value.sessionId ?: return@collect
@@ -175,7 +196,9 @@ class ChatViewModel @Inject constructor(
                         }
                     }
                     is AgentEvent.ToolCallStart -> {
+                        flushStreamBuffer()
                         streamBuffer.clear()
+                        toolOutputBuffer.clear()
                         _state.update {
                             it.copy(
                                 activeTool = ActiveToolExecution(
@@ -191,14 +214,25 @@ class ChatViewModel @Inject constructor(
                         }
                     }
                     is AgentEvent.ToolCallOutputChunk -> {
-                        _state.update { s ->
-                            val cur = s.activeTool
-                            if (cur != null && cur.id == event.toolCallId) {
-                                s.copy(activeTool = cur.copy(output = cur.output + event.chunk + "\n"))
-                            } else s
+                        toolOutputBuffer.append(event.chunk).append('\n')
+                        val now = System.currentTimeMillis()
+                        if (now - lastToolChunkTime >= 60L) {
+                            lastToolChunkTime = now
+                            val currentStr = if (toolOutputBuffer.length > maxToolOutputPreview) {
+                                toolOutputBuffer.substring(toolOutputBuffer.length - maxToolOutputPreview)
+                            } else {
+                                toolOutputBuffer.toString()
+                            }
+                            _state.update { state ->
+                                val cur = state.activeTool
+                                if (cur != null && cur.id == event.toolCallId) {
+                                    state.copy(activeTool = cur.copy(output = currentStr))
+                                } else state
+                            }
                         }
                     }
                     is AgentEvent.ToolCallComplete -> {
+                        toolOutputBuffer.clear()
                         _state.update { s ->
                             val cur = s.activeTool
                             if (cur != null && cur.id == event.toolCallId) {
@@ -213,7 +247,9 @@ class ChatViewModel @Inject constructor(
                         }
                     }
                     is AgentEvent.MessageAdded -> {
+                        flushStreamBuffer()
                         streamBuffer.clear()
+                        toolOutputBuffer.clear()
                         val msg = event.message
                         val uiMsg = Message(
                             id = UUID.randomUUID().toString(),
@@ -548,6 +584,8 @@ class ChatViewModel @Inject constructor(
 
         if (isGoal) {
             // Milestone 14: Background Headless Goal Mode Execution
+            agentJob?.cancel()
+            agentJob = null
             persistMessage(userMsg)
             chatHistory = chatHistory + ChatMessage(ChatMessage.Role.USER, cleanGoalPrompt)
 
@@ -558,7 +596,7 @@ class ChatViewModel @Inject constructor(
                     val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
                     val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
 
-                    agentWorkManager.startTask(
+                    val taskId = agentWorkManager.startTask(
                         sessionId = currentSessionId,
                         projectId = projectId,
                         projectName = projectName,
@@ -568,6 +606,7 @@ class ChatViewModel @Inject constructor(
                         isGoalMode = true,
                         systemPrompt = effectiveSystemPrompt
                     )
+                    activeGoalTaskId = taskId
                 } catch (e: Exception) {
                     Log.e("ChatViewModel", "Failed to launch goal task", e)
                     _state.update {
@@ -799,6 +838,7 @@ class ChatViewModel @Inject constructor(
     fun cancelGeneration() {
         agentJob?.cancel()
         agentJob = null
+        activeGoalTaskId = null
         agentWorkManager.cancelCurrentTask()
         _state.update {
             it.copy(
