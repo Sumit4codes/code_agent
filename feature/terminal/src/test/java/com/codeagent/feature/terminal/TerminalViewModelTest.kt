@@ -395,5 +395,13 @@ class TerminalViewModelTest {
         assertEquals("Vim", state.sessions.first { it.id == activeId }.title)
         assertEquals("Vim", state.projectName)
     }
+
+    @Test
+    fun `installUbuntuEnvironment sets bootstrapping state and executes setup-ubuntu`() = runTest(testDispatcher) {
+        viewModel.installUbuntuEnvironment()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(executor.executedCommands.contains("setup-ubuntu"))
+    }
 }
 

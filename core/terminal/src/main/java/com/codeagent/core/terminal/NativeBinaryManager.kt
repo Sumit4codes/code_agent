@@ -21,15 +21,23 @@ data class ShellEnvironmentInfo(
     val isPRootAvailable: Boolean = false,
     val isAlpineInstalled: Boolean = false,
     val alpineVersion: String? = null,
+    val isUbuntuInstalled: Boolean = false,
+    val ubuntuVersion: String? = null,
     val environmentType: String = "Native Android (Toybox)"
 )
 
 class NativeBinaryManager(
     private val context: Context? = null,
-    val alpineBootstrapManager: AlpineBootstrapManager = AlpineBootstrapManager(context)
+    val alpineBootstrapManager: AlpineBootstrapManager = AlpineBootstrapManager(context),
+    val ubuntuBootstrapManager: UbuntuBootstrapManager = UbuntuBootstrapManager(context)
 ) {
-    // Secondary constructor for JVM tests
-    constructor() : this(null, AlpineBootstrapManager(null))
+    // Secondary constructors
+    constructor() : this(null, AlpineBootstrapManager(null), UbuntuBootstrapManager(null))
+    constructor(context: Context?, alpineBootstrapManager: AlpineBootstrapManager) : this(
+        context,
+        alpineBootstrapManager,
+        UbuntuBootstrapManager(context)
+    )
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 
@@ -70,12 +78,28 @@ class NativeBinaryManager(
         return if (proot.exists() && proot.canExecute()) proot.absolutePath else null
     }
 
+    fun isUbuntuReady(): Boolean {
+        return isPRootAvailable() && ubuntuBootstrapManager.isInstalled()
+    }
+
     fun isAlpineReady(): Boolean {
         return isPRootAvailable() && alpineBootstrapManager.isInstalled()
     }
 
+    fun isLinuxReady(): Boolean {
+        return isUbuntuReady() || isAlpineReady()
+    }
+
     fun resolveGitExecutable(): String? {
-        // 1. If Alpine is installed, git in Alpine is accessible inside container
+        // 1. If Ubuntu is installed, git in Ubuntu is accessible inside container
+        if (isUbuntuReady()) {
+            val ubuntuGit = File(ubuntuBootstrapManager.ubuntuDir, "usr/bin/git")
+            if (ubuntuGit.exists()) {
+                return "/usr/bin/git"
+            }
+        }
+
+        // 2. If Alpine is installed, git in Alpine is accessible inside container
         if (isAlpineReady()) {
             val alpineGit = File(alpineBootstrapManager.alpineDir, "usr/bin/git")
             if (alpineGit.exists()) {
@@ -142,6 +166,8 @@ class NativeBinaryManager(
     }
 
     suspend fun inspectEnvironment(executor: TerminalExecutor): ShellEnvironmentInfo = withContext(ioDispatcher) {
+        val ubuntuActive = isUbuntuReady()
+        val ubuntuInstalled = ubuntuBootstrapManager.isInstalled()
         val alpineActive = isAlpineReady()
         val alpineInstalled = alpineBootstrapManager.isInstalled()
         val prootAvailable = isPRootAvailable()
@@ -151,7 +177,15 @@ class NativeBinaryManager(
             try { alpineReleaseFile.readText().trim() } catch (_: Exception) { null }
         } else null
 
+        val ubuntuIssueFile = File(ubuntuBootstrapManager.ubuntuDir, "etc/issue.net")
+        val ubuntuVersion = if (ubuntuInstalled && ubuntuIssueFile.exists()) {
+            try { ubuntuIssueFile.readText().trim() } catch (_: Exception) { "Ubuntu 24.04 LTS" }
+        } else if (ubuntuInstalled) {
+            "Ubuntu 24.04 LTS"
+        } else null
+
         val shell = when {
+            ubuntuActive -> "/bin/bash (Ubuntu 24.04 LTS)"
             alpineActive -> "/bin/sh (Alpine Linux)"
             File("/system/bin/sh").exists() -> "/system/bin/sh"
             File("/bin/sh").exists() -> "/bin/sh"
@@ -184,12 +218,12 @@ class NativeBinaryManager(
             System.getProperty("os.arch") ?: "unknown"
         }
 
-        val envType = if (alpineActive) {
-            "Alpine Linux ${alpineVersion ?: "3.21"} (PRoot Container)"
-        } else if (alpineInstalled) {
-            "Alpine Linux (Installed, awaiting PRoot initialization)"
-        } else {
-            "Native Android (Toybox)"
+        val envType = when {
+            ubuntuActive -> "Ubuntu 24.04 LTS (PRoot glibc Container)"
+            ubuntuInstalled -> "Ubuntu 24.04 LTS (Installed, awaiting PRoot initialization)"
+            alpineActive -> "Alpine Linux ${alpineVersion ?: "3.21"} (PRoot Container)"
+            alpineInstalled -> "Alpine Linux (Installed, awaiting PRoot initialization)"
+            else -> "Native Android (Toybox)"
         }
 
         ShellEnvironmentInfo(
@@ -204,6 +238,8 @@ class NativeBinaryManager(
             isPRootAvailable = prootAvailable,
             isAlpineInstalled = alpineInstalled,
             alpineVersion = alpineVersion,
+            isUbuntuInstalled = ubuntuInstalled,
+            ubuntuVersion = ubuntuVersion,
             environmentType = envType
         )
     }

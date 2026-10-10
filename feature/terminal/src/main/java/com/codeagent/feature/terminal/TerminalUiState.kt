@@ -38,6 +38,7 @@ data class TerminalUiState(
     val commandHistory: List<String> = emptyList(),
     val historyPointer: Int = -1,
     val envInfo: ShellEnvironmentInfo? = null,
+    val isUbuntuReady: Boolean = false,
     val isAlpineReady: Boolean = false,
     val isBootstrapping: Boolean = false,
     val bootstrapProgress: Float = -1f,

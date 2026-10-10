@@ -12,16 +12,28 @@ import javax.inject.Singleton
 class TermuxSessionManager @Inject constructor(
     @ApplicationContext private val context: Context? = null,
     val nativeBinaryManager: NativeBinaryManager? = null,
-    val alpineBootstrapManager: AlpineBootstrapManager? = null
+    val alpineBootstrapManager: AlpineBootstrapManager? = null,
+    val ubuntuBootstrapManager: UbuntuBootstrapManager? = null
 ) {
-    // Secondary constructor for JVM tests without Android context
-    constructor() : this(null, null, null)
+    // Secondary constructors
+    constructor() : this(null, null, null, null)
+    constructor(
+        context: Context?,
+        nativeBinaryManager: NativeBinaryManager?,
+        alpineBootstrapManager: AlpineBootstrapManager?
+    ) : this(
+        context,
+        nativeBinaryManager,
+        alpineBootstrapManager,
+        nativeBinaryManager?.ubuntuBootstrapManager
+    )
 
     fun createSession(
         workingDir: File?,
         client: TerminalSessionClient
     ): TerminalSession {
-        val rootDir = alpineBootstrapManager?.rootDir
+        val rootDir = ubuntuBootstrapManager?.rootDir
+            ?: alpineBootstrapManager?.rootDir
             ?: context?.filesDir
             ?: File(".")
         if (!rootDir.exists()) {
@@ -33,11 +45,128 @@ class TermuxSessionManager @Inject constructor(
         } else {
             rootDir
         }
-        val isAlpine = nativeBinaryManager?.isAlpineReady() == true
+        val isUbuntu = nativeBinaryManager?.isUbuntuReady() == true || ubuntuBootstrapManager?.isInstalled() == true
+        val isAlpine = nativeBinaryManager?.isAlpineReady() == true || alpineBootstrapManager?.isInstalled() == true
+
+        if (isUbuntu) {
+            try {
+                val prootExec = nativeBinaryManager?.resolvePRootExecutable() ?: "/system/bin/sh"
+                val nativeDir = try { context?.applicationInfo?.nativeLibraryDir?.let { File(it) } } catch (_: Exception) { null }
+                val ubuntuDir = ubuntuBootstrapManager?.ubuntuDir ?: File(rootDir, "ubuntu")
+                val tmpDir = ubuntuBootstrapManager?.tmpDir ?: File(rootDir, "tmp")
+                val publicDir = ubuntuBootstrapManager?.publicDir ?: File(rootDir, "public")
+
+                ubuntuBootstrapManager?.setupSupportingLibraries()
+                ubuntuBootstrapManager?.ensureGitConfigured()
+
+                val argList = mutableListOf<String>()
+                argList.add("--kill-on-exit")
+                argList.add("-r")
+                argList.add(ubuntuDir.absolutePath)
+                argList.add("-0")
+                argList.add("--link2symlink")
+                argList.add("--sysvipc")
+                argList.add("-L")
+
+                val boundSources = mutableListOf<String>()
+                fun addBind(src: String, dst: String? = null) {
+                    val f = File(src)
+                    if (f.exists()) {
+                        argList.add("-b")
+                        if (dst != null) argList.add("$src:$dst") else argList.add(src)
+                        boundSources.add(f.absolutePath)
+                        try { boundSources.add(f.canonicalPath) } catch (_: Exception) {}
+                    }
+                }
+
+                for (m in listOf("/dev", "/proc", "/sys")) addBind(m)
+                if (File("/dev/urandom").exists()) {
+                    argList.add("-b")
+                    argList.add("/dev/urandom:/dev/random")
+                }
+                for (st in listOf("/sdcard", "/storage", "/mnt/sdcard")) addBind(st)
+                if (nativeDir != null && nativeDir.exists()) addBind(nativeDir.absolutePath)
+                addBind(rootDir.absolutePath)
+                addBind("${publicDir.absolutePath}:/home")
+                boundSources.add(publicDir.absolutePath)
+
+                val shm = File(ubuntuDir, "tmp")
+                shm.mkdirs()
+                argList.add("-b")
+                argList.add("${shm.absolutePath}:/dev/shm")
+
+                val hostWorkDir = effectiveDir.absolutePath
+                val workCanon = try { effectiveDir.canonicalPath } catch (_: Exception) { hostWorkDir }
+                val isAlreadyBound = boundSources.any { boundPath ->
+                    hostWorkDir == boundPath || hostWorkDir.startsWith("$boundPath/") ||
+                        workCanon == boundPath || workCanon.startsWith("$boundPath/")
+                }
+
+                if (effectiveDir.exists()) {
+                    if (!isAlreadyBound) {
+                        argList.add("-b")
+                        argList.add(hostWorkDir)
+                    }
+                    argList.add("-w")
+                    argList.add(hostWorkDir)
+                } else {
+                    argList.add("-w")
+                    argList.add("/root")
+                }
+
+                val bashFile = File(ubuntuDir, "bin/bash")
+                val usrBashFile = File(ubuntuDir, "usr/bin/bash")
+                val shellExec = when {
+                    bashFile.exists() -> "/bin/bash"
+                    usrBashFile.exists() -> "/usr/bin/bash"
+                    else -> "/bin/sh"
+                }
+
+                argList.add(shellExec)
+                argList.add("-l")
+
+                val envList = mutableListOf(
+                    "TERM=xterm-256color",
+                    "COLORTERM=truecolor",
+                    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "HOME=/root",
+                    "USER=root",
+                    "SHELL=$shellExec",
+                    "LANG=C.UTF-8",
+                    "LC_ALL=C.UTF-8",
+                    "DEBIAN_FRONTEND=noninteractive",
+                    "PROOT_TMP_DIR=${tmpDir.absolutePath}",
+                    "GIT_CONFIG_PARAMETERS='core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'",
+                    "GIT_OPTIONAL_LOCKS=0"
+                )
+
+                if (nativeDir != null) {
+                    envList.add("PROOT_LOADER=${File(nativeDir, "libproot.so").absolutePath}")
+                    val loader32 = File(nativeDir, "libproot32.so")
+                    if (loader32.exists()) {
+                        envList.add("PROOT_LOADER32=${loader32.absolutePath}")
+                    }
+                    envList.add("LD_LIBRARY_PATH=${rootDir.absolutePath}:${nativeDir.absolutePath}")
+                } else {
+                    envList.add("LD_LIBRARY_PATH=${rootDir.absolutePath}")
+                }
+
+                return TerminalSession(
+                    prootExec,
+                    effectiveDir.absolutePath,
+                    argList.toTypedArray(),
+                    envList.toTypedArray(),
+                    2000,
+                    client
+                )
+            } catch (e: Throwable) {
+                android.util.Log.w("TermuxSessionManager", "Ubuntu PRoot session failed to initialize, falling back", e)
+            }
+        }
 
         if (isAlpine) {
             try {
-                val prootExec = nativeBinaryManager.resolvePRootExecutable() ?: "/system/bin/sh"
+                val prootExec = nativeBinaryManager?.resolvePRootExecutable() ?: "/system/bin/sh"
                 val nativeDir = try { context?.applicationInfo?.nativeLibraryDir?.let { File(it) } } catch (_: Exception) { null }
                 val alpineDir = alpineBootstrapManager?.alpineDir ?: File(rootDir, "alpine")
                 val tmpDir = alpineBootstrapManager?.tmpDir ?: File(rootDir, "tmp")

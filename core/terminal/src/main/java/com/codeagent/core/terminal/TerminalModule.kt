@@ -20,18 +20,26 @@ object TerminalModule {
 
     @Provides
     @Singleton
+    fun provideUbuntuBootstrapManager(
+        @ApplicationContext context: Context
+    ): UbuntuBootstrapManager = UbuntuBootstrapManager(context)
+
+    @Provides
+    @Singleton
     fun provideNativeBinaryManager(
         @ApplicationContext context: Context,
-        alpineBootstrapManager: AlpineBootstrapManager
-    ): NativeBinaryManager = NativeBinaryManager(context, alpineBootstrapManager)
+        alpineBootstrapManager: AlpineBootstrapManager,
+        ubuntuBootstrapManager: UbuntuBootstrapManager
+    ): NativeBinaryManager = NativeBinaryManager(context, alpineBootstrapManager, ubuntuBootstrapManager)
 
     @Provides
     @Singleton
     fun providePosixTerminalExecutor(
         @ApplicationContext context: Context,
         nativeBinaryManager: NativeBinaryManager,
-        alpineBootstrapManager: AlpineBootstrapManager
-    ): PosixTerminalExecutor = PosixTerminalExecutor(context, nativeBinaryManager, alpineBootstrapManager)
+        alpineBootstrapManager: AlpineBootstrapManager,
+        ubuntuBootstrapManager: UbuntuBootstrapManager
+    ): PosixTerminalExecutor = PosixTerminalExecutor(context, nativeBinaryManager, alpineBootstrapManager, ubuntuBootstrapManager)
 
     @Provides
     @Singleton
@@ -42,6 +50,7 @@ object TerminalModule {
     fun provideTermuxSessionManager(
         @ApplicationContext context: Context,
         nativeBinaryManager: NativeBinaryManager,
-        alpineBootstrapManager: AlpineBootstrapManager
-    ): TermuxSessionManager = TermuxSessionManager(context, nativeBinaryManager, alpineBootstrapManager)
+        alpineBootstrapManager: AlpineBootstrapManager,
+        ubuntuBootstrapManager: UbuntuBootstrapManager
+    ): TermuxSessionManager = TermuxSessionManager(context, nativeBinaryManager, alpineBootstrapManager, ubuntuBootstrapManager)
 }

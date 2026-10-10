@@ -16,11 +16,22 @@ import javax.inject.Singleton
 class PosixTerminalExecutor(
     private val context: Context? = null,
     val nativeBinaryManager: NativeBinaryManager? = null,
-    val alpineBootstrapManager: AlpineBootstrapManager? = null
+    val alpineBootstrapManager: AlpineBootstrapManager? = null,
+    val ubuntuBootstrapManager: UbuntuBootstrapManager? = null
 ) : TerminalExecutor {
 
-    // Secondary constructor for unit tests without Android Context
-    constructor() : this(null, null, null)
+    // Secondary constructors for unit tests or legacy callers without Android Context
+    constructor() : this(null, null, null, null)
+    constructor(
+        context: Context?,
+        nativeBinaryManager: NativeBinaryManager?,
+        alpineBootstrapManager: AlpineBootstrapManager?
+    ) : this(
+        context,
+        nativeBinaryManager,
+        alpineBootstrapManager,
+        nativeBinaryManager?.ubuntuBootstrapManager
+    )
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 
@@ -33,8 +44,12 @@ class PosixTerminalExecutor(
 
     override var isEnabled: Boolean = true
 
+    fun isUbuntuActive(): Boolean {
+        return nativeBinaryManager?.isUbuntuReady() == true || ubuntuBootstrapManager?.isInstalled() == true
+    }
+
     fun isAlpineActive(): Boolean {
-        return nativeBinaryManager?.isAlpineReady() == true
+        return nativeBinaryManager?.isAlpineReady() == true || alpineBootstrapManager?.isInstalled() == true
     }
 
     override fun bind(fileSystem: ProjectFileSystem, rootUri: Uri?, localWorkDir: File?) {
@@ -120,7 +135,10 @@ class PosixTerminalExecutor(
             return@withContext TerminalResult.Success("", 0)
         }
 
-        // Special command to set up or reinstall Alpine Linux on device
+        // Special command to set up or reinstall Linux distributions on device
+        if (trimmed == "setup-ubuntu" || trimmed == "install-ubuntu") {
+            return@withContext bootstrapUbuntu(onOutput)
+        }
         if (trimmed == "setup-alpine" || trimmed == "install-alpine") {
             return@withContext bootstrapAlpine(onOutput)
         }
@@ -147,10 +165,50 @@ class PosixTerminalExecutor(
             }
         }
 
-        if (isAlpineActive()) {
+        if (isUbuntuActive()) {
+            executeUbuntuProcess(trimmed, workDir, onOutput)
+        } else if (isAlpineActive()) {
             executeAlpineProcess(trimmed, workDir, onOutput)
         } else {
             executeNativeProcess(trimmed, workDir, onOutput)
+        }
+    }
+
+    suspend fun bootstrapUbuntu(onOutput: ((String) -> Unit)?): TerminalResult = withContext(ioDispatcher) {
+        val mgr = ubuntuBootstrapManager ?: nativeBinaryManager?.ubuntuBootstrapManager ?: run {
+            val msg = "Ubuntu bootstrap manager is not configured in this environment."
+            onOutput?.invoke(msg)
+            return@withContext TerminalResult.Error(msg, 1)
+        }
+
+        onOutput?.invoke("==> Initializing Ubuntu 24.04 LTS (glibc) environment for CodeAgent...")
+        val result = mgr.bootstrap { stage, progress ->
+            val pct = if (progress >= 0f) " [${(progress * 100).toInt()}%]" else ""
+            onOutput?.invoke("$stage$pct")
+        }
+
+        if (result.isSuccess) {
+            val successMsg = """
+                [+] Ubuntu 24.04 LTS initialized successfully!
+                • GNU C Library: glibc 2.39 native
+                • Package manager available: apt / apt-get
+                • Shell: /bin/bash
+                • Install tools:
+                    apt update
+                    apt install -y build-essential       (GCC, G++, Make, C/C++ compiler)
+                    apt install -y python3 python3-pip   (Python 3 + pip)
+                    apt install -y openjdk-21-jdk-headless (Java 21 JDK for builds)
+                    apt install -y nodejs npm             (Node.js & NPM)
+                    apt install -y rustc cargo            (Rust compiler & Cargo)
+                    apt install -y golang                 (Go programming language)
+                • Type 'help' or 'bins' for more details.
+            """.trimIndent()
+            onOutput?.invoke(successMsg)
+            TerminalResult.Success(successMsg, 0)
+        } else {
+            val err = "[-] Bootstrap failed: ${result.exceptionOrNull()?.message}"
+            onOutput?.invoke(err)
+            TerminalResult.Error(err, 1)
         }
     }
 
@@ -211,6 +269,165 @@ class PosixTerminalExecutor(
         previousWorkingDir = currentDir
         currentWorkingDir = canonical
         return TerminalResult.Success("", 0)
+    }
+
+    private suspend fun executeUbuntuProcess(
+        command: String,
+        workingDir: File,
+        onOutput: ((String) -> Unit)?,
+        timeoutMs: Long = 120_000L
+    ): TerminalResult = withContext(ioDispatcher) {
+        val effectiveTimeoutMs = if (timeoutMs == 120_000L && (command.contains("apt") || command.contains("gradle") || command.contains("build") || command.contains("make") || command.contains("cmake") || command.contains("cargo") || command.contains("npm"))) {
+            600_000L // 10 minutes for package installations and builds
+        } else {
+            timeoutMs
+        }
+
+        val prootExec = nativeBinaryManager?.resolvePRootExecutable()
+            ?: return@withContext executeNativeProcess(command, workingDir, onOutput, effectiveTimeoutMs)
+
+        val mgr = ubuntuBootstrapManager ?: nativeBinaryManager.ubuntuBootstrapManager
+        val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
+        val rootDir = mgr.rootDir
+        val ubuntuDir = mgr.ubuntuDir
+        val tmpDir = mgr.tmpDir
+        val publicDir = mgr.publicDir
+
+        val args = mutableListOf<String>()
+        args.add(prootExec)
+        args.add("--kill-on-exit")
+        args.add("-r")
+        args.add(ubuntuDir.absolutePath)
+        args.add("-0")
+        args.add("--link2symlink")
+        args.add("--sysvipc")
+        args.add("-L")
+
+        mgr.setupSupportingLibraries()
+        mgr.ensureGitConfigured()
+
+        val boundSources = mutableListOf<String>()
+
+        fun addBind(src: String, dst: String? = null) {
+            val srcFile = File(src)
+            if (srcFile.exists()) {
+                args.add("-b")
+                if (dst != null) {
+                    args.add("$src:$dst")
+                } else {
+                    args.add(src)
+                }
+                boundSources.add(srcFile.absolutePath)
+                try {
+                    boundSources.add(srcFile.canonicalPath)
+                } catch (_: Exception) {}
+            }
+        }
+
+        for (m in listOf("/dev", "/proc", "/sys")) {
+            addBind(m)
+        }
+        if (File("/dev/urandom").exists()) {
+            args.add("-b")
+            args.add("/dev/urandom:/dev/random")
+        }
+
+        for (storage in listOf("/sdcard", "/storage", "/mnt/sdcard")) {
+            addBind(storage)
+        }
+
+        if (nativeDir != null && nativeDir.exists()) {
+            addBind(nativeDir.absolutePath)
+        }
+        addBind(rootDir.absolutePath)
+
+        val rootHome = File(ubuntuDir, "root")
+        rootHome.mkdirs()
+        args.add("-b")
+        args.add("${publicDir.absolutePath}:/home")
+        boundSources.add(publicDir.absolutePath)
+        try { boundSources.add(publicDir.canonicalPath) } catch (_: Exception) {}
+
+        val shm = File(ubuntuDir, "tmp")
+        shm.mkdirs()
+        args.add("-b")
+        args.add("${shm.absolutePath}:/dev/shm")
+
+        val hostWorkDir = workingDir.absolutePath
+        val workCanon = try { workingDir.canonicalPath } catch (_: Exception) { hostWorkDir }
+
+        val isAlreadyBound = boundSources.any { boundPath ->
+            hostWorkDir == boundPath || hostWorkDir.startsWith("$boundPath/") ||
+                workCanon == boundPath || workCanon.startsWith("$boundPath/")
+        }
+
+        if (workingDir.exists()) {
+            if (!isAlreadyBound) {
+                args.add("-b")
+                args.add(hostWorkDir)
+            }
+            args.add("-w")
+            args.add(hostWorkDir)
+        } else {
+            args.add("-w")
+            args.add("/root")
+        }
+
+        val bashFile = File(ubuntuDir, "bin/bash")
+        val usrBashFile = File(ubuntuDir, "usr/bin/bash")
+        val shellPath = when {
+            bashFile.exists() -> "/bin/bash"
+            usrBashFile.exists() -> "/usr/bin/bash"
+            else -> "/bin/sh"
+        }
+
+        args.add(shellPath)
+        args.add("-c")
+        args.add(command)
+
+        try {
+            val result = withTimeoutOrNull(effectiveTimeoutMs) {
+                val pb = ProcessBuilder(args)
+                    .directory(if (workingDir.exists()) workingDir else rootDir)
+                    .redirectErrorStream(true)
+
+                val env = pb.environment()
+                env["PROOT_TMP_DIR"] = tmpDir.absolutePath
+                if (nativeDir != null) {
+                    env["PROOT_LOADER"] = File(nativeDir, "libproot.so").absolutePath
+                    val loader32 = File(nativeDir, "libproot32.so")
+                    if (loader32.exists()) {
+                        env["PROOT_LOADER32"] = loader32.absolutePath
+                    }
+                    env["LD_LIBRARY_PATH"] = "${rootDir.absolutePath}:${nativeDir.absolutePath}"
+                } else {
+                    env["LD_LIBRARY_PATH"] = rootDir.absolutePath
+                }
+                env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                env["HOME"] = "/root"
+                env["USER"] = "root"
+                env["SHELL"] = shellPath
+                env["TERM"] = "xterm-256color"
+                env["LANG"] = "C.UTF-8"
+                env["LC_ALL"] = "C.UTF-8"
+                env["DEBIAN_FRONTEND"] = "noninteractive"
+                env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
+                env["GIT_OPTIONAL_LOCKS"] = "0"
+
+                val process = pb.start()
+                runProcessStream(process, onOutput)
+            }
+
+            result ?: run {
+                val timeoutMsg = "Command timed out after ${effectiveTimeoutMs / 1000} seconds."
+                onOutput?.invoke(timeoutMsg)
+                TerminalResult.Error(timeoutMsg, 124)
+            }
+        } catch (e: Exception) {
+            val errMsg = "PRoot Ubuntu execution error: ${e.message}"
+            onOutput?.invoke(errMsg)
+            TerminalResult.Error(errMsg, 1)
+        }
     }
 
     private suspend fun executeAlpineProcess(

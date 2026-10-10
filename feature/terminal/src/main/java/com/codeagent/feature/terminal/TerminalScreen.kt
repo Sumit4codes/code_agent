@@ -98,9 +98,26 @@ fun TerminalScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             // Environment status chip
+                            val isUbuntu = uiState.isUbuntuReady
+                            val isAlpine = uiState.isAlpineReady
+                            val chipBg = when {
+                                isUbuntu -> Color(0xFF3B1F0E)
+                                isAlpine -> Color(0xFF1F3D2C)
+                                else -> Color(0xFF252D38)
+                            }
+                            val chipDot = when {
+                                isUbuntu -> Color(0xFFE95420)
+                                isAlpine -> TerminalPrompt
+                                else -> Color(0xFFE3B341)
+                            }
+                            val chipLabel = when {
+                                isUbuntu -> "Ubuntu 24.04 LTS"
+                                isAlpine -> "Alpine Linux"
+                                else -> "Toybox Shell"
+                            }
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (uiState.isAlpineReady) Color(0xFF1F3D2C) else Color(0xFF252D38),
+                                color = chipBg,
                                 modifier = Modifier.padding(vertical = 2.dp)
                             ) {
                                 Row(
@@ -111,16 +128,16 @@ fun TerminalScreen(
                                         modifier = Modifier
                                             .size(6.dp)
                                             .background(
-                                                color = if (uiState.isAlpineReady) TerminalPrompt else Color(0xFFE3B341),
+                                                color = chipDot,
                                                 shape = RoundedCornerShape(3.dp)
                                             )
                                     )
                                     Spacer(Modifier.width(4.dp))
                                     Text(
-                                        text = if (uiState.isAlpineReady) "Alpine Linux" else "Toybox Shell",
+                                        text = chipLabel,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = if (uiState.isAlpineReady) TerminalPrompt else Color(0xFFE3B341)
+                                        color = chipDot
                                     )
                                 }
                             }
@@ -198,10 +215,10 @@ fun TerminalScreen(
                 .background(TerminalBg)
                 .imePadding()
         ) {
-            // Optional banner when Alpine Linux is not yet installed
-            if (!uiState.isAlpineReady && !uiState.isRunning && !uiState.isBootstrapping) {
+            // Optional banner when Linux environment is not yet installed
+            if (!uiState.isUbuntuReady && !uiState.isAlpineReady && !uiState.isRunning && !uiState.isBootstrapping) {
                 Surface(
-                    color = Color(0xFF161B22),
+                    color = Color(0xFF1E1712),
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -214,28 +231,28 @@ fun TerminalScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Alpine Linux Environment",
+                                text = "Ubuntu 24.04 LTS (glibc)",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = TerminalPrompt
+                                color = Color(0xFFE95420)
                             )
                             Text(
-                                text = "Enable apk to install git, python3, gcc, g++, make, and vim.",
+                                text = "Enable apt to install GCC, Python 3, OpenJDK 21, Node.js, Rust, Go, and build tools.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AccessoryKeyContent
                             )
                         }
                         Spacer(Modifier.width(8.dp))
                         Button(
-                            onClick = { viewModel.installAlpineEnvironment() },
+                            onClick = { viewModel.installUbuntuEnvironment() },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = TerminalPrompt,
-                                contentColor = Color.Black
+                                containerColor = Color(0xFFE95420),
+                                contentColor = Color.White
                             ),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                             shape = RoundedCornerShape(4.dp),
                             modifier = Modifier.height(28.dp)
                         ) {
-                            Text("Setup", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Setup Ubuntu", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

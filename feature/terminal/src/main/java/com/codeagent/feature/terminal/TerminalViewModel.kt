@@ -7,6 +7,7 @@ import com.codeagent.core.data.ProjectDao
 import com.codeagent.core.files.FileProjectFileSystem
 import com.codeagent.core.files.ProjectFileSystem
 import com.codeagent.core.terminal.AlpineBootstrapManager
+import com.codeagent.core.terminal.UbuntuBootstrapManager
 import com.codeagent.core.terminal.CodeAgentTerminalSessionClient
 import com.codeagent.core.terminal.CodeAgentTerminalViewClient
 import com.codeagent.core.terminal.NativeBinaryManager
@@ -37,6 +38,7 @@ class TerminalViewModel @Inject constructor(
     val terminalExecutor: TerminalExecutor,
     private val nativeBinaryManager: NativeBinaryManager,
     val alpineBootstrapManager: AlpineBootstrapManager? = null,
+    val ubuntuBootstrapManager: UbuntuBootstrapManager? = null,
     val termuxSessionManager: TermuxSessionManager? = null,
     val terminalPreferencesRepository: TerminalPreferencesRepository? = null,
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
@@ -48,7 +50,7 @@ class TerminalViewModel @Inject constructor(
         terminalExecutor: TerminalExecutor,
         nativeBinaryManager: NativeBinaryManager,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
-    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null, null, null, ioDispatcher)
+    ) : this(projectDao, fileSystem, terminalExecutor, nativeBinaryManager, null, null, null, null, ioDispatcher)
 
     private val _uiState = MutableStateFlow(
         TerminalUiState(
@@ -137,31 +139,46 @@ class TerminalViewModel @Inject constructor(
     fun initializeTerminal() {
         viewModelScope.launch(ioDispatcher) {
             val envInfo = nativeBinaryManager.inspectEnvironment(terminalExecutor)
+            val isUbuntu = nativeBinaryManager.isUbuntuReady()
             val isAlpine = nativeBinaryManager.isAlpineReady()
             val currentDir = terminalExecutor.activeDirectory?.absolutePath
                 ?: (terminalExecutor as? PosixTerminalExecutor)?.currentWorkingDir?.absolutePath
                 ?: System.getProperty("user.dir")
                 ?: "/"
 
-            val systemEntry = if (isAlpine) {
-                TerminalEntry(
-                    text = "CodeAgent POSIX Terminal Engine [Alpine Linux inside PRoot]\n" +
-                           "Environment: ${envInfo.environmentType} | Arch: ${envInfo.architecture}\n" +
-                           "Package Manager: apk (run 'apk add git python3 gcc g++ make' to install tools)\n" +
-                           "Working Directory: $currentDir\n" +
-                           "Storage Mounted: /sdcard, /storage\n" +
-                           "Type 'help' or 'bins' for commands.",
-                    type = TerminalEntryType.SYSTEM
-                )
-            } else {
-                TerminalEntry(
-                    text = "CodeAgent POSIX Terminal Engine [Native Toybox Shell]\n" +
-                           "Architecture: ${envInfo.architecture} | Shell: ${envInfo.shellPath}\n" +
-                           "Git: ${if (envInfo.isGitAvailable) envInfo.gitVersion ?: "Available" else "Not detected"}\n" +
-                           "Working Directory: $currentDir\n" +
-                           "Tip: Run 'setup-alpine' to install full Alpine Linux with python, gcc, make, and git.",
-                    type = TerminalEntryType.SYSTEM
-                )
+            val systemEntry = when {
+                isUbuntu -> {
+                    TerminalEntry(
+                        text = "CodeAgent POSIX Terminal Engine [Ubuntu 24.04 LTS (glibc)]\n" +
+                               "Environment: ${envInfo.environmentType} | Arch: ${envInfo.architecture}\n" +
+                               "Package Manager: apt (run 'apt install -y build-essential python3 python3-pip openjdk-21-jdk')\n" +
+                               "Working Directory: $currentDir\n" +
+                               "Storage Mounted: /sdcard, /storage\n" +
+                               "Type 'help' or 'bins' for commands.",
+                        type = TerminalEntryType.SYSTEM
+                    )
+                }
+                isAlpine -> {
+                    TerminalEntry(
+                        text = "CodeAgent POSIX Terminal Engine [Alpine Linux inside PRoot]\n" +
+                               "Environment: ${envInfo.environmentType} | Arch: ${envInfo.architecture}\n" +
+                               "Package Manager: apk (run 'apk add git python3 gcc g++ make' to install tools)\n" +
+                               "Working Directory: $currentDir\n" +
+                               "Storage Mounted: /sdcard, /storage\n" +
+                               "Type 'help' or 'bins' for commands.",
+                        type = TerminalEntryType.SYSTEM
+                    )
+                }
+                else -> {
+                    TerminalEntry(
+                        text = "CodeAgent POSIX Terminal Engine [Native Toybox Shell]\n" +
+                               "Architecture: ${envInfo.architecture} | Shell: ${envInfo.shellPath}\n" +
+                               "Git: ${if (envInfo.isGitAvailable) envInfo.gitVersion ?: "Available" else "Not detected"}\n" +
+                               "Working Directory: $currentDir\n" +
+                               "Tip: Run 'setup-ubuntu' to install full Ubuntu 24.04 LTS with apt, gcc, python, node, and JDK 21.",
+                        type = TerminalEntryType.SYSTEM
+                    )
+                }
             }
 
             _uiState.update { current ->
@@ -174,6 +191,7 @@ class TerminalViewModel @Inject constructor(
                 }
                 current.copy(
                     envInfo = envInfo,
+                    isUbuntuReady = isUbuntu,
                     isAlpineReady = isAlpine,
                     workingDirectory = currentDir,
                     entries = updatedEntries
@@ -464,6 +482,12 @@ class TerminalViewModel @Inject constructor(
         _uiState.update { it.copy(commandInput = newInput) }
     }
 
+    fun installUbuntuEnvironment() {
+        if (_uiState.value.isBootstrapping) return
+        _uiState.update { it.copy(isBootstrapping = true, bootstrapProgress = 0f, bootstrapMessage = "Initializing Ubuntu 24.04 LTS (glibc)...") }
+        executeCommand("setup-ubuntu")
+    }
+
     fun installAlpineEnvironment() {
         if (_uiState.value.isBootstrapping) return
         _uiState.update { it.copy(isBootstrapping = true, bootstrapProgress = 0f, bootstrapMessage = "Initializing Alpine Linux...") }
@@ -502,6 +526,7 @@ class TerminalViewModel @Inject constructor(
         }
 
         if (trimmed == "help") {
+            val isUbuntu = _uiState.value.isUbuntuReady
             val isAlpine = _uiState.value.isAlpineReady
             val helpText = """
                 Built-in Commands:
@@ -511,22 +536,38 @@ class TerminalViewModel @Inject constructor(
                   pwd            - Print current directory
                   cd <dir>       - Change directory (persists across commands)
                   env-info       - Show native shell & binary environment
-                  setup-alpine   - Bootstrap/reinstall Alpine Linux distribution
+                  setup-ubuntu   - Bootstrap full Ubuntu 24.04 LTS (glibc) distribution
+                  setup-alpine   - Bootstrap Alpine Linux distribution
 
-                Alpine Linux Development Tools:
-                  ${if (isAlpine) "Container Active: commands execute inside Alpine Linux with /sdcard mounted." else "Run 'setup-alpine' to activate Alpine Linux."}
+                Linux Development Tools:
+                  ${when {
+                      isUbuntu -> "Ubuntu Active (glibc): commands execute in Ubuntu 24.04 with /sdcard mounted."
+                      isAlpine -> "Alpine Active (musl): commands execute in Alpine Linux with /sdcard mounted."
+                      else -> "Run 'setup-ubuntu' to activate full Ubuntu 24.04 LTS."
+                  }}
+                  ${if (isUbuntu) """
+                  apt update                       - Refresh package repositories
+                  apt install -y build-essential   - Install GCC, G++, Make
+                  apt install -y python3 python3-pip - Install Python 3 & pip
+                  apt install -y openjdk-21-jdk-headless - Install Java 21 JDK
+                  apt install -y nodejs npm        - Install Node.js & NPM
+                  apt install -y rustc cargo       - Install Rust & Cargo
+                  apt search <query>               - Search for packages
+                  """.trimIndent() else """
                   apk update              - Refresh package repositories
                   apk add git             - Install Git version control
                   apk add python3 py3-pip - Install Python 3 and pip
                   apk add gcc g++ make    - Install C/C++ compiler and build tools
                   apk add nodejs npm      - Install Node.js & npm
                   apk search <query>      - Search for packages
+                  """.trimIndent()}
             """.trimIndent()
             _uiState.update { it.copy(entries = it.entries + TerminalEntry(helpText, TerminalEntryType.SYSTEM)) }
             return
         }
 
         if (trimmed == "bins" || trimmed == "commands" || trimmed == "sys-bins") {
+            val isUbuntu = _uiState.value.isUbuntuReady
             val isAlpine = _uiState.value.isAlpineReady
             val binsText = """
                 Available Commands in Terminal:
@@ -538,13 +579,18 @@ class TerminalViewModel @Inject constructor(
                    tail, tar, tee, touch, tr, uname, uniq, wc, which, whoami, xargs...
                    (Run 'toybox' for full list of compiled Android applets)
 
-                2. Package Manager (Alpine Linux):
-                   ${if (isAlpine) "apk (Active) - use 'apk add <tool>' to install git, python3, gcc, make..." else "apk (Not installed - run 'setup-alpine' to enable)"}
+                2. Package Manager:
+                   ${when {
+                       isUbuntu -> "apt (Ubuntu glibc Active) - use 'apt install -y <tool>' to install GCC, Python, Java 21, Node, Rust, etc."
+                       isAlpine -> "apk (Alpine Active) - use 'apk add <tool>' to install git, python3, gcc, make..."
+                       else -> "Run 'setup-ubuntu' to enable apt package manager"
+                   }}
 
                 3. Development Environment:
-                   Git: ${_uiState.value.envInfo?.gitVersion ?: "Install with 'apk add git'"}
-                   Python: run 'apk add python3 py3-pip' to install
-                   Compilers: run 'apk add gcc g++ make' to install C/C++
+                   Git: ${_uiState.value.envInfo?.gitVersion ?: "Install with 'apt install -y git'"}
+                   Python: run 'apt install -y python3 python3-pip' to install
+                   Compilers: run 'apt install -y build-essential' to install C/C++
+                   Java 21: run 'apt install -y openjdk-21-jdk-headless' to install JDK 21
                    Environment: ${_uiState.value.envInfo?.environmentType ?: "Standard POSIX"}
             """.trimIndent()
             _uiState.update { it.copy(entries = it.entries + TerminalEntry(binsText, TerminalEntryType.SYSTEM)) }
@@ -557,6 +603,7 @@ class TerminalViewModel @Inject constructor(
                 Environment: ${env?.environmentType ?: "unknown"}
                 Architecture: ${env?.architecture ?: "unknown"}
                 PRoot Available: ${env?.isPRootAvailable ?: false}
+                Ubuntu Installed: ${env?.isUbuntuInstalled ?: false} (Version: ${env?.ubuntuVersion ?: "N/A"})
                 Alpine Installed: ${env?.isAlpineInstalled ?: false} (Version: ${env?.alpineVersion ?: "N/A"})
                 Shell: ${env?.shellPath ?: "unknown"}
                 Git: ${if (env?.isGitAvailable == true) env.gitVersion ?: "Available" else "Not detected"}
