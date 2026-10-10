@@ -150,4 +150,25 @@ class UbuntuBootstrapManagerTest {
         assertTrue(userText.contains("directory = *"))
         assertTrue(userText.contains("filemode = false"))
     }
+
+    @Test
+    fun ensureAndroidGroupsConfigured_populatesGroupFileAndDisablesSudoHints() {
+        val ubuntuDir = manager.ubuntuDir
+        val etcDir = File(ubuntuDir, "etc").apply { mkdirs() }
+        val groupFile = File(etcDir, "group").apply {
+            writeText("root:x:0:\ndaemon:x:1:\n")
+        }
+
+        manager.ensureAndroidGroupsConfigured(ubuntuDir)
+
+        val sudoSuccess = File(ubuntuDir, "root/.sudo_as_admin_successful")
+        val hushlogin = File(ubuntuDir, "root/.hushlogin")
+        assertTrue(sudoSuccess.exists())
+        assertTrue(hushlogin.exists())
+
+        val updatedGroupText = groupFile.readText()
+        assertTrue(updatedGroupText.contains("aid_inet:x:3003:root"))
+        assertTrue(updatedGroupText.contains("aid_ext_data_rw:x:1077:root"))
+        assertTrue(updatedGroupText.contains("aid_everybody:x:9997:root"))
+    }
 }

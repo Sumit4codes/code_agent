@@ -204,6 +204,7 @@ class UbuntuBootstrapManager(
                 }
             }
         }
+        ensureAndroidGroupsConfigured(ubuntuDir)
     }
 
     private fun getRootfsInputStream(
@@ -414,6 +415,9 @@ class UbuntuBootstrapManager(
         tmpDir.setReadable(true, false)
         tmpDir.setWritable(true, false)
         tmpDir.setExecutable(true, false)
+
+        // 7. Ensure Android supplementary groups and sudo hint files are configured
+        ensureAndroidGroupsConfigured(ubuntu)
     }
 
     fun ensureGitConfigured() {
@@ -431,6 +435,83 @@ class UbuntuBootstrapManager(
                 """.trimIndent() + "\n"
             )
         }
+        ensureAndroidGroupsConfigured(ubuntuDir)
+    }
+
+    fun ensureAndroidGroupsConfigured(ubuntu: File = ubuntuDir) {
+        val rootHome = File(ubuntu, "root")
+        if (!rootHome.exists()) rootHome.mkdirs()
+
+        // 1. Disable Ubuntu sudo hints that run 'groups' in /etc/bash.bashrc
+        try {
+            File(rootHome, ".sudo_as_admin_successful").createNewFile()
+            File(rootHome, ".hushlogin").createNewFile()
+        } catch (_: Exception) {}
+
+        // 2. Read /etc/group and populate unknown Android process GIDs
+        val groupFile = File(ubuntu, "etc/group")
+        if (!groupFile.exists()) return
+
+        try {
+            val existingLines = groupFile.readLines()
+            val existingGids = existingLines.mapNotNull { line ->
+                val parts = line.split(":")
+                if (parts.size >= 3) parts[2].toIntOrNull() else null
+            }.toMutableSet()
+
+            val missingGroups = mutableListOf<String>()
+
+            // Standard Android AIDs
+            val standardAids = mapOf(
+                1004 to "aid_input",
+                1007 to "aid_log",
+                1011 to "aid_adb",
+                1015 to "aid_sdcard_rw",
+                1028 to "aid_sdcard_r",
+                1077 to "aid_ext_data_rw",
+                1078 to "aid_ext_obb_rw",
+                1079 to "aid_ext_media",
+                3001 to "aid_net_bt_admin",
+                3002 to "aid_net_bt",
+                3003 to "aid_inet",
+                3006 to "aid_net_bw_stats",
+                3009 to "aid_readproc",
+                3010 to "aid_wakelock",
+                3011 to "aid_uhid",
+                3012 to "aid_readtracefs",
+                9997 to "aid_everybody"
+            )
+
+            // Dynamic GIDs from /proc/self/status
+            val runtimeGids = mutableSetOf<Int>()
+            try {
+                val statusFile = File("/proc/self/status")
+                if (statusFile.exists()) {
+                    for (line in statusFile.readLines()) {
+                        if (line.startsWith("Groups:")) {
+                            val tokens = line.removePrefix("Groups:").trim().split("\\s+".toRegex())
+                            for (token in tokens) {
+                                token.toIntOrNull()?.let { runtimeGids.add(it) }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val allTargetGids = (standardAids.keys + runtimeGids).toSet()
+            for (gid in allTargetGids) {
+                if (!existingGids.contains(gid)) {
+                    val name = standardAids[gid] ?: "aid_$gid"
+                    missingGroups.add("$name:x:$gid:root")
+                    existingGids.add(gid)
+                }
+            }
+
+            if (missingGroups.isNotEmpty()) {
+                val appendContent = missingGroups.joinToString("\n") + "\n"
+                groupFile.appendText(appendContent)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun updateState(
