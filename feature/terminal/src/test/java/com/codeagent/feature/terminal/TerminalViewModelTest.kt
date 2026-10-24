@@ -243,7 +243,7 @@ class TerminalViewModelTest {
 
         val state = viewModel.uiState.value
         assertTrue(state.entries.any { it.text.contains("Available Commands in Terminal") })
-        assertTrue(state.entries.any { it.text.contains("Android Toybox") })
+        assertTrue(state.entries.any { it.text.contains("Ubuntu GNU Coreutils") })
     }
 
     @Test

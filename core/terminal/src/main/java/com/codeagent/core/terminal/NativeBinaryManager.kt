@@ -23,7 +23,7 @@ data class ShellEnvironmentInfo(
     val alpineVersion: String? = null,
     val isUbuntuInstalled: Boolean = false,
     val ubuntuVersion: String? = null,
-    val environmentType: String = "Native Android (Toybox)"
+    val environmentType: String = "Ubuntu 24.04 LTS (glibc)"
 )
 
 class NativeBinaryManager(
@@ -152,7 +152,6 @@ class NativeBinaryManager(
         val candidates = listOf(
             "/system/xbin/busybox",
             "/system/bin/busybox",
-            "/system/bin/toybox",
             "/bin/busybox",
             "/usr/bin/busybox"
         )
@@ -186,10 +185,9 @@ class NativeBinaryManager(
 
         val shell = when {
             ubuntuActive -> "/bin/bash (Ubuntu 24.04 LTS)"
+            ubuntuInstalled -> "/bin/bash (Ubuntu 24.04 LTS - ready)"
             alpineActive -> "/bin/sh (Alpine Linux)"
-            File("/system/bin/sh").exists() -> "/system/bin/sh"
-            File("/bin/sh").exists() -> "/bin/sh"
-            else -> "sh"
+            else -> "/bin/bash (Ubuntu 24.04 LTS)"
         }
 
         val gitExec = resolveGitExecutable()
@@ -223,7 +221,7 @@ class NativeBinaryManager(
             ubuntuInstalled -> "Ubuntu 24.04 LTS (Installed, awaiting PRoot initialization)"
             alpineActive -> "Alpine Linux ${alpineVersion ?: "3.21"} (PRoot Container)"
             alpineInstalled -> "Alpine Linux (Installed, awaiting PRoot initialization)"
-            else -> "Native Android (Toybox)"
+            else -> "Ubuntu 24.04 LTS (Pending Setup)"
         }
 
         ShellEnvironmentInfo(

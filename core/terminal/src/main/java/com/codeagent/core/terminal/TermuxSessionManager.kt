@@ -275,38 +275,41 @@ class TermuxSessionManager @Inject constructor(
             }
         }
 
-        // Native Toybox / system shell fallback
-        val shell = when {
+        // Ubuntu pending setup notice — Android Toybox shell is disabled
+        val hostRunner = when {
             File("/system/bin/sh").exists() -> "/system/bin/sh"
             File("/bin/sh").exists() -> "/bin/sh"
             else -> "sh"
         }
-        val args = arrayOf("-i")
-
-        val nativeDir = try { context?.applicationInfo?.nativeLibraryDir } catch (_: Exception) { null }
-        val pathEntries = mutableListOf<String>()
-        if (!nativeDir.isNullOrBlank()) pathEntries.add(nativeDir)
-        val filesBin = try { context?.filesDir?.let { File(it, "bin").absolutePath } } catch (_: Exception) { null }
-        if (!filesBin.isNullOrBlank()) pathEntries.add(filesBin)
-        val systemPath = System.getenv("PATH") ?: "/system/bin:/system/xbin:/bin:/usr/bin"
-        pathEntries.add(systemPath)
-        for (stdPath in listOf("/system/bin", "/system/xbin", "/vendor/bin", "/apex/com.android.runtime/bin")) {
-            if (!pathEntries.any { it.contains(stdPath) }) pathEntries.add(stdPath)
-        }
+        val setupScript = """
+            clear
+            printf '\033[1;38;5;208m%s\033[0m\n' '========================================================'
+            printf '\033[1;38;5;208m%s\033[0m\n' '   CodeAgent Terminal Engine: Ubuntu 24.04 LTS (Default)'
+            printf '\033[1;38;5;208m%s\033[0m\n' '========================================================'
+            printf '\n%s\n' 'Ubuntu 24.04 LTS (glibc) is the default terminal environment.'
+            printf '%s\n' 'Android Toybox shell is disabled in CodeAgent.'
+            printf '\n\033[1;33m%s\033[0m\n' '[!] Ubuntu userland is not yet installed.'
+            printf '%s\n' 'Tap the [Setup Ubuntu] button above to bootstrap the'
+            printf '%s\n' 'Ubuntu container with apt, GCC, Python 3, and OpenJDK 21.'
+            printf '\n\033[1;38;5;208m%s\033[0m\n' '========================================================'
+            while true; do
+                read -r _
+            done
+        """.trimIndent()
+        val args = arrayOf("-c", setupScript)
 
         val env = arrayOf(
             "TERM=xterm-256color",
             "COLORTERM=truecolor",
-            "PATH=${pathEntries.joinToString(":")}",
             "HOME=${effectiveDir.absolutePath}",
             "PWD=${effectiveDir.absolutePath}",
-            "SHELL=$shell",
+            "SHELL=/bin/bash",
             "LANG=C.UTF-8",
             "LC_ALL=C.UTF-8"
         )
 
         return TerminalSession(
-            shell,
+            hostRunner,
             effectiveDir.absolutePath,
             args,
             env,

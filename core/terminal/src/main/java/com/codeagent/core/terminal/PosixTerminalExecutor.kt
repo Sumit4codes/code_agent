@@ -169,8 +169,16 @@ class PosixTerminalExecutor(
             executeUbuntuProcess(trimmed, workDir, onOutput)
         } else if (isAlpineActive()) {
             executeAlpineProcess(trimmed, workDir, onOutput)
+        } else if (nativeBinaryManager?.isPRootAvailable() == true) {
+            onOutput?.invoke("==> Ubuntu 24.04 LTS is the default terminal environment. Initializing userland...")
+            val bootResult = bootstrapUbuntu(onOutput)
+            if (bootResult is TerminalResult.Success) {
+                executeUbuntuProcess(trimmed, workDir, onOutput)
+            } else {
+                bootResult
+            }
         } else {
-            executeNativeProcess(trimmed, workDir, onOutput)
+            executeHostProcess(trimmed, workDir, onOutput)
         }
     }
 
@@ -284,7 +292,7 @@ class PosixTerminalExecutor(
         }
 
         val prootExec = nativeBinaryManager?.resolvePRootExecutable()
-            ?: return@withContext executeNativeProcess(command, workingDir, onOutput, effectiveTimeoutMs)
+            ?: return@withContext executeHostProcess(command, workingDir, onOutput, effectiveTimeoutMs)
 
         val mgr = ubuntuBootstrapManager ?: nativeBinaryManager.ubuntuBootstrapManager
         val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
@@ -437,7 +445,7 @@ class PosixTerminalExecutor(
         timeoutMs: Long = 120_000L
     ): TerminalResult = withContext(ioDispatcher) {
         val prootExec = nativeBinaryManager?.resolvePRootExecutable()
-            ?: return@withContext executeNativeProcess(command, workingDir, onOutput, timeoutMs)
+            ?: return@withContext executeHostProcess(command, workingDir, onOutput, timeoutMs)
 
         val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
         val rootDir = alpineBootstrapManager?.rootDir
@@ -575,7 +583,7 @@ class PosixTerminalExecutor(
         }
     }
 
-    private suspend fun executeNativeProcess(
+    private suspend fun executeHostProcess(
         command: String,
         workingDir: File,
         onOutput: ((String) -> Unit)?,

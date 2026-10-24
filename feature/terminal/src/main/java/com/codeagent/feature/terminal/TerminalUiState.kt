@@ -29,7 +29,7 @@ data class TerminalUiState(
     val workingDirectory: String = "",
     val entries: List<TerminalEntry> = listOf(
         TerminalEntry(
-            text = "CodeAgent POSIX Terminal Engine [v1.0]\nType commands below or use the quick key bar.",
+            text = "CodeAgent Terminal Engine [Ubuntu 24.04 LTS (Default)]\nType commands below or use the quick key bar.",
             type = TerminalEntryType.SYSTEM
         )
     ),

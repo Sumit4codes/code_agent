@@ -76,135 +76,179 @@ fun TerminalScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    if (onNavigateBack != null) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
-                    }
-                },
-                title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = uiState.projectName.ifBlank { "Terminal" },
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            // Environment status chip
-                            val isUbuntu = uiState.isUbuntuReady
-                            val isAlpine = uiState.isAlpineReady
-                            val chipBg = when {
-                                isUbuntu -> Color(0xFF3B1F0E)
-                                isAlpine -> Color(0xFF1F3D2C)
-                                else -> Color(0xFF252D38)
-                            }
-                            val chipDot = when {
-                                isUbuntu -> Color(0xFFE95420)
-                                isAlpine -> TerminalPrompt
-                                else -> Color(0xFFE3B341)
-                            }
-                            val chipLabel = when {
-                                isUbuntu -> "Ubuntu 24.04 LTS"
-                                isAlpine -> "Alpine Linux"
-                                else -> "Toybox Shell"
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = chipBg,
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .background(
-                                                color = chipDot,
-                                                shape = RoundedCornerShape(3.dp)
-                                            )
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        text = chipLabel,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = chipDot
-                                    )
-                                }
-                            }
-                            if (uiState.isRunning) {
-                                Spacer(Modifier.width(8.dp))
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(12.dp),
-                                    strokeWidth = 2.dp,
-                                    color = TerminalPrompt
+            Column {
+                TopAppBar(
+                    navigationIcon = {
+                        if (onNavigateBack != null) {
+                            IconButton(onClick = onNavigateBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color(0xFFC9D1D9)
                                 )
                             }
                         }
-                        if (uiState.workingDirectory.isNotBlank()) {
-                            Text(
-                                text = uiState.workingDirectory,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    // Text size adjuster
-                    IconButton(onClick = { showFontSizeDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.FormatSize,
-                            contentDescription = "Adjust Font Size"
-                        )
-                    }
+                    },
+                    title = {
+                        Column(
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = uiState.projectName.ifBlank { "Terminal" },
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFF0F6FC)
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
 
-                    // Soft keyboard toggle
-                    IconButton(
-                        onClick = {
-                            val view = terminalViewInstance
-                            if (view != null) {
-                                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                if (isKeyboardOpen) {
-                                    imm?.hideSoftInputFromWindow(view.windowToken, 0)
-                                } else {
-                                    view.isFocusable = true
-                                    view.isFocusableInTouchMode = true
-                                    view.requestFocus()
-                                    imm?.showSoftInput(view, 0)
+                                // Environment status chip
+                                val isUbuntu = uiState.isUbuntuReady
+                                val isAlpine = uiState.isAlpineReady
+                                val chipBg = when {
+                                    isUbuntu -> Color(0xFF2E170C)
+                                    isAlpine -> Color(0xFF152A1E)
+                                    else -> Color(0xFF2E170C)
+                                }
+                                val chipBorder = when {
+                                    isUbuntu -> Color(0xFFE95420).copy(alpha = 0.45f)
+                                    isAlpine -> Color(0xFF2EA043).copy(alpha = 0.45f)
+                                    else -> Color(0xFFE95420).copy(alpha = 0.45f)
+                                }
+                                val chipDot = when {
+                                    isUbuntu -> Color(0xFFE95420)
+                                    isAlpine -> Color(0xFF3FB950)
+                                    else -> Color(0xFFE95420)
+                                }
+                                val chipLabel = when {
+                                    uiState.isBootstrapping -> "Installing Ubuntu..."
+                                    isUbuntu -> "Ubuntu 24.04 LTS"
+                                    isAlpine -> "Alpine Linux"
+                                    else -> "Ubuntu 24.04 LTS"
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = chipBg,
+                                    border = BorderStroke(1.dp, chipBorder),
+                                    modifier = Modifier.height(22.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        if (uiState.isBootstrapping) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(8.dp),
+                                                strokeWidth = 1.5.dp,
+                                                color = Color(0xFFE95420)
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .background(
+                                                        color = chipDot,
+                                                        shape = RoundedCornerShape(3.dp)
+                                                    )
+                                            )
+                                        }
+                                        Text(
+                                            text = chipLabel,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isUbuntu || !isAlpine) Color(0xFFFF8A50) else Color(0xFF56D364)
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Keyboard,
-                            contentDescription = "Toggle Keyboard"
-                        )
-                    }
 
-                    // Restart interactive shell session
-                    IconButton(onClick = { viewModel.restartSession() }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Restart Session"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                            // Subtitle: only show meaningful path when inside a project or non-root working dir
+                            val displayPath = when {
+                                uiState.projectId != null -> uiState.workingDirectory
+                                uiState.workingDirectory.isNotBlank() && uiState.workingDirectory != "/" -> uiState.workingDirectory
+                                else -> null
+                            }
+                            if (displayPath != null) {
+                                Text(
+                                    text = displayPath,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF8B949E),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        // Font size adjuster
+                        IconButton(
+                            onClick = { showFontSizeDialog = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FormatSize,
+                                contentDescription = "Adjust Font Size",
+                                tint = Color(0xFFC9D1D9),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Soft keyboard toggle
+                        IconButton(
+                            onClick = {
+                                val view = terminalViewInstance
+                                if (view != null) {
+                                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                    if (isKeyboardOpen) {
+                                        imm?.hideSoftInputFromWindow(view.windowToken, 0)
+                                    } else {
+                                        view.isFocusable = true
+                                        view.isFocusableInTouchMode = true
+                                        view.requestFocus()
+                                        imm?.showSoftInput(view, 0)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Keyboard,
+                                contentDescription = "Toggle Keyboard",
+                                tint = if (isKeyboardOpen) Color(0xFF58A6FF) else Color(0xFFC9D1D9),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Restart interactive shell session
+                        IconButton(
+                            onClick = { viewModel.restartSession() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Restart Session",
+                                tint = Color(0xFFC9D1D9),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(6.dp))
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFF161B22)
+                    )
                 )
-            )
+                HorizontalDivider(
+                    color = Color(0xFF30363D),
+                    thickness = 0.5.dp
+                )
+            }
         }
     ) { innerPadding ->
         Column(
@@ -253,6 +297,63 @@ fun TerminalScreen(
                             modifier = Modifier.height(28.dp)
                         ) {
                             Text("Setup Ubuntu", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // Active Ubuntu bootstrap progress banner
+            if (uiState.isBootstrapping) {
+                Surface(
+                    color = Color(0xFF1E1712),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Bootstrapping Ubuntu 24.04 LTS...",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFE95420)
+                            )
+                            if (uiState.bootstrapProgress >= 0f) {
+                                Text(
+                                    text = "${(uiState.bootstrapProgress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFE95420)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        if (uiState.bootstrapProgress >= 0f) {
+                            LinearProgressIndicator(
+                                progress = { uiState.bootstrapProgress },
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                                color = Color(0xFFE95420),
+                                trackColor = Color(0xFF3B1F0E)
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                                color = Color(0xFFE95420),
+                                trackColor = Color(0xFF3B1F0E)
+                            )
+                        }
+                        if (uiState.bootstrapMessage.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = uiState.bootstrapMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AccessoryKeyContent
+                            )
                         }
                     }
                 }

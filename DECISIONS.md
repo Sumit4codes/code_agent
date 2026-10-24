@@ -122,4 +122,14 @@
 
 **Trade-off:** Multiple concurrent shell processes consume RAM and CPU resources on low-end Android hardware.
 
+## D16: Ubuntu 24.04 LTS as Default Terminal Environment (Eliminating Toybox)
+**Decision:** Make the Ubuntu 24.04 LTS (Noble) glibc userland container the default terminal environment across CodeAgent, and completely eliminate the Android Toybox shell fallback.
+
+**Rationale:**
+1. **Full Linux Compatibility:** Android's native Toybox shell lacks essential development utilities (e.g., standard GNU coreutils, apt, glibc, make, gcc, python3, pip, curl, openjdk-21). Running in Toybox created an inconsistent experience where tools expected by modern developers and AI coding agents were unavailable.
+2. **Deterministic glibc Toolchain:** Ubuntu 24.04 LTS provides a standard glibc 2.39 userland running inside PRoot without root access or W^X SELinux violations. Standard software binaries compile and execute identically to desktop Linux servers.
+3. **No Toybox Shell:** If Ubuntu userland is pending setup on first launch, the terminal explicitly displays the Ubuntu environment state and provides seamless 1-tap/automated bootstrap into Ubuntu bash, preventing accidental interaction with restricted Toybox shells.
+
+**Trade-off:** Requires downloading and extracting the minimal Ubuntu base rootfs (~35 MB archive, ~90 MB extracted) on device during initial setup.
+
 

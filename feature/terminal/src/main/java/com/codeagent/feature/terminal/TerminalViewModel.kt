@@ -171,11 +171,11 @@ class TerminalViewModel @Inject constructor(
                 }
                 else -> {
                     TerminalEntry(
-                        text = "CodeAgent POSIX Terminal Engine [Native Toybox Shell]\n" +
+                        text = "CodeAgent POSIX Terminal Engine [Ubuntu 24.04 LTS (Default)]\n" +
                                "Architecture: ${envInfo.architecture} | Shell: ${envInfo.shellPath}\n" +
-                               "Git: ${if (envInfo.isGitAvailable) envInfo.gitVersion ?: "Available" else "Not detected"}\n" +
+                               "Environment: ${envInfo.environmentType}\n" +
                                "Working Directory: $currentDir\n" +
-                               "Tip: Run 'setup-ubuntu' to install full Ubuntu 24.04 LTS with apt, gcc, python, node, and JDK 21.",
+                               "Ubuntu glibc userland is the default environment. Tap [Setup Ubuntu] or run 'setup-ubuntu' to bootstrap.",
                         type = TerminalEntryType.SYSTEM
                     )
                 }
@@ -376,8 +376,7 @@ class TerminalViewModel @Inject constructor(
         _uiState.update { current ->
             current.copy(
                 sessions = tabs,
-                activeSessionId = resolvedActiveId,
-                isRunning = activeRunning
+                activeSessionId = resolvedActiveId
             )
         }
     }
@@ -572,12 +571,11 @@ class TerminalViewModel @Inject constructor(
             val binsText = """
                 Available Commands in Terminal:
 
-                1. System Utilities (Android Toybox):
+                1. System Utilities (Ubuntu GNU Coreutils):
                    cat, chmod, chown, clear, cp, cut, date, df, du, echo, env,
                    find, grep, head, id, kill, ln, logcat, ls, md5sum, mkdir,
                    mv, printenv, ps, pwd, rm, rmdir, sed, sleep, sort, stat,
                    tail, tar, tee, touch, tr, uname, uniq, wc, which, whoami, xargs...
-                   (Run 'toybox' for full list of compiled Android applets)
 
                 2. Package Manager:
                    ${when {
@@ -634,8 +632,10 @@ class TerminalViewModel @Inject constructor(
 
             when (result) {
                 is TerminalResult.Success -> {
-                    if (trimmed == "setup-alpine" || trimmed == "install-alpine") {
+                    if (trimmed == "setup-ubuntu" || trimmed == "install-ubuntu" ||
+                        trimmed == "setup-alpine" || trimmed == "install-alpine") {
                         initializeTerminal()
+                        restartSession()
                     }
                 }
                 is TerminalResult.Error -> {

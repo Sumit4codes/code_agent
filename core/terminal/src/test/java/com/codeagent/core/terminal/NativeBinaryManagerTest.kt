@@ -24,6 +24,8 @@ class NativeBinaryManagerTest {
         assertTrue(info.shellPath.isNotEmpty())
         assertNotNull(info.architecture)
         assertTrue(info.architecture.isNotEmpty())
+        assertTrue(info.environmentType.contains("Ubuntu"))
+        assertFalse(info.environmentType.contains("Toybox"))
     }
 
     @Test
