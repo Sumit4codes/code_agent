@@ -829,6 +829,15 @@ class ChatViewModel @Inject constructor(
             append("   - For partial/targeted edits, specify `old_content` with the exact code snippet to replace, and `content` with the replacement code. This preserves all surrounding code.\n")
             append("   - If `old_content` is omitted, `content` MUST be the 100% complete new file content including all unchanged lines. NEVER truncate unchanged code or use placeholders like '// ... existing code ...'.\n")
             append("3. Always preserve existing code structure and indentation.\n")
+            append("\nON-DEVICE BUILD & ENVIRONMENT CONSTRAINTS:\n")
+            append("- Platform: Android device running Ubuntu 24.04 LTS (PRoot Linux userland).\n")
+            append("- Architecture: Always check `uname -m`. If running on aarch64/arm64, standard AGP downloads x86_64 AAPT2 which will fail with 'Exec format error'.\n")
+            append("- Bundled ARM64 AAPT2: A native ARM64 AAPT2 binary is pre-bundled in the repository at `tools/bin/arm64-v8a/aapt2`. Gradle automatically detects and uses it via `android.aapt2FromMavenOverride`.\n")
+            append("- Pre-Build Inspection Checklist (when asked to build or compile on device):\n")
+            append("  1. Run `./scripts/check-env.sh` (or `./build.sh --check`) to inspect available tools, SDK, AAPT2, and RAM.\n")
+            append("  2. JDK 21: Required. If missing, install via `apt update && apt install -y openjdk-21-jdk-headless`.\n")
+            append("  3. Android SDK: Ensure `ANDROID_HOME` or `local.properties` points to an SDK with API 37 (`platforms/android-37/android.jar`).\n")
+            append("  4. Memory Safety: To prevent Android Low Memory Killer (LMK) aborts, always use `./build.sh` or pass `--no-daemon -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=2` when running Gradle.\n")
             if (custom != null) {
                 append("\nUser Instructions:\n$custom\n")
             }

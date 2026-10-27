@@ -23,6 +23,17 @@ dependencyResolutionManagement {
 
 rootProject.name = "CodeAgent"
 
+// On-device ARM64 build support: If running on an aarch64/arm64 host and a local ARM64 aapt2
+// binary is present, automatically configure android.aapt2FromMavenOverride so AGP doesn't download
+// the incompatible x86_64 aapt2 from Maven.
+val osArch = System.getProperty("os.arch")?.lowercase() ?: ""
+if (osArch.contains("aarch64") || osArch.contains("arm64")) {
+    val bundledAapt2 = file("tools/bin/arm64-v8a/aapt2")
+    if (bundledAapt2.exists() && !gradle.startParameter.projectProperties.containsKey("android.aapt2FromMavenOverride")) {
+        gradle.startParameter.projectProperties["android.aapt2FromMavenOverride"] = bundledAapt2.absolutePath
+    }
+}
+
 include(":app")
 include(":core:common")
 include(":core:model")

@@ -126,7 +126,7 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = ToolNames.EXECUTE_COMMAND,
-                description = "Execute a shell, git, or build command in the workspace directory. Commands run in an Ubuntu 24.04 LTS (glibc) environment with bash and full access to apt (e.g. 'apt update && apt install -y <pkg>'), GCC/G++, Python 3, OpenJDK 21, Node.js, Rust, Go, Make, CMake, and build tools.",
+                description = "Execute a shell, git, or build command in the workspace directory. Commands run in an Ubuntu 24.04 LTS (glibc) environment with bash and full access to apt (e.g. 'apt update && apt install -y <pkg>'), GCC/G++, Python 3, OpenJDK 21, Node.js, Rust, Go, Make, CMake, and build tools. For Android builds, run './scripts/check-env.sh' or './build.sh --check' to verify prerequisites (JDK 21, Android SDK API 37, ARM64 AAPT2, memory). A bundled native ARM64 AAPT2 binary is located at 'tools/bin/arm64-v8a/aapt2'.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "command" to PropertyDef("string", "The shell command line to execute (e.g. 'git status', './build.sh', 'python3 main.py', 'gcc -o app main.c', 'apt install -y <pkg>').")

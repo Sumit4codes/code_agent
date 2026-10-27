@@ -140,6 +140,32 @@ class NativeBinaryManager(
         return null
     }
 
+    fun resolveAapt2Binary(projectDir: File? = null): File? {
+        // 1. Check workspace tools/bin/arm64-v8a/aapt2 if projectDir provided
+        if (projectDir != null) {
+            val workspaceAapt2 = File(projectDir, "tools/bin/arm64-v8a/aapt2")
+            if (workspaceAapt2.exists()) {
+                return workspaceAapt2
+            }
+        }
+
+        // 2. Check internal files bin
+        val internalAapt2 = internalBinDir?.let { File(it, "aapt2") }
+        if (internalAapt2 != null && internalAapt2.exists()) {
+            return internalAapt2
+        }
+
+        // 3. Check Ubuntu container /usr/local/bin/aapt2 or /usr/bin/aapt2
+        if (isUbuntuReady()) {
+            val localBin = File(ubuntuBootstrapManager.ubuntuDir, "usr/local/bin/aapt2")
+            if (localBin.exists()) return localBin
+            val usrBin = File(ubuntuBootstrapManager.ubuntuDir, "usr/bin/aapt2")
+            if (usrBin.exists()) return usrBin
+        }
+
+        return null
+    }
+
     fun resolveBusyboxExecutable(): String? {
         val nativeDir = nativeLibraryDir
         if (nativeDir != null) {
