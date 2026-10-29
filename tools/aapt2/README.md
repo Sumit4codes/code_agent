@@ -1,6 +1,6 @@
 # ARM64 AAPT2 for On-Device Android Builds
 
-This directory documents the native ARM64 (`aarch64`) AAPT2 (Android Asset Packaging Tool 2) binary packaged with CodeAgent for on-device compilation.
+This directory documents the native ARM64 (`aarch64`) AAPT2 (Android Asset Packaging Tool 2) binary packaged with Koda Dev for on-device compilation.
 
 ## Background & Problem
 
@@ -25,7 +25,7 @@ Since the rest of the Android build pipeline—Gradle, `kotlinc`, KSP, D8, R8, a
   - `libgcc_s.so.1` (GCC runtime)
   - `libc.so.6` (glibc 2.31+)
 
-These libraries are pre-installed in CodeAgent's Ubuntu 24.04 LTS userland (`libc6`, `libstdc++6`, `zlib1g`).
+These libraries are pre-installed in Koda Dev's Ubuntu 24.04 LTS userland (`libc6`, `libstdc++6`, `zlib1g`).
 
 ## How Gradle Uses This Binary
 

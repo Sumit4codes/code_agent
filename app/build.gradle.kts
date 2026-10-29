@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.codeagent.app"
+    namespace = "com.koda.dev.app"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.codeagent.app"
+        applicationId = "com.koda.dev"
         minSdk = 26
         targetSdk = 37
         versionCode = 1

@@ -21,7 +21,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "CodeAgent"
+rootProject.name = "KodaDev"
 
 // On-device ARM64 build support: If running on an aarch64/arm64 host and a local ARM64 aapt2
 // binary is present, automatically configure android.aapt2FromMavenOverride so AGP doesn't download

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test script for CodeAgent Android Application
+# Test script for Koda Dev Android Application
 #
 # Usage:
 #   ./test.sh [options] [-- gradle options]
@@ -60,7 +60,7 @@ log_error() {
 
 show_help() {
     cat << 'EOF'
-CodeAgent Test Runner
+Koda Dev Test Runner
 
 Usage:
   ./test.sh [options] [extra gradle args...]
@@ -286,7 +286,7 @@ done
 # Main Execution
 # -----------------------------------------------------------------------------
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
-echo -e "${COLOR_BOLD}              CodeAgent Test Runner                   ${COLOR_RESET}"
+echo -e "${COLOR_BOLD}              Koda Dev Test Runner                   ${COLOR_RESET}"
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
 
 setup_jdk

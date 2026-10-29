@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.codeagent.app.core.files"
+    namespace = "com.koda.dev.app.core.files"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions {

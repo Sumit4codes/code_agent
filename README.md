@@ -1,4 +1,4 @@
-# CodeAgent — Android AI Coding Agent
+# Koda Dev — Android AI Coding Agent
 
 A clean-room, Android-native AI coding agent inspired by [OpenCode](https://github.com/opencode-ai/opencode). Open code projects on your device, chat with an autonomous AI agent that understands your repository, review proposed changes as diffs, run real Linux terminal commands with full terminal emulation, and sync your configuration securely across devices.
 
@@ -118,7 +118,7 @@ Run unit tests using `./test.sh` (with automatic test result summaries and HTML 
 
 ### Install on Device
 
-Install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK locally and scanning a QR code directly from your terminal:
+Install Koda Dev via ADB (USB / Wi-Fi debugging) or by serving the APK locally and scanning a QR code directly from your terminal:
 
 ```bash
 # Interactive selection menu (ADB or QR code):
@@ -171,7 +171,7 @@ Install CodeAgent via ADB (USB / Wi-Fi debugging) or by serving the APK locally 
 11. ✅ **Autonomous Agent & Safety Bounds** — Unbounded iterative tool execution, 800-line / 45 KB pagination guards, 100 MB file limit
 12. ✅ **Terminal Display Scaling & Multi-Session Tabs** — Density-aware SP-to-pixel text scaling, pinch-to-zoom, interactive font size adjuster, and concurrent tabbed PTY terminal sessions with background execution isolation
 13. 📋 **Integrated Dev Server & Live Web Preview** — In-app sandboxed WebView browser, automatic local port discovery (3000, 5000, 8080), responsive mobile/desktop viewports, and AI agent DOM / console inspection tool
-14. ✅ **Background Agent Service & Headless Execution** — Android Foreground Service (`CodeAgentWorkService`) with live notification progress, system wake-locks, and headless autonomous task completion (`/goal`)
+14. ✅ **Background Agent Service & Headless Execution** — Android Foreground Service (`KodaWorkService`) with live notification progress, system wake-locks, and headless autonomous task completion (`/goal`)
 15. 📋 **Visual Git Studio & 3-Way Merge Conflict Resolver** — Interactive branch graph, touch-friendly 3-way conflict editor, hunk-level staging, and 1-tap AI-assisted GitHub PR generation
 16. 📋 **Adaptive Split Workspace (Foldables, Tablets & Samsung DeX)** — Adaptive multi-pane IDE layout for large displays (>600dp), resizable panel dividers, and hardware keyboard shortcuts
 17. 📋 **Language Server Protocol (LSP) Engine** — Headless language servers in Alpine via JSON-RPC, autocompletion, real-time diagnostics, and agent verification hooks

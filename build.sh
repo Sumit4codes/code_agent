@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build script for CodeAgent Android Application
+# Build script for Koda Dev Android Application
 #
 # Usage:
 #   ./build.sh [options] [-- gradle options]
@@ -61,7 +61,7 @@ log_error() {
 
 show_help() {
     cat << 'EOF'
-CodeAgent Build Script
+Koda Dev Build Script
 
 Usage:
   ./build.sh [options] [extra gradle args...]
@@ -352,7 +352,7 @@ done
 # Main Execution
 # -----------------------------------------------------------------------------
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
-echo -e "${COLOR_BOLD}              CodeAgent Build Tool                    ${COLOR_RESET}"
+echo -e "${COLOR_BOLD}              Koda Dev Build Tool                    ${COLOR_RESET}"
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
 
 setup_jdk

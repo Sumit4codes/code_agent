@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.codeagent.app.feature.editor"
+    namespace = "com.koda.dev.app.feature.editor"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions {

@@ -2,8 +2,8 @@
 #
 # check-env.sh
 #
-# Environment Diagnostic Tool for CodeAgent
-# Checks prerequisites for building CodeAgent on-device (ARM64/Android) or on host.
+# Environment Diagnostic Tool for Koda Dev
+# Checks prerequisites for building Koda Dev on-device (ARM64/Android) or on host.
 #
 
 set -u
@@ -29,7 +29,7 @@ else
 fi
 
 echo -e "${BOLD}======================================================${RESET}"
-echo -e "${BOLD}      CodeAgent On-Device Build Environment Check     ${RESET}"
+echo -e "${BOLD}      Koda Dev On-Device Build Environment Check     ${RESET}"
 echo -e "${BOLD}======================================================${RESET}"
 echo ""
 
@@ -206,7 +206,7 @@ echo ""
 echo -e "${BOLD}======================================================${RESET}"
 if [ "$ALL_PASS" = true ] && [ "$ERRORS" -eq 0 ]; then
     if [ "$WARNINGS" -eq 0 ]; then
-        echo -e "${GREEN}${BOLD}✔ Environment Check PASSED! System is ready to build CodeAgent.${RESET}"
+        echo -e "${GREEN}${BOLD}✔ Environment Check PASSED! System is ready to build Koda Dev.${RESET}"
     else
         echo -e "${YELLOW}${BOLD}✔ Environment Check PASSED with $WARNINGS warning(s). Check notes above.${RESET}"
     fi

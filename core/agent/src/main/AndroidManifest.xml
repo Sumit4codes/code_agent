@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <service
-            android:name="com.codeagent.core.agent.service.CodeAgentWorkService"
+            android:name="com.koda.dev.core.agent.service.KodaWorkService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
     </application>

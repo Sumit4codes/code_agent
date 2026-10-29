@@ -29,8 +29,8 @@
 
 **Rationale:** Gradle 9.7.1 supports JDK 21. Temurin 21 is the current LTS. JDK 21 provides better performance and is forward-compatible.
 
-## D6: Package Name `com.codeagent.app`
-**Decision:** Use `com.codeagent.app` as applicationId and package name.
+## D6: Package Name `com.koda.dev.app`
+**Decision:** Use `com.koda.dev.app` as applicationId and package name.
 
 **Rationale:** Neutral name, avoids OpenCode branding per requirements. Can be changed later by updating `namespace` and `applicationId` in `app/build.gradle.kts`.
 
@@ -106,18 +106,18 @@
 **Rationale:**
 1. **Raw Pixel Fix:** The underlying Termux `TerminalView.setTextSize(int)` expects raw pixels (`px`), rather than scale-independent points (`sp`). Passing unscaled integer literals (e.g. `14`) resulted in microscopic font rendering (~5 sp on modern 440 dpi screens). Multiplying the configured `fontSizeSp` by `displayMetrics.scaledDensity` ensures standard, crisp readability across all display densities.
 2. **Settings Screen Discovery:** Developers need a dedicated setting to customize terminal text scaling according to their visual preference. `TerminalPreferencesCard` provides an interactive slider, step increment buttons, quick preset chips (`Compact (11 sp)`, `Default (14 sp)`, `Medium (16 sp)`, `Large (18 sp)`, `Huge (22 sp)`), and a real-time dark terminal preview box showing immediate text changes.
-3. **In-Session Flexibility:** In addition to the Settings screen, developers can dynamically scale the terminal canvas during active coding sessions via two-finger pinch-to-zoom gestures (detected by `CodeAgentTerminalViewClient.onScale`) or via the top-bar `FormatSize` action dialog.
+3. **In-Session Flexibility:** In addition to the Settings screen, developers can dynamically scale the terminal canvas during active coding sessions via two-finger pinch-to-zoom gestures (detected by `KodaTerminalViewClient.onScale`) or via the top-bar `FormatSize` action dialog.
 4. **Clean Decoupling:** `TerminalPreferencesRepository` encapsulates persistence via Android `SharedPreferences`, exposing both reactive `Flow<Int>` and synchronous getters, with graceful in-memory fallbacks during unit testing.
 
 **Trade-off:** Very large font sizes (>24 sp) reduce the number of columns and lines visible on compact smartphone screens in portrait orientation.
 
 ## D15: Concurrent Multi-Session Terminal Architecture (Tabs, Independent PTYs, Dynamic View Attachment, and Background Process Isolation)
-**Decision:** Support multiple concurrent terminal sessions (tabs) managed within `TerminalViewModel` and displayed via `TerminalSessionTabBar` in `TerminalScreen`. Each session maintains its own shell process, pseudoterminal (PTY), emulator buffer, and `CodeAgentTerminalSessionClient`. The single `TerminalView` canvas dynamically reattaches to whichever session is active via `TerminalView.attachSession(session)`.
+**Decision:** Support multiple concurrent terminal sessions (tabs) managed within `TerminalViewModel` and displayed via `TerminalSessionTabBar` in `TerminalScreen`. Each session maintains its own shell process, pseudoterminal (PTY), emulator buffer, and `KodaTerminalSessionClient`. The single `TerminalView` canvas dynamically reattaches to whichever session is active via `TerminalView.attachSession(session)`.
 
 **Rationale:**
 1. **Developer Multitasking:** Developers on mobile frequently run multiple tasks simultaneously (e.g. running a build or local server in one tab while editing files in Vim or querying Git in another tab). Single-session terminals force users to exit tools or open external apps.
 2. **Dynamic Canvas Reattachment:** Termux's `TerminalView.attachSession(newSession)` detaches from the current session and recalculates emulator dimensions, scrollback, and cursor for the incoming session without destroying the underlying PTY process. Sessions running in the background continue executing uninterrupted.
-3. **Selective Screen Update Dispatching:** In `CodeAgentTerminalSessionClient.onTextChanged` and `onColorsChanged`, updates are only forwarded to `terminalView.onScreenUpdated()` if the calling session is the active attached session (`terminalView.currentSession == changedSession`). This isolates canvas redrawing and saves CPU cycles when background sessions emit large volumes of output.
+3. **Selective Screen Update Dispatching:** In `KodaTerminalSessionClient.onTextChanged` and `onColorsChanged`, updates are only forwarded to `terminalView.onScreenUpdated()` if the calling session is the active attached session (`terminalView.currentSession == changedSession`). This isolates canvas redrawing and saves CPU cycles when background sessions emit large volumes of output.
 4. **Automatic Title Sync & Clean Lifecycle:** Sessions automatically update tab labels when child processes emit OSC title escapes (e.g. `vim`, `bash`, `python3`). Closing a tab safely terminates its PTY process, and closing the only tab automatically provisions a fresh session so the user is never stranded. On ViewModel teardown (`onCleared()`), all running sessions are cleaned up to prevent orphan processes or PTY descriptor leaks.
 
 **Trade-off:** Multiple concurrent shell processes consume RAM and CPU resources on low-end Android hardware.
@@ -131,5 +131,15 @@
 3. **No Toybox Shell:** If Ubuntu userland is pending setup on first launch, the terminal explicitly displays the Ubuntu environment state and provides seamless 1-tap/automated bootstrap into Ubuntu bash, preventing accidental interaction with restricted Toybox shells.
 
 **Trade-off:** Requires downloading and extracting the minimal Ubuntu base rootfs (~35 MB archive, ~90 MB extracted) on device during initial setup.
+
+## D17: Rebranding to Koda Dev & Ecosystem Separation with Koda Flow
+**Decision:** Rebrand the application from CodeAgent to **Koda Dev** (`com.koda.dev`), and separate on-device developer workflows from general device automation (which will live in a sister project, **Koda Flow**).
+
+**Rationale:**
+1. **Brand Identity:** "Koda Dev" provides a clean, memorable, 4-letter brand with distinct personality, separating the specialized Android IDE / coding agent from consumer phone automation.
+2. **Permission Boundary:** Combining `MANAGE_EXTERNAL_STORAGE` (All Files Access) with `ACCESSIBILITY_SERVICE` (touch injection and screen reader) in a single application creates severe Google Play Store compliance and security risks. Keeping Koda Dev focused on code/development and Koda Flow focused on device touch automation ensures compliance and clarity.
+3. **Full Monolithic Refactor:** Complete migration of all 14 module package namespaces to `com.koda.dev.*` and application ID to `com.koda.dev`.
+
+
 
 

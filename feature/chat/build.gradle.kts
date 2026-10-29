@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.codeagent.app.feature.chat"
+    namespace = "com.koda.dev.app.feature.chat"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions {
