@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Terminal
@@ -344,6 +346,9 @@ private fun getRuntimeToolInfo(name: String): RuntimeToolInfo = when (ToolNames.
     ToolNames.CREATE_FILE -> RuntimeToolInfo("Creating File", Icons.AutoMirrored.Filled.NoteAdd)
     ToolNames.RENAME_FILE -> RuntimeToolInfo("Renaming File", Icons.Default.DriveFileRenameOutline)
     ToolNames.DELETE_FILE -> RuntimeToolInfo("Deleting File", Icons.Outlined.Delete)
+    ToolNames.WEB_SEARCH -> RuntimeToolInfo("Searching Web", Icons.Default.Public)
+    ToolNames.FETCH_WEB_PAGE -> RuntimeToolInfo("Fetching Web Page", Icons.Default.Language)
+    ToolNames.MANAGE_TASK -> RuntimeToolInfo("Managing Process", Icons.Default.Terminal)
     else -> RuntimeToolInfo(name.replace('_', ' ').replaceFirstChar { it.uppercase() }, Icons.Default.Terminal)
 }
 
@@ -352,6 +357,7 @@ private fun formatRuntimeArguments(arguments: String): String {
     return try {
         val json = Json.parseToJsonElement(arguments).jsonObject
         when {
+            json.containsKey("action") -> "⚙️ ${json["action"]?.jsonPrimitive?.content ?: ""}${json["task_id"]?.jsonPrimitive?.content?.let { " ($it)" } ?: ""}"
             json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
             json.containsKey("path") -> json["path"]?.jsonPrimitive?.content ?: ""
             json.containsKey("query") -> "\"${json["query"]?.jsonPrimitive?.content ?: ""}\""

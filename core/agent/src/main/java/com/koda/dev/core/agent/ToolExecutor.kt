@@ -28,14 +28,22 @@ data class ToolResult(
 @Singleton
 class ToolExecutor @Inject constructor(
     private val terminalExecutor: TerminalExecutor,
+    private val taskManager: com.koda.dev.core.terminal.TaskManager,
     private val webSearchClient: com.koda.dev.core.data.web.WebSearchClient,
     private val webPageFetcher: com.koda.dev.core.data.web.WebPageFetcher
 ) {
-    // Secondary constructor for lightweight instantiations or tests
-    constructor() : this(
-        DefaultTerminalExecutor(),
-        com.koda.dev.core.data.web.DefaultWebSearchClient(),
-        com.koda.dev.core.data.web.DefaultWebPageFetcher()
+    // Secondary constructor with shared terminal executor for tests/lightweight usage
+    constructor(
+        terminalExecutor: TerminalExecutor = DefaultTerminalExecutor(),
+        webSearchClient: com.koda.dev.core.data.web.WebSearchClient = com.koda.dev.core.data.web.DefaultWebSearchClient(),
+        webPageFetcher: com.koda.dev.core.data.web.WebPageFetcher = com.koda.dev.core.data.web.DefaultWebPageFetcher()
+    ) : this(
+        terminalExecutor,
+        (terminalExecutor as? com.koda.dev.core.terminal.PosixTerminalExecutor)?.let {
+            com.koda.dev.core.terminal.ManagedTaskManager(it)
+        } ?: com.koda.dev.core.terminal.ManagedTaskManager(DefaultTerminalExecutor()),
+        webSearchClient,
+        webPageFetcher
     )
 
     private var fileSystem: ProjectFileSystem? = null
@@ -90,12 +98,15 @@ class ToolExecutor @Inject constructor(
 
         val cleanName = ToolNames.normalize(name)
 
-        // Web search and page fetch do not require an open project filesystem
+        // Web search, page fetch, and task management do not require an open project filesystem
         if (cleanName == ToolNames.WEB_SEARCH) {
             return@withContext executeWebSearch(args)
         }
         if (cleanName == ToolNames.FETCH_WEB_PAGE) {
             return@withContext executeFetchWebPage(args)
+        }
+        if (cleanName == ToolNames.MANAGE_TASK) {
+            return@withContext executeManageTask(args)
         }
 
         val fs = fileSystem
@@ -484,10 +495,114 @@ class ToolExecutor @Inject constructor(
 
     private suspend fun executeCommand(args: JsonObject, onOutput: ((String) -> Unit)? = null): ToolResult {
         val command = argString(args, "command") ?: return ToolResult(false, "Missing 'command' argument")
-        return when (val res = terminalExecutor.execute(command, onOutput)) {
-            is TerminalResult.Success -> ToolResult(true, if (res.output.isEmpty()) "(command executed successfully with exit code 0)" else res.output)
-            is TerminalResult.Error -> ToolResult(false, res.message)
-            is TerminalResult.Disabled -> ToolResult(false, "Terminal execution is disabled")
+        val waitSeconds = argInt(args, "wait_seconds") ?: com.koda.dev.core.terminal.ManagedTaskManager.DEFAULT_WAIT_SECONDS
+        val isBackground = args["is_background"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+        val currentWorkDir = (terminalExecutor as? com.koda.dev.core.terminal.PosixTerminalExecutor)?.let {
+            it.currentWorkingDir ?: it.activeDirectory
+        }
+
+        return when (val res = taskManager.launch(
+            command = command,
+            workingDir = currentWorkDir,
+            waitSeconds = waitSeconds,
+            isBackground = isBackground,
+            onOutputChunk = onOutput
+        )) {
+            is com.koda.dev.core.terminal.TaskLaunchResult.Completed -> {
+                ToolResult(
+                    success = res.exitCode == 0,
+                    output = if (res.output.isEmpty()) "(command executed successfully with exit code 0)" else res.output
+                )
+            }
+            is com.koda.dev.core.terminal.TaskLaunchResult.Running -> {
+                val msg = buildString {
+                    append("Command is running in background task '${res.taskId}'.\n")
+                    if (res.waitSeconds > 0) {
+                        append("Status: Still active after ${res.waitSeconds}s.\n")
+                    } else {
+                        append("Status: Started as background daemon.\n")
+                    }
+                    if (res.initialOutput.isNotBlank()) {
+                        append("\nInitial Output:\n")
+                        append(res.initialOutput.trimEnd())
+                        append("\n")
+                    }
+                    append("\nNEXT STEPS: Call `manage_task(action='status', task_id='${res.taskId}')` to inspect live progress, or `manage_task(action='kill', task_id='${res.taskId}')` if you decide to abort it.")
+                }
+                ToolResult(true, msg)
+            }
+            is com.koda.dev.core.terminal.TaskLaunchResult.Error -> {
+                ToolResult(false, res.message)
+            }
+        }
+    }
+
+    private fun executeManageTask(args: JsonObject): ToolResult {
+        val action = argString(args, "action")?.lowercase()?.trim()
+            ?: return ToolResult(false, "Missing 'action' parameter (must be 'status', 'kill', 'send_input', or 'list')")
+
+        return when (action) {
+            "list" -> {
+                val list = taskManager.list()
+                if (list.isEmpty()) {
+                    ToolResult(true, "No background tasks currently running.")
+                } else {
+                    val sb = StringBuilder("Active Background Tasks (${list.size}):\n")
+                    for (t in list) {
+                        val stateStr = if (t.isAlive) "RUNNING" else "EXITED (code: ${t.exitCode})"
+                        val stallStr = if (t.isStalled) " [STALL WARNING]" else ""
+                        sb.append("• [${t.taskId}] '${t.command}' — $stateStr (${t.runtimeSeconds}s elapsed)$stallStr\n")
+                    }
+                    ToolResult(true, sb.toString().trimEnd())
+                }
+            }
+            "status" -> {
+                val taskId = argString(args, "task_id")
+                    ?: return ToolResult(false, "Missing 'task_id' parameter for status action")
+                val status = taskManager.getStatus(taskId)
+                    ?: return ToolResult(false, "Task '$taskId' not found")
+
+                val sb = StringBuilder()
+                sb.append("Task ID: ${status.taskId}\n")
+                sb.append("Command: ${status.command}\n")
+                sb.append("Status: ${if (status.isAlive) "RUNNING" else "EXITED (code: ${status.exitCode})"}\n")
+                sb.append("Runtime: ${status.runtimeSeconds}s\n")
+                sb.append("Silence: ${status.silenceSeconds}s since last output\n")
+
+                if (status.isStalled) {
+                    sb.append("\n[STALL WARNING] Process has produced 0 output for ${status.silenceSeconds} seconds. It may be deadlocked, waiting for unhandled stdin, or hung on network. You may kill it using manage_task(action='kill', task_id='$taskId').\n")
+                }
+
+                sb.append("\nRecent Output:\n")
+                sb.append(if (status.recentOutput.isNotBlank()) status.recentOutput.trimEnd() else "(no output recorded yet)")
+
+                ToolResult(true, sb.toString())
+            }
+            "kill" -> {
+                val taskId = argString(args, "task_id")
+                    ?: return ToolResult(false, "Missing 'task_id' parameter for kill action")
+                val success = taskManager.kill(taskId)
+                if (success) {
+                    ToolResult(true, "Task '$taskId' was terminated successfully.")
+                } else {
+                    ToolResult(false, "Failed to kill task '$taskId' (not found or already dead).")
+                }
+            }
+            "send_input" -> {
+                val taskId = argString(args, "task_id")
+                    ?: return ToolResult(false, "Missing 'task_id' parameter for send_input action")
+                val input = argString(args, "input")
+                    ?: return ToolResult(false, "Missing 'input' parameter for send_input action")
+                val success = taskManager.sendInput(taskId, input)
+                if (success) {
+                    ToolResult(true, "Sent input to task '$taskId'.")
+                } else {
+                    ToolResult(false, "Failed to send input to task '$taskId' (task not found, not running, or stdin closed).")
+                }
+            }
+            else -> {
+                ToolResult(false, "Unknown action '$action'. Supported actions are: 'status', 'kill', 'send_input', 'list'.")
+            }
         }
     }
 

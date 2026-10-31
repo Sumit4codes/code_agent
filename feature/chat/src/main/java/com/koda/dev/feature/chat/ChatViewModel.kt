@@ -60,7 +60,8 @@ data class ChatState(
     val projectName: String = "",
     val projectId: String = "",
     val isGoalMode: Boolean = false,
-    val activeStepCount: Int = 0
+    val activeStepCount: Int = 0,
+    val activeBackgroundTasks: List<com.koda.dev.core.terminal.TaskSummary> = emptyList()
 )
 
 @HiltViewModel
@@ -68,6 +69,7 @@ class ChatViewModel @Inject constructor(
     private val agentOrchestrator: AgentOrchestrator,
     private val agentWorkManager: AgentWorkManager,
     private val toolExecutor: ToolExecutor,
+    private val taskManager: com.koda.dev.core.terminal.TaskManager,
     private val pendingChangeManager: PendingChangeManager,
     private val projectDao: ProjectDao,
     private val sessionDao: SessionDao,
@@ -86,6 +88,12 @@ class ChatViewModel @Inject constructor(
     private var activeGoalTaskId: String? = null
 
     init {
+        // Observe active background tasks to surface in the UI
+        viewModelScope.launch {
+            taskManager.activeTasksFlow.collect { tasks ->
+                _state.update { it.copy(activeBackgroundTasks = tasks) }
+            }
+        }
         viewModelScope.launch {
             settingsRepository.getActiveProviderFlow().collect { config ->
                 if (config != null && config.model.isNotBlank()) {
@@ -842,10 +850,36 @@ class ChatViewModel @Inject constructor(
             append("  2. JDK 21: Required. If missing, install via `apt update && apt install -y openjdk-21-jdk-headless`.\n")
             append("  3. Android SDK: Ensure `ANDROID_HOME` or `local.properties` points to an SDK with API 37 (`platforms/android-37/android.jar`).\n")
             append("  4. Memory Safety: To prevent Android Low Memory Killer (LMK) aborts, always use `./build.sh` or pass `--no-daemon -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=2` when running Gradle.\n")
+            append("\nTASK MANAGEMENT & PROCESS CONTROL:\n")
+            append("- Long-running commands (e.g. dev servers, file watchers, builds, continuous tests) automatically move to the background after wait_seconds (default 20s).\n")
+            append("- You can also pass `is_background: true` to `execute_command` to immediately background a task.\n")
+            append("- Use `manage_task` to inspect, control, or kill background tasks:\n")
+            append("  * `status`: Check task output, runtime, and status. Pay close attention to [STALL WARNING] (indicates >= 30s of no output).\n")
+            append("  * `send_input`: Send input (e.g. 'y', answers, or commands) to interactive processes waiting on stdin.\n")
+            append("  * `kill`: Terminate a task immediately if it is frozen, looping, stalled, or no longer needed.\n")
+            append("  * `list`: View all currently active background tasks.\n")
+            append("- AUTONOMOUS EVALUATION: If a command is taking long or backgrounded, you MUST check its status. Evaluate whether it is genuinely making progress or stuck. If stalled, kill it and retry or explain why to the user. Do not leave stray tasks running unnecessarily.\n")
+            append("- Concurrency cap: At most 5 background tasks can run simultaneously to avoid Low Memory Killer (LMK).\n")
             if (custom != null) {
                 append("\nUser Instructions:\n$custom\n")
             }
         }
+    }
+
+    fun killBackgroundTask(taskId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            taskManager.kill(taskId)
+        }
+    }
+
+    fun sendInputToBackgroundTask(taskId: String, input: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            taskManager.sendInput(taskId, input)
+        }
+    }
+
+    fun getTaskStatus(taskId: String): com.koda.dev.core.terminal.TaskStatusInfo? {
+        return taskManager.getStatus(taskId)
     }
 
     fun cancelGeneration() {

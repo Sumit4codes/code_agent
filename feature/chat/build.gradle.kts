@@ -31,6 +31,7 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:ai"))
     implementation(project(":core:agent"))
+    implementation(project(":core:terminal"))
     implementation(project(":core:files"))
     implementation(project(":core:data"))
     implementation(libs.androidx.core.ktx)

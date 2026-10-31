@@ -84,6 +84,16 @@ class AgentOrchestrator @Inject constructor(
                 You have access to `web_search(query)` and `fetch_web_page(url)`. When answering queries requiring up-to-date documentation, external libraries, framework changes, or troubleshooting unfamiliar errors, search the web for authoritative sources and read documentation pages before writing or editing code.
             """.trimIndent())
             append("\n\n")
+            append("""
+                TASK MANAGEMENT & PROCESS CONTROL:
+                Commands that take longer than 20s automatically move to background tasks with a task_id. You can also launch background daemons via `execute_command(command="...", is_background=true)`.
+                Use `manage_task(action="status", task_id="...")` to inspect live progress, runtime, and output.
+                DECISION RULES:
+                1. KEEP RUNNING: If recent output shows active compilation, downloads, or ongoing test progress, allow it to continue.
+                2. KILL: If you see a [STALL WARNING], an infinite loop, or a prompt waiting on stdin that cannot be satisfied, call `manage_task(action="kill", task_id="...")` immediately.
+                3. Maximum 5 background tasks can run at once. Clean up tasks with `kill` when finished or no longer needed.
+            """.trimIndent())
+            append("\n\n")
             if (isGoalMode) {
                 append("""
                     AUTONOMOUS GOAL MODE ACTIVE:

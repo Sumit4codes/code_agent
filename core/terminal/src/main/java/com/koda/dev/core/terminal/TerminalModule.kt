@@ -47,6 +47,16 @@ object TerminalModule {
 
     @Provides
     @Singleton
+    fun provideManagedTaskManager(
+        posixTerminalExecutor: PosixTerminalExecutor
+    ): ManagedTaskManager = ManagedTaskManager(posixTerminalExecutor)
+
+    @Provides
+    @Singleton
+    fun provideTaskManager(impl: ManagedTaskManager): TaskManager = impl
+
+    @Provides
+    @Singleton
     fun provideTermuxSessionManager(
         @ApplicationContext context: Context,
         nativeBinaryManager: NativeBinaryManager,

@@ -279,20 +279,21 @@ class PosixTerminalExecutor(
         return TerminalResult.Success("", 0)
     }
 
-    private suspend fun executeUbuntuProcess(
-        command: String,
-        workingDir: File,
-        onOutput: ((String) -> Unit)?,
-        timeoutMs: Long = 120_000L
-    ): TerminalResult = withContext(ioDispatcher) {
-        val effectiveTimeoutMs = if (timeoutMs == 120_000L && (command.contains("apt") || command.contains("gradle") || command.contains("build") || command.contains("make") || command.contains("cmake") || command.contains("cargo") || command.contains("npm"))) {
-            600_000L // 10 minutes for package installations and builds
-        } else {
-            timeoutMs
+    fun buildProcessBuilder(command: String, workingDir: File? = null): ProcessBuilder {
+        val workDir = workingDir ?: currentWorkingDir ?: baseProjectDir ?: run {
+            try { context?.filesDir ?: File(".") } catch (_: Exception) { File(".") }
         }
+        val trimmed = command.trim()
+        return when {
+            isUbuntuActive() -> buildUbuntuProcessBuilder(trimmed, workDir)
+            isAlpineActive() -> buildAlpineProcessBuilder(trimmed, workDir)
+            else -> buildHostProcessBuilder(trimmed, workDir)
+        }
+    }
 
+    fun buildUbuntuProcessBuilder(command: String, workingDir: File): ProcessBuilder {
         val prootExec = nativeBinaryManager?.resolvePRootExecutable()
-            ?: return@withContext executeHostProcess(command, workingDir, onOutput, effectiveTimeoutMs)
+            ?: return buildHostProcessBuilder(command, workingDir)
 
         val mgr = ubuntuBootstrapManager ?: nativeBinaryManager.ubuntuBootstrapManager
         val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
@@ -393,35 +394,55 @@ class PosixTerminalExecutor(
         args.add("-c")
         args.add(command)
 
+        val pb = ProcessBuilder(args)
+            .directory(if (workingDir.exists()) workingDir else rootDir)
+            .redirectErrorStream(true)
+
+        val env = pb.environment()
+        env["PROOT_TMP_DIR"] = tmpDir.absolutePath
+        if (nativeDir != null) {
+            env["PROOT_LOADER"] = File(nativeDir, "libproot.so").absolutePath
+            val loader32 = File(nativeDir, "libproot32.so")
+            if (loader32.exists()) {
+                env["PROOT_LOADER32"] = loader32.absolutePath
+            }
+            env["LD_LIBRARY_PATH"] = "${rootDir.absolutePath}:${nativeDir.absolutePath}"
+        } else {
+            env["LD_LIBRARY_PATH"] = rootDir.absolutePath
+        }
+        env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        env["HOME"] = "/root"
+        env["USER"] = "root"
+        env["SHELL"] = shellPath
+        env["TERM"] = "xterm-256color"
+        env["LANG"] = "C.UTF-8"
+        env["LC_ALL"] = "C.UTF-8"
+        env["DEBIAN_FRONTEND"] = "noninteractive"
+        env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
+        env["GIT_OPTIONAL_LOCKS"] = "0"
+
+        return pb
+    }
+
+    private suspend fun executeUbuntuProcess(
+        command: String,
+        workingDir: File,
+        onOutput: ((String) -> Unit)?,
+        timeoutMs: Long = 120_000L
+    ): TerminalResult = withContext(ioDispatcher) {
+        val effectiveTimeoutMs = if (timeoutMs == 120_000L && (command.contains("apt") || command.contains("gradle") || command.contains("build") || command.contains("make") || command.contains("cmake") || command.contains("cargo") || command.contains("npm"))) {
+            600_000L // 10 minutes for package installations and builds
+        } else {
+            timeoutMs
+        }
+
+        if (nativeBinaryManager?.resolvePRootExecutable() == null) {
+            return@withContext executeHostProcess(command, workingDir, onOutput, effectiveTimeoutMs)
+        }
+
         try {
+            val pb = buildUbuntuProcessBuilder(command, workingDir)
             val result = withTimeoutOrNull(effectiveTimeoutMs) {
-                val pb = ProcessBuilder(args)
-                    .directory(if (workingDir.exists()) workingDir else rootDir)
-                    .redirectErrorStream(true)
-
-                val env = pb.environment()
-                env["PROOT_TMP_DIR"] = tmpDir.absolutePath
-                if (nativeDir != null) {
-                    env["PROOT_LOADER"] = File(nativeDir, "libproot.so").absolutePath
-                    val loader32 = File(nativeDir, "libproot32.so")
-                    if (loader32.exists()) {
-                        env["PROOT_LOADER32"] = loader32.absolutePath
-                    }
-                    env["LD_LIBRARY_PATH"] = "${rootDir.absolutePath}:${nativeDir.absolutePath}"
-                } else {
-                    env["LD_LIBRARY_PATH"] = rootDir.absolutePath
-                }
-                env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-                env["HOME"] = "/root"
-                env["USER"] = "root"
-                env["SHELL"] = shellPath
-                env["TERM"] = "xterm-256color"
-                env["LANG"] = "C.UTF-8"
-                env["LC_ALL"] = "C.UTF-8"
-                env["DEBIAN_FRONTEND"] = "noninteractive"
-                env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
-                env["GIT_OPTIONAL_LOCKS"] = "0"
-
                 val process = pb.start()
                 runProcessStream(process, onOutput)
             }
@@ -438,14 +459,9 @@ class PosixTerminalExecutor(
         }
     }
 
-    private suspend fun executeAlpineProcess(
-        command: String,
-        workingDir: File,
-        onOutput: ((String) -> Unit)?,
-        timeoutMs: Long = 120_000L
-    ): TerminalResult = withContext(ioDispatcher) {
+    fun buildAlpineProcessBuilder(command: String, workingDir: File): ProcessBuilder {
         val prootExec = nativeBinaryManager?.resolvePRootExecutable()
-            ?: return@withContext executeHostProcess(command, workingDir, onOutput, timeoutMs)
+            ?: return buildHostProcessBuilder(command, workingDir)
 
         val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
         val rootDir = alpineBootstrapManager?.rootDir
@@ -539,34 +555,70 @@ class PosixTerminalExecutor(
         args.add("-c")
         args.add(command)
 
+        val pb = ProcessBuilder(args)
+            .directory(if (workingDir.exists()) workingDir else rootDir)
+            .redirectErrorStream(true)
+
+        val env = pb.environment()
+        env["PROOT_TMP_DIR"] = tmpDir.absolutePath
+        if (nativeDir != null) {
+            env["PROOT_LOADER"] = File(nativeDir, "libproot.so").absolutePath
+            val loader32 = File(nativeDir, "libproot32.so")
+            if (loader32.exists()) {
+                env["PROOT_LOADER32"] = loader32.absolutePath
+            }
+            env["LD_LIBRARY_PATH"] = "${rootDir.absolutePath}:${nativeDir.absolutePath}"
+        } else {
+            env["LD_LIBRARY_PATH"] = rootDir.absolutePath
+        }
+        env["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+        env["HOME"] = "/root"
+        env["USER"] = "root"
+        env["SHELL"] = "/bin/sh"
+        env["TERM"] = "xterm-256color"
+        env["LANG"] = "C.UTF-8"
+        env["LC_ALL"] = "C.UTF-8"
+        env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
+        env["GIT_OPTIONAL_LOCKS"] = "0"
+
+        return pb
+    }
+
+    fun buildHostProcessBuilder(command: String, workingDir: File): ProcessBuilder {
+        val shell = resolveShellExecutable()
+        val preamble = buildShellPreamble()
+        val finalCommand = if (preamble.isNotEmpty()) "$preamble\n$command" else command
+        val pb = ProcessBuilder(shell, "-c", finalCommand)
+            .directory(workingDir)
+            .redirectErrorStream(true)
+
+        val env = pb.environment()
+        env["PATH"] = buildPathEnvironment()
+        env["HOME"] = workingDir.absolutePath
+        env["PWD"] = workingDir.absolutePath
+        env["TMPDIR"] = try { context?.cacheDir?.absolutePath ?: "/data/local/tmp" } catch (_: Exception) { "/tmp" }
+        env["TERM"] = "xterm-256color"
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
+        env["GIT_OPTIONAL_LOCKS"] = "0"
+        env["LC_ALL"] = "C.UTF-8"
+
+        return pb
+    }
+
+    private suspend fun executeAlpineProcess(
+        command: String,
+        workingDir: File,
+        onOutput: ((String) -> Unit)?,
+        timeoutMs: Long = 120_000L
+    ): TerminalResult = withContext(ioDispatcher) {
+        if (nativeBinaryManager?.resolvePRootExecutable() == null) {
+            return@withContext executeHostProcess(command, workingDir, onOutput, timeoutMs)
+        }
+
         try {
+            val pb = buildAlpineProcessBuilder(command, workingDir)
             val result = withTimeoutOrNull(timeoutMs) {
-                val pb = ProcessBuilder(args)
-                    .directory(if (workingDir.exists()) workingDir else rootDir)
-                    .redirectErrorStream(true)
-
-                val env = pb.environment()
-                env["PROOT_TMP_DIR"] = tmpDir.absolutePath
-                if (nativeDir != null) {
-                    env["PROOT_LOADER"] = File(nativeDir, "libproot.so").absolutePath
-                    val loader32 = File(nativeDir, "libproot32.so")
-                    if (loader32.exists()) {
-                        env["PROOT_LOADER32"] = loader32.absolutePath
-                    }
-                    env["LD_LIBRARY_PATH"] = "${rootDir.absolutePath}:${nativeDir.absolutePath}"
-                } else {
-                    env["LD_LIBRARY_PATH"] = rootDir.absolutePath
-                }
-                env["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
-                env["HOME"] = "/root"
-                env["USER"] = "root"
-                env["SHELL"] = "/bin/sh"
-                env["TERM"] = "xterm-256color"
-                env["LANG"] = "C.UTF-8"
-                env["LC_ALL"] = "C.UTF-8"
-                env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
-                env["GIT_OPTIONAL_LOCKS"] = "0"
-
                 val process = pb.start()
                 runProcessStream(process, onOutput)
             }
@@ -589,26 +641,9 @@ class PosixTerminalExecutor(
         onOutput: ((String) -> Unit)?,
         timeoutMs: Long = 30_000L
     ): TerminalResult = withContext(ioDispatcher) {
-        val shell = resolveShellExecutable()
         try {
+            val pb = buildHostProcessBuilder(command, workingDir)
             val result = withTimeoutOrNull(timeoutMs) {
-                val preamble = buildShellPreamble()
-                val finalCommand = if (preamble.isNotEmpty()) "$preamble\n$command" else command
-                val pb = ProcessBuilder(shell, "-c", finalCommand)
-                    .directory(workingDir)
-                    .redirectErrorStream(true)
-
-                val env = pb.environment()
-                env["PATH"] = buildPathEnvironment()
-                env["HOME"] = workingDir.absolutePath
-                env["PWD"] = workingDir.absolutePath
-                env["TMPDIR"] = try { context?.cacheDir?.absolutePath ?: "/data/local/tmp" } catch (_: Exception) { "/tmp" }
-                env["TERM"] = "xterm-256color"
-                env["GIT_TERMINAL_PROMPT"] = "0"
-                env["GIT_CONFIG_PARAMETERS"] = "'core.createObject=rename' 'core.filemode=false' 'core.symlinks=false' 'safe.directory=*'"
-                env["GIT_OPTIONAL_LOCKS"] = "0"
-                env["LC_ALL"] = "C.UTF-8"
-
                 val process = pb.start()
                 runProcessStream(process, onOutput)
             }

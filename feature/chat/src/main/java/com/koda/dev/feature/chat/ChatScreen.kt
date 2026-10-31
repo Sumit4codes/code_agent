@@ -71,6 +71,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
+import com.koda.dev.feature.chat.components.ActiveTasksStrip
 import com.koda.dev.feature.chat.components.ChatInputBar
 import com.koda.dev.feature.chat.components.EmptyChatState
 import com.koda.dev.feature.chat.components.MessageItem
@@ -310,33 +311,43 @@ fun ChatScreen(
             )
         },
         bottomBar = {
-            ChatInputBar(
-                inputText = inputText,
-                onInputChange = { inputText = it },
-                onSend = {
-                    if (inputText.isNotBlank()) {
-                        userScrolledUp = false
-                        viewModel.sendMessage(inputText)
-                        inputText = ""
-                    }
-                },
-                onCancel = { viewModel.cancelGeneration() },
-                isStreaming = state.isStreaming,
-                hasProject = state.projectUri != null,
-                projectName = state.projectName,
-                modelName = state.model,
-                onSelectGoal = {
-                    val current = inputText.trim()
-                    val newText = if (current.startsWith("/goal", ignoreCase = true)) {
-                        inputText
-                    } else if (current.isBlank()) {
-                        "/goal "
-                    } else {
-                        "/goal $current"
-                    }
-                    inputText = newText
+            Column {
+                if (state.activeBackgroundTasks.isNotEmpty()) {
+                    ActiveTasksStrip(
+                        tasks = state.activeBackgroundTasks,
+                        onKillTask = { viewModel.killBackgroundTask(it) },
+                        onSendInput = { taskId, input -> viewModel.sendInputToBackgroundTask(taskId, input) },
+                        onGetTaskDetails = { taskId -> viewModel.getTaskStatus(taskId) }
+                    )
                 }
-            )
+                ChatInputBar(
+                    inputText = inputText,
+                    onInputChange = { inputText = it },
+                    onSend = {
+                        if (inputText.isNotBlank()) {
+                            userScrolledUp = false
+                            viewModel.sendMessage(inputText)
+                            inputText = ""
+                        }
+                    },
+                    onCancel = { viewModel.cancelGeneration() },
+                    isStreaming = state.isStreaming,
+                    hasProject = state.projectUri != null,
+                    projectName = state.projectName,
+                    modelName = state.model,
+                    onSelectGoal = {
+                        val current = inputText.trim()
+                        val newText = if (current.startsWith("/goal", ignoreCase = true)) {
+                            inputText
+                        } else if (current.isBlank()) {
+                            "/goal "
+                        } else {
+                            "/goal $current"
+                        }
+                        inputText = newText
+                    }
+                )
+            }
         }
     ) { padding ->
         Box(

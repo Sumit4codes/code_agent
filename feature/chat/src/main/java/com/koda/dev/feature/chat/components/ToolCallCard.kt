@@ -308,6 +308,7 @@ private fun getToolInfo(name: String): ToolInfo = when (ToolNames.normalize(name
     ToolNames.EXECUTE_COMMAND -> ToolInfo("Run Command", Icons.Default.Terminal)
     ToolNames.WEB_SEARCH -> ToolInfo("Web Search", Icons.Default.Public)
     ToolNames.FETCH_WEB_PAGE -> ToolInfo("Fetch Web Page", Icons.Default.Language)
+    ToolNames.MANAGE_TASK -> ToolInfo("Manage Task", Icons.Default.Terminal)
     else -> ToolInfo(name.replace('_', ' ').replaceFirstChar { it.uppercase() }, Icons.Default.Terminal)
 }
 
@@ -316,6 +317,7 @@ private fun extractArgSummary(arguments: String): String {
     return try {
         val json = Json.parseToJsonElement(arguments).jsonObject
         when {
+            json.containsKey("action") -> "⚙️ ${json["action"]?.jsonPrimitive?.content ?: ""}${json["task_id"]?.jsonPrimitive?.content?.let { " ($it)" } ?: ""}"
             json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
             json.containsKey("query") -> "🔍 \"${json["query"]?.jsonPrimitive?.content ?: ""}\""
             json.containsKey("url") -> "🌐 ${json["url"]?.jsonPrimitive?.content ?: ""}"

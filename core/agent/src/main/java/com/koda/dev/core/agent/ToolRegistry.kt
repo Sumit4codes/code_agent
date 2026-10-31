@@ -126,12 +126,29 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = ToolNames.EXECUTE_COMMAND,
-                description = "Execute a shell, git, or build command in the workspace directory. Commands run in an Ubuntu 24.04 LTS (glibc) environment with bash and full access to apt (e.g. 'apt update && apt install -y <pkg>'), GCC/G++, Python 3, OpenJDK 21, Node.js, Rust, Go, Make, CMake, and build tools. For Android builds, run './scripts/check-env.sh' or './build.sh --check' to verify prerequisites (JDK 21, Android SDK API 37, ARM64 AAPT2, memory). A bundled native ARM64 AAPT2 binary is located at 'tools/bin/arm64-v8a/aapt2'.",
+                description = "Execute a shell, git, or build command in the workspace directory. Commands run in an Ubuntu 24.04 LTS (glibc) environment with bash and full access to apt (e.g. 'apt update && apt install -y <pkg>'), GCC/G++, Python 3, OpenJDK 21, Node.js, Rust, Go, Make, CMake, and build tools. If a command takes longer than wait_seconds (default 20s), it automatically moves to a background task so you regain control. Use is_background: true for long-running servers or watchers.",
                 parameters = ToolParameters(
                     properties = mapOf(
-                        "command" to PropertyDef("string", "The shell command line to execute (e.g. 'git status', './build.sh', 'python3 main.py', 'gcc -o app main.c', 'apt install -y <pkg>').")
+                        "command" to PropertyDef("string", "The shell command line to execute (e.g. 'git status', './build.sh', 'python3 main.py', 'gcc -o app main.c', 'apt install -y <pkg>')."),
+                        "wait_seconds" to PropertyDef("integer", "Seconds to wait synchronously before detaching into a background task (default 20)."),
+                        "is_background" to PropertyDef("boolean", "Set to true for long-running daemons or dev servers that should immediately run in the background.")
                     ),
                     required = listOf("command")
+                )
+            ),
+            readOnly = false
+        )
+        register(
+            ToolSpec(
+                name = ToolNames.MANAGE_TASK,
+                description = "Manage active and completed background tasks. Use action='status' to inspect real-time stdout/stderr, runtime, and stall warnings. Use action='kill' to terminate a stuck, looping, or unneeded task. Use action='send_input' to provide interactive input to a running task. Use action='list' to see all tasks.",
+                parameters = ToolParameters(
+                    properties = mapOf(
+                        "action" to PropertyDef("string", "The task action to perform: 'status' (get recent logs & status), 'kill' (terminate process), 'send_input' (write to stdin), or 'list' (list all active/recent tasks)."),
+                        "task_id" to PropertyDef("string", "The task ID (e.g. 'task_1') returned when a command was backgrounded. Required for 'status', 'kill', and 'send_input'."),
+                        "input" to PropertyDef("string", "The text input to send to the task's standard input. Required for 'send_input'.")
+                    ),
+                    required = listOf("action")
                 )
             ),
             readOnly = false

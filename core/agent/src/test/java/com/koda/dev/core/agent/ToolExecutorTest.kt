@@ -321,4 +321,29 @@ class ToolExecutorTest {
         assertTrue(result.output.contains("# Sample Documentation"))
         assertTrue(result.output.contains("https://example.com/docs"))
     }
+
+    @Test
+    fun `execute execute_command with background true launches managed task`() = runTest {
+        val result = executor.execute("execute_command", """{"command":"sleep 10","is_background":true}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("Command is running in background task"))
+
+        val taskId = result.output.substringAfter("background task '").substringBefore("'")
+        assertTrue(taskId.startsWith("task_"))
+
+        // Status
+        val statusRes = executor.execute("manage_task", """{"action":"status","task_id":"$taskId"}""")
+        assertTrue(statusRes.success)
+        assertTrue(statusRes.output.contains("RUNNING"))
+
+        // List
+        val listRes = executor.execute("manage_task", """{"action":"list"}""")
+        assertTrue(listRes.success)
+        assertTrue(listRes.output.contains(taskId))
+
+        // Kill
+        val killRes = executor.execute("manage_task", """{"action":"kill","task_id":"$taskId"}""")
+        assertTrue(killRes.success)
+        assertTrue(killRes.output.contains("was terminated successfully"))
+    }
 }
