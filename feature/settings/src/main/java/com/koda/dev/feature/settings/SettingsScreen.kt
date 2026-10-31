@@ -46,6 +46,7 @@ import com.koda.dev.core.model.PopularProvider
 import com.koda.dev.core.model.PopularProviders
 import com.koda.dev.core.model.ProviderType
 import com.koda.dev.core.model.WebSearchEngine
+import com.koda.dev.feature.settings.qr.QrScannerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +57,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var preferencesExpanded by remember { mutableStateOf(false) }
     var terminalPreferencesExpanded by remember { mutableStateOf(true) }
     var webSearchExpanded by remember { mutableStateOf(false) }
+    var showQrScanner by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.userMessage) {
         val msg = state.userMessage
@@ -112,7 +114,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onEdit = { viewModel.openEditProviderDialog(it) },
                 onDelete = { providerToDelete = it },
                 onAddProvider = { viewModel.openAddProviderDialog(PopularProviders.OPENAI) },
-                onAddSpecificPreset = { preset -> viewModel.openAddProviderDialog(preset) }
+                onAddSpecificPreset = { preset -> viewModel.openAddProviderDialog(preset) },
+                onScanQrCode = { showQrScanner = true }
             )
 
             // 3. AGENT PREFERENCES (COLLAPSIBLE / ACCORDION)
@@ -217,7 +220,19 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             onProviderTypeChange = { viewModel.updateEditorProviderType(it) },
             onIsDefaultChange = { viewModel.updateEditorIsDefault(it) },
             onFetchModels = { viewModel.fetchModelsForEditor() },
-            onSave = { viewModel.saveProviderFromEditor() }
+            onSave = { viewModel.saveProviderFromEditor() },
+            onScanQrCode = { showQrScanner = true }
+        )
+    }
+
+    // QR SCANNER DIALOG
+    if (showQrScanner) {
+        QrScannerDialog(
+            onDismiss = { showQrScanner = false },
+            onQrCodeScanned = { rawCode ->
+                showQrScanner = false
+                viewModel.onQrCodeScanned(rawCode)
+            }
         )
     }
 
@@ -408,7 +423,8 @@ private fun ProvidersSection(
     onEdit: (ProviderUiModel) -> Unit,
     onDelete: (ProviderUiModel) -> Unit,
     onAddProvider: () -> Unit,
-    onAddSpecificPreset: (PopularProvider) -> Unit
+    onAddSpecificPreset: (PopularProvider) -> Unit,
+    onScanQrCode: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
@@ -429,14 +445,29 @@ private fun ProvidersSection(
                 }
             }
 
-            Button(
-                onClick = onAddProvider,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                modifier = Modifier.height(36.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Add Provider", style = MaterialTheme.typography.labelMedium)
+                OutlinedButton(
+                    onClick = onScanQrCode,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Scan QR", style = MaterialTheme.typography.labelMedium)
+                }
+
+                Button(
+                    onClick = onAddProvider,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add Provider", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
 
@@ -473,6 +504,13 @@ private fun ProvidersSection(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        AssistChip(
+                            onClick = onScanQrCode,
+                            label = { Text("Scan Antiroute QR", style = MaterialTheme.typography.labelSmall) },
+                            leadingIcon = {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(14.dp))
+                            }
+                        )
                         PopularProviders.allPopular.filterNot { it.isCustom }.forEach { preset ->
                             AssistChip(
                                 onClick = { onAddSpecificPreset(preset) },
@@ -558,6 +596,21 @@ private fun ProviderCard(
                                 text = "ACTIVE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                    if (provider.providerType == ProviderType.ANTIROUTE || provider.id.startsWith("antiroute")) {
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.tertiaryContainer
+                        ) {
+                            Text(
+                                text = "ANTIROUTE",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 maxLines = 1,
                                 softWrap = false
@@ -1072,7 +1125,8 @@ private fun ProviderEditorDialog(
     onProviderTypeChange: (ProviderType) -> Unit,
     onIsDefaultChange: (Boolean) -> Unit,
     onFetchModels: () -> Unit,
-    onSave: () -> Unit
+    onSave: () -> Unit,
+    onScanQrCode: () -> Unit = {}
 ) {
     var showApiKey by remember { mutableStateOf(false) }
     var showModelSelectorSheet by remember { mutableStateOf(false) }
@@ -1142,6 +1196,19 @@ private fun ProviderEditorDialog(
                         }
                     }
 
+                    // Antiroute QR Scan Action
+                    if (editorState.selectedTemplateId == "antiroute" || editorState.providerType == ProviderType.ANTIROUTE) {
+                        OutlinedButton(
+                            onClick = onScanQrCode,
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Scan Antiroute Tunnel QR Code", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
                     // Provider Name
                     OutlinedTextField(
                         value = editorState.name,
@@ -1159,6 +1226,11 @@ private fun ProviderEditorDialog(
                         label = { Text("Base URL") },
                         placeholder = { Text("https://api.openai.com/v1") },
                         leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                        trailingIcon = {
+                            IconButton(onClick = onScanQrCode) {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR Code")
+                            }
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

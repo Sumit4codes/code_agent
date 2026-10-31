@@ -32,7 +32,7 @@ class DynamicAiProvider @Inject constructor(
         val config = settingsRepository.getActiveProvider() ?: return@withContext FakeAiProvider()
         val apiKey = settingsRepository.getApiKey(config.id) ?: ""
         when (config.providerType) {
-            ProviderType.OPENAI_COMPATIBLE -> OpenAiCompatibleProvider(
+            ProviderType.OPENAI_COMPATIBLE, ProviderType.ANTIROUTE -> OpenAiCompatibleProvider(
                 baseUrl = config.baseUrl,
                 apiKey = apiKey,
                 client = client,

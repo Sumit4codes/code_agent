@@ -98,7 +98,7 @@ data class ProviderConfig(
 
 @Serializable
 enum class ProviderType {
-    OPENAI_COMPATIBLE, ANTHROPIC
+    OPENAI_COMPATIBLE, ANTHROPIC, ANTIROUTE
 }
 
 @Serializable

@@ -391,6 +391,61 @@ class SettingsViewModelTest {
         assertEquals(18, viewModel.state.value.terminalFontSizeSp)
         assertEquals(18, repository.getTerminalFontSize())
     }
+
+    @Test
+    fun `onQrCodeScanned parses tunnel URL, configures Antiroute editor and fetches models`() = runTest {
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher)
+        advanceUntilIdle()
+
+        val qrUrl = "https://koda-test.pinggy.io"
+        val success = viewModel.onQrCodeScanned(qrUrl)
+        advanceUntilIdle()
+
+        assertTrue(success)
+        val editor = viewModel.state.value.editorState
+        assertTrue(editor.isOpen)
+        assertEquals("https://koda-test.pinggy.io/v1", editor.baseUrl)
+        assertEquals("sk-antigravity-claude", editor.apiKey)
+        assertEquals(ProviderType.ANTIROUTE, editor.providerType)
+        assertEquals("gemini-3.8-flash-high", editor.model)
+        assertEquals("antiroute", editor.selectedTemplateId)
+        assertTrue(viewModel.state.value.userMessage?.contains("Antiroute tunnel connected") == true)
+        assertFalse(viewModel.state.value.isErrorMessage)
+    }
+
+    @Test
+    fun `onQrCodeScanned parses JSON payload and applies custom credentials`() = runTest {
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher)
+        advanceUntilIdle()
+
+        val qrJson = """{"baseUrl":"https://custom.tunnel.example.com/v1","apiKey":"custom-key-123","model":"claude-3-5-sonnet","name":"My Antiroute"}"""
+        val success = viewModel.onQrCodeScanned(qrJson)
+        advanceUntilIdle()
+
+        assertTrue(success)
+        val editor = viewModel.state.value.editorState
+        assertTrue(editor.isOpen)
+        assertEquals("https://custom.tunnel.example.com/v1", editor.baseUrl)
+        assertEquals("custom-key-123", editor.apiKey)
+        assertEquals(ProviderType.ANTIROUTE, editor.providerType)
+        assertEquals("claude-3-5-sonnet", editor.model)
+        assertEquals("My Antiroute", editor.name)
+    }
+
+    @Test
+    fun `onQrCodeScanned with invalid payload reports error message`() = runTest {
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher)
+        advanceUntilIdle()
+
+        val invalidQr = ""
+        val success = viewModel.onQrCodeScanned(invalidQr)
+        advanceUntilIdle()
+
+        assertFalse(success)
+        assertFalse(viewModel.state.value.editorState.isOpen)
+        assertTrue(viewModel.state.value.userMessage?.contains("Failed to parse QR code") == true)
+        assertTrue(viewModel.state.value.isErrorMessage)
+    }
 }
 
 private class FakeCloudSyncManager : com.koda.dev.core.data.sync.CloudSyncManager {

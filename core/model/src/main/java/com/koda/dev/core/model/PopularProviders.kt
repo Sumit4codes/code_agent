@@ -17,6 +17,24 @@ data class PopularProvider(
 )
 
 object PopularProviders {
+    val ANTIROUTE = PopularProvider(
+        id = "antiroute",
+        name = "Antiroute Tunnel",
+        providerType = ProviderType.ANTIROUTE,
+        defaultBaseUrl = "https://tunnel.pinggy.io/v1",
+        defaultModel = "gemini-3.8-flash-high",
+        fallbackModels = listOf(
+            "gemini-3.8-flash-high",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "claude-3-5-sonnet-20241022",
+            "deepseek-chat"
+        ),
+        apiKeyPlaceholder = "sk-antigravity-claude",
+        apiKeyHelpUrl = null,
+        description = "Antiroute secure tunnel proxy connecting mobile apps to Gemini & Claude"
+    )
+
     val OPENAI = PopularProvider(
         id = "openai",
         name = "OpenAI",
@@ -130,6 +148,7 @@ object PopularProviders {
     )
 
     val allPopular: List<PopularProvider> = listOf(
+        ANTIROUTE,
         OPENROUTER,
         OPENAI,
         ANTHROPIC,

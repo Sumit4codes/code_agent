@@ -22,6 +22,8 @@ junit = "4.13.2"
 kotlinxCoroutinesTest = "1.11.0"
 commonsCompress = "1.27.1"
 jsoup = "1.18.3"
+camerax = "1.4.1"
+zxing = "3.5.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -56,6 +58,10 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesTest" }
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 termux-terminal-view = { group = "com.github.termux.termux-app", name = "terminal-view", version = "v0.118.0" }
 termux-terminal-emulator = { group = "com.github.termux.termux-app", name = "terminal-emulator", version = "v0.118.0" }
 

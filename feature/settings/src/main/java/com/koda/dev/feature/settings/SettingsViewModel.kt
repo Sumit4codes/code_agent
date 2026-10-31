@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koda.dev.core.ai.ModelFetcher
 import com.koda.dev.core.data.SettingsRepository
+import com.koda.dev.core.model.AntirouteConnectionConfig
+import com.koda.dev.core.model.AntirouteQrParser
 import com.koda.dev.core.model.PopularProvider
 import com.koda.dev.core.model.PopularProviders
 import com.koda.dev.core.model.ProviderConfig
@@ -342,6 +344,57 @@ class SettingsViewModel @Inject constructor(
                 modelFetchError = null
             )
         )
+    }
+
+    fun applyScannedAntirouteConfig(config: AntirouteConnectionConfig) {
+        val hasExisting = _state.value.providers.isNotEmpty()
+        val template = PopularProviders.ANTIROUTE
+        val finalId = if (_state.value.providers.any { it.id == "antiroute" }) {
+            "antiroute_${System.currentTimeMillis() % 10000}"
+        } else {
+            "antiroute"
+        }
+
+        val initialModels = (listOf(config.model) + template.fallbackModels).distinct()
+
+        _state.value = _state.value.copy(
+            editorState = ProviderEditorState(
+                isOpen = true,
+                isEditing = false,
+                providerId = finalId,
+                name = config.name.ifBlank { template.name },
+                providerType = ProviderType.ANTIROUTE,
+                baseUrl = config.baseUrl,
+                apiKey = config.apiKey,
+                model = config.model,
+                isDefault = !hasExisting || _state.value.providers.isEmpty(),
+                availableModels = initialModels,
+                isFetchingModels = false,
+                modelFetchError = null,
+                connectionTestSuccess = null,
+                connectionTestMessage = null,
+                selectedTemplateId = "antiroute"
+            ),
+            userMessage = "Antiroute tunnel connected: ${config.baseUrl}",
+            isErrorMessage = false
+        )
+
+        fetchModelsForEditor()
+    }
+
+    fun onQrCodeScanned(rawText: String): Boolean {
+        val result = AntirouteQrParser.parse(rawText)
+        return if (result.isSuccess) {
+            val config = result.getOrThrow()
+            applyScannedAntirouteConfig(config)
+            true
+        } else {
+            _state.value = _state.value.copy(
+                userMessage = "Failed to parse QR code: ${result.exceptionOrNull()?.message}",
+                isErrorMessage = true
+            )
+            false
+        }
     }
 
     fun openEditProviderDialog(provider: ProviderUiModel) {
