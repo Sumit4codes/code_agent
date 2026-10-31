@@ -279,4 +279,46 @@ class ToolExecutorTest {
         assertTrue(result.success)
         assertTrue(result.output.contains("main.py"))
     }
+
+    @Test
+    fun `execute web_search executes successfully even when project is unbound`() = runTest {
+        val fakeSearchClient = object : com.koda.dev.core.data.web.WebSearchClient {
+            override suspend fun search(query: String, limit: Int): Result<List<com.koda.dev.core.model.WebSearchResult>> {
+                return Result.success(listOf(
+                    com.koda.dev.core.model.WebSearchResult("Kotlin Flows", "https://kotlinlang.org/flow", "Flow guide")
+                ))
+            }
+            override fun formatResultsForAgent(query: String, results: List<com.koda.dev.core.model.WebSearchResult>): String {
+                return "Results for $query: ${results.first().title}"
+            }
+        }
+        val customExecutor = ToolExecutor(
+            terminalExecutor = com.koda.dev.core.terminal.DefaultTerminalExecutor(),
+            webSearchClient = fakeSearchClient,
+            webPageFetcher = com.koda.dev.core.data.web.DefaultWebPageFetcher()
+        )
+        // No bind call on customExecutor
+        val result = customExecutor.execute("web_search", """{"query":"kotlin flow"}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("Results for kotlin flow: Kotlin Flows"))
+    }
+
+    @Test
+    fun `execute fetch_web_page executes successfully even when project is unbound`() = runTest {
+        val fakeFetcher = object : com.koda.dev.core.data.web.WebPageFetcher {
+            override suspend fun fetch(url: String, startLine: Int?, endLine: Int?): Result<String> {
+                return Result.success("# Sample Documentation\nContent from $url")
+            }
+        }
+        val customExecutor = ToolExecutor(
+            terminalExecutor = com.koda.dev.core.terminal.DefaultTerminalExecutor(),
+            webSearchClient = com.koda.dev.core.data.web.DefaultWebSearchClient(),
+            webPageFetcher = fakeFetcher
+        )
+        // No bind call on customExecutor
+        val result = customExecutor.execute("fetch_web_page", """{"url":"https://example.com/docs"}""")
+        assertTrue(result.success)
+        assertTrue(result.output.contains("# Sample Documentation"))
+        assertTrue(result.output.contains("https://example.com/docs"))
+    }
 }

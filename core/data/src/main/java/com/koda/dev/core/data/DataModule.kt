@@ -108,4 +108,18 @@ object DataModule {
     @Provides
     @Singleton
     fun provideTerminalPreferencesRepository(impl: DefaultTerminalPreferencesRepository): TerminalPreferencesRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideWebSearchPreferencesRepository(impl: com.koda.dev.core.data.web.DefaultWebSearchPreferencesRepository): com.koda.dev.core.data.web.WebSearchPreferencesRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideWebSearchClient(preferencesRepository: com.koda.dev.core.data.web.WebSearchPreferencesRepository): com.koda.dev.core.data.web.WebSearchClient =
+        com.koda.dev.core.data.web.DefaultWebSearchClient(preferencesRepository)
+
+    @Provides
+    @Singleton
+    fun provideWebPageFetcher(): com.koda.dev.core.data.web.WebPageFetcher =
+        com.koda.dev.core.data.web.DefaultWebPageFetcher()
 }

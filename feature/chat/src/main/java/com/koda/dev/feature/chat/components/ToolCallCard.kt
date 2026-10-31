@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.Delete
@@ -375,6 +377,8 @@ private fun getToolInfo(name: String): ToolInfo = when (ToolNames.normalize(name
     ToolNames.RENAME_FILE -> ToolInfo("Rename File", Icons.Default.DriveFileRenameOutline)
     ToolNames.DELETE_FILE -> ToolInfo("Delete File", Icons.Outlined.Delete)
     ToolNames.EXECUTE_COMMAND -> ToolInfo("Run Command", Icons.Default.Terminal)
+    ToolNames.WEB_SEARCH -> ToolInfo("Web Search", Icons.Default.Public)
+    ToolNames.FETCH_WEB_PAGE -> ToolInfo("Fetch Web Page", Icons.Default.Language)
     else -> ToolInfo(name.replace('_', ' ').replaceFirstChar { it.uppercase() }, Icons.Default.Terminal)
 }
 
@@ -384,8 +388,9 @@ private fun extractArgSummary(arguments: String): String {
         val json = Json.parseToJsonElement(arguments).jsonObject
         when {
             json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
+            json.containsKey("query") -> "🔍 \"${json["query"]?.jsonPrimitive?.content ?: ""}\""
+            json.containsKey("url") -> "🌐 ${json["url"]?.jsonPrimitive?.content ?: ""}"
             json.containsKey("path") -> json["path"]?.jsonPrimitive?.content ?: ""
-            json.containsKey("query") -> "\"${json["query"]?.jsonPrimitive?.content ?: ""}\""
             json.containsKey("dirPath") -> json["dirPath"]?.jsonPrimitive?.content ?: ""
             json.containsKey("oldPath") && json.containsKey("newPath") ->
                 "${json["oldPath"]?.jsonPrimitive?.content} → ${json["newPath"]?.jsonPrimitive?.content}"

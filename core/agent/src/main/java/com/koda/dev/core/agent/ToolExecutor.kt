@@ -27,10 +27,16 @@ data class ToolResult(
 
 @Singleton
 class ToolExecutor @Inject constructor(
-    private val terminalExecutor: TerminalExecutor
+    private val terminalExecutor: TerminalExecutor,
+    private val webSearchClient: com.koda.dev.core.data.web.WebSearchClient,
+    private val webPageFetcher: com.koda.dev.core.data.web.WebPageFetcher
 ) {
     // Secondary constructor for lightweight instantiations or tests
-    constructor() : this(DefaultTerminalExecutor())
+    constructor() : this(
+        DefaultTerminalExecutor(),
+        com.koda.dev.core.data.web.DefaultWebSearchClient(),
+        com.koda.dev.core.data.web.DefaultWebPageFetcher()
+    )
 
     private var fileSystem: ProjectFileSystem? = null
     private var projectRootUri: Uri? = null
@@ -76,11 +82,6 @@ class ToolExecutor @Inject constructor(
         argumentsJson: String,
         onOutput: ((String) -> Unit)? = null
     ): ToolResult = withContext(Dispatchers.IO) {
-        val fs = fileSystem
-        if (fs == null) {
-            return@withContext ToolResult(false, "No project is open. Please open a project first.")
-        }
-
         val args = try {
             Json.parseToJsonElement(argumentsJson).jsonObject
         } catch (_: Exception) {
@@ -88,6 +89,20 @@ class ToolExecutor @Inject constructor(
         }
 
         val cleanName = ToolNames.normalize(name)
+
+        // Web search and page fetch do not require an open project filesystem
+        if (cleanName == ToolNames.WEB_SEARCH) {
+            return@withContext executeWebSearch(args)
+        }
+        if (cleanName == ToolNames.FETCH_WEB_PAGE) {
+            return@withContext executeFetchWebPage(args)
+        }
+
+        val fs = fileSystem
+        if (fs == null) {
+            return@withContext ToolResult(false, "No project is open. Please open a project first.")
+        }
+
         when (cleanName) {
             ToolNames.LIST_FILES -> executeListFiles(fs, args)
             ToolNames.READ_FILE -> executeReadFile(fs, args)
@@ -107,6 +122,35 @@ class ToolExecutor @Inject constructor(
 
     private fun argInt(args: JsonObject, key: String): Int? {
         return args[key]?.jsonPrimitive?.content?.toIntOrNull()
+    }
+
+    private suspend fun executeWebSearch(args: JsonObject): ToolResult {
+        val query = argString(args, "query") ?: return ToolResult(false, "Missing 'query' argument for web search.")
+        val limit = argInt(args, "limit") ?: 5
+        val result = webSearchClient.search(query, limit)
+        return result.fold(
+            onSuccess = { list ->
+                ToolResult(true, webSearchClient.formatResultsForAgent(query, list))
+            },
+            onFailure = { e ->
+                ToolResult(false, "Web search failed: ${e.message ?: "Network or query error"}")
+            }
+        )
+    }
+
+    private suspend fun executeFetchWebPage(args: JsonObject): ToolResult {
+        val url = argString(args, "url") ?: return ToolResult(false, "Missing 'url' argument for fetch_web_page.")
+        val startLine = argInt(args, "start_line")
+        val endLine = argInt(args, "end_line")
+        val result = webPageFetcher.fetch(url, startLine, endLine)
+        return result.fold(
+            onSuccess = { content ->
+                ToolResult(true, content)
+            },
+            onFailure = { e ->
+                ToolResult(false, "Failed to fetch web page ($url): ${e.message ?: "Network or content error"}")
+            }
+        )
     }
 
     private suspend fun executeListFiles(fs: ProjectFileSystem, args: JsonObject): ToolResult {

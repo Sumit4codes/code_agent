@@ -45,6 +45,7 @@ import com.koda.dev.core.data.sync.SyncAccountInfo
 import com.koda.dev.core.model.PopularProvider
 import com.koda.dev.core.model.PopularProviders
 import com.koda.dev.core.model.ProviderType
+import com.koda.dev.core.model.WebSearchEngine
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +55,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var providerToDelete by remember { mutableStateOf<ProviderUiModel?>(null) }
     var preferencesExpanded by remember { mutableStateOf(false) }
     var terminalPreferencesExpanded by remember { mutableStateOf(true) }
+    var webSearchExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.userMessage) {
         val msg = state.userMessage
@@ -131,6 +133,20 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onToggleExpand = { terminalPreferencesExpanded = !terminalPreferencesExpanded },
                 fontSizeSp = state.terminalFontSizeSp,
                 onFontSizeChange = { viewModel.updateTerminalFontSize(it) }
+            )
+
+            // 5. WEB SEARCH & LIVE DOCUMENTATION PREFERENCES
+            WebSearchPreferencesCard(
+                isExpanded = webSearchExpanded,
+                onToggleExpand = { webSearchExpanded = !webSearchExpanded },
+                enabled = state.webSearchEnabled,
+                onEnabledChange = { viewModel.updateWebSearchEnabled(it) },
+                currentEngine = state.webSearchEngine,
+                onEngineChange = { viewModel.updateWebSearchEngine(it) },
+                searxngUrl = state.searxngUrl,
+                onSearxngUrlChange = { viewModel.updateSearxngUrl(it) },
+                apiKey = state.searchApiKey,
+                onSaveApiKey = { engine, key -> viewModel.saveSearchApiKey(engine, key) }
             )
 
             // 5. CROSS-DEVICE CLOUD SYNC CARD
@@ -1473,6 +1489,184 @@ private fun ModelSelectorDialog(
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WebSearchPreferencesCard(
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    currentEngine: WebSearchEngine,
+    onEngineChange: (WebSearchEngine) -> Unit,
+    searxngUrl: String,
+    onSearxngUrlChange: (String) -> Unit,
+    apiKey: String,
+    onSaveApiKey: (WebSearchEngine, String) -> Unit
+) {
+    var keyInput by remember(apiKey, currentEngine) { mutableStateOf(apiKey) }
+    var showPassword by remember { mutableStateOf(false) }
+
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleExpand() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Public,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Web Search & Live Docs",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                        Text(
+                            text = if (enabled) "${currentEngine.displayName} · Active" else "Disabled",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                IconButton(onClick = onToggleExpand) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand"
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Enable Web Access",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                            )
+                            Text(
+                                text = "Allow agent to search online docs and fetch web pages",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = enabled,
+                            onCheckedChange = onEnabledChange
+                        )
+                    }
+
+                    if (enabled) {
+                        Text(
+                            text = "Search Engine Provider",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            WebSearchEngine.entries.forEach { engine ->
+                                FilterChip(
+                                    selected = currentEngine == engine,
+                                    onClick = { onEngineChange(engine) },
+                                    label = { Text(engine.displayName) },
+                                    leadingIcon = if (currentEngine == engine) {
+                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                    } else null
+                                )
+                            }
+                        }
+
+                        when (currentEngine) {
+                            WebSearchEngine.DUCKDUCKGO -> {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = "DuckDuckGo is completely free, privacy-first, and works instantly without needing any API key or subscription.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(12.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            WebSearchEngine.TAVILY, WebSearchEngine.BRAVE -> {
+                                OutlinedTextField(
+                                    value = keyInput,
+                                    onValueChange = { keyInput = it },
+                                    label = { Text("${currentEngine.displayName} API Key") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showPassword = !showPassword }) {
+                                            Icon(
+                                                imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = if (showPassword) "Hide key" else "Show key"
+                                            )
+                                        }
+                                    }
+                                )
+                                Button(
+                                    onClick = { onSaveApiKey(currentEngine, keyInput) },
+                                    modifier = Modifier.align(Alignment.End),
+                                    enabled = keyInput.isNotBlank()
+                                ) {
+                                    Text("Save Key")
+                                }
+                            }
+                            WebSearchEngine.SEARXNG -> {
+                                OutlinedTextField(
+                                    value = searxngUrl,
+                                    onValueChange = onSearxngUrlChange,
+                                    label = { Text("SearXNG Instance URL") },
+                                    placeholder = { Text("https://searx.example.com") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
                             }
                         }
                     }

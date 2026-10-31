@@ -136,6 +136,35 @@ object ToolRegistry {
             ),
             readOnly = false
         )
+        register(
+            ToolSpec(
+                name = ToolNames.WEB_SEARCH,
+                description = "Search the web for up-to-date documentation, APIs, library releases, guides, and error solutions. Returns search results with titles, URLs, and concise snippets.",
+                parameters = ToolParameters(
+                    properties = mapOf(
+                        "query" to PropertyDef("string", "Search terms or keywords (e.g. 'jetpack compose navigation 3 example', 'ktor 3.0 migration guide')."),
+                        "limit" to PropertyDef("integer", "Optional maximum number of search results to return (1-10, default 5).")
+                    ),
+                    required = listOf("query")
+                )
+            ),
+            readOnly = true
+        )
+        register(
+            ToolSpec(
+                name = ToolNames.FETCH_WEB_PAGE,
+                description = "Fetch and read the content of a web page URL. Converts HTML to clean, readable Markdown, stripping navigation, ads, and boilerplate. Supports pagination via start_line and end_line for large pages.",
+                parameters = ToolParameters(
+                    properties = mapOf(
+                        "url" to PropertyDef("string", "The HTTP or HTTPS URL to fetch (e.g. 'https://developer.android.com/...')."),
+                        "start_line" to PropertyDef("integer", "Optional 1-based start line for pagination (inclusive). Defaults to 1."),
+                        "end_line" to PropertyDef("integer", "Optional 1-based end line for pagination (inclusive). Maximum 600 lines per call.")
+                    ),
+                    required = listOf("url")
+                )
+            ),
+            readOnly = true
+        )
     }
 
     init {

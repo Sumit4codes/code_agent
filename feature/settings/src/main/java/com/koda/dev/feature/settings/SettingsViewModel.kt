@@ -13,6 +13,8 @@ import com.koda.dev.core.data.sync.GitHubDeviceCodeResponse
 import com.koda.dev.core.data.sync.GitHubDevicePollResult
 import com.koda.dev.core.data.sync.NoOpCloudSyncManager
 import com.koda.dev.core.data.sync.SyncAccountInfo
+import com.koda.dev.core.data.web.WebSearchPreferencesRepository
+import com.koda.dev.core.model.WebSearchEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -87,14 +89,19 @@ data class SettingsUiState(
     val isBackupDialogOpen: Boolean = false,
     val backupExportText: String? = null,
     val deviceAuthState: GitHubDeviceAuthState = GitHubDeviceAuthState(),
-    val terminalFontSizeSp: Int = 14
+    val terminalFontSizeSp: Int = 14,
+    val webSearchEnabled: Boolean = true,
+    val webSearchEngine: WebSearchEngine = WebSearchEngine.DUCKDUCKGO,
+    val searxngUrl: String = "",
+    val searchApiKey: String = ""
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val modelFetcher: ModelFetcher,
-    private val cloudSyncManager: CloudSyncManager
+    private val cloudSyncManager: CloudSyncManager,
+    private val webSearchPreferencesRepository: WebSearchPreferencesRepository? = null
 ) : ViewModel() {
 
     var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
@@ -105,7 +112,7 @@ class SettingsViewModel @Inject constructor(
         settingsRepository: SettingsRepository,
         modelFetcher: ModelFetcher,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
-    ) : this(settingsRepository, modelFetcher, NoOpCloudSyncManager()) {
+    ) : this(settingsRepository, modelFetcher, NoOpCloudSyncManager(), null) {
         this.ioDispatcher = ioDispatcher
     }
 
@@ -114,13 +121,19 @@ class SettingsViewModel @Inject constructor(
         modelFetcher: ModelFetcher,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher,
         cloudSyncManager: CloudSyncManager
-    ) : this(settingsRepository, modelFetcher, cloudSyncManager) {
+    ) : this(settingsRepository, modelFetcher, cloudSyncManager, null) {
         this.ioDispatcher = ioDispatcher
     }
 
     private val _state = MutableStateFlow(
         SettingsUiState(
-            terminalFontSizeSp = settingsRepository.getTerminalFontSize()
+            terminalFontSizeSp = settingsRepository.getTerminalFontSize(),
+            webSearchEnabled = webSearchPreferencesRepository?.isSearchEnabled() ?: true,
+            webSearchEngine = webSearchPreferencesRepository?.getSearchEngine() ?: WebSearchEngine.DUCKDUCKGO,
+            searxngUrl = webSearchPreferencesRepository?.getSearxngUrl() ?: "",
+            searchApiKey = webSearchPreferencesRepository?.let { repo ->
+                repo.getApiKey(repo.getSearchEngine())
+            } ?: ""
         )
     )
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
@@ -129,6 +142,27 @@ class SettingsViewModel @Inject constructor(
         observeProviders()
         observeSyncAccount()
         observeTerminalFontSize()
+        observeWebSearchPreferences()
+    }
+
+    private fun observeWebSearchPreferences() {
+        val repo = webSearchPreferencesRepository ?: return
+        viewModelScope.launch {
+            repo.searchEnabledFlow.collect { enabled ->
+                _state.value = _state.value.copy(webSearchEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            repo.searchEngineFlow.collect { engine ->
+                val key = repo.getApiKey(engine) ?: ""
+                _state.value = _state.value.copy(webSearchEngine = engine, searchApiKey = key)
+            }
+        }
+        viewModelScope.launch {
+            repo.searxngUrlFlow.collect { url ->
+                _state.value = _state.value.copy(searxngUrl = url)
+            }
+        }
     }
 
     private fun observeTerminalFontSize() {
@@ -143,6 +177,38 @@ class SettingsViewModel @Inject constructor(
         _state.value = _state.value.copy(terminalFontSizeSp = newSizeSp)
         viewModelScope.launch {
             settingsRepository.saveTerminalFontSize(newSizeSp)
+        }
+    }
+
+    fun updateWebSearchEnabled(enabled: Boolean) {
+        _state.value = _state.value.copy(webSearchEnabled = enabled)
+        viewModelScope.launch(ioDispatcher) {
+            webSearchPreferencesRepository?.setSearchEnabled(enabled)
+        }
+    }
+
+    fun updateWebSearchEngine(engine: WebSearchEngine) {
+        viewModelScope.launch(ioDispatcher) {
+            webSearchPreferencesRepository?.setSearchEngine(engine)
+            val key = webSearchPreferencesRepository?.getApiKey(engine) ?: ""
+            _state.value = _state.value.copy(webSearchEngine = engine, searchApiKey = key)
+        }
+    }
+
+    fun updateSearxngUrl(url: String) {
+        _state.value = _state.value.copy(searxngUrl = url)
+        viewModelScope.launch(ioDispatcher) {
+            webSearchPreferencesRepository?.setSearxngUrl(url)
+        }
+    }
+
+    fun saveSearchApiKey(engine: WebSearchEngine, apiKey: String) {
+        viewModelScope.launch(ioDispatcher) {
+            webSearchPreferencesRepository?.setApiKey(engine, apiKey)
+            _state.value = _state.value.copy(
+                searchApiKey = apiKey,
+                userMessage = "Search key saved for ${engine.displayName}"
+            )
         }
     }
 

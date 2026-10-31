@@ -32,6 +32,8 @@ object ToolNames {
     const val RENAME_FILE = "rename_file"
     const val DELETE_FILE = "delete_file"
     const val EXECUTE_COMMAND = "execute_command"
+    const val WEB_SEARCH = "web_search"
+    const val FETCH_WEB_PAGE = "fetch_web_page"
 
     val ALL = listOf(
         LIST_FILES,
@@ -42,7 +44,9 @@ object ToolNames {
         CREATE_FILE,
         RENAME_FILE,
         DELETE_FILE,
-        EXECUTE_COMMAND
+        EXECUTE_COMMAND,
+        WEB_SEARCH,
+        FETCH_WEB_PAGE
     )
 
     fun normalize(rawName: String?): String {

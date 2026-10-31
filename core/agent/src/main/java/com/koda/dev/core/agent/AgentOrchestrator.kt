@@ -79,15 +79,21 @@ class AgentOrchestrator @Inject constructor(
                 append(systemPrompt)
                 append("\n\n")
             }
+            append("""
+                ONLINE RESEARCH & LIVE WEB ACCESS:
+                You have access to `web_search(query)` and `fetch_web_page(url)`. When answering queries requiring up-to-date documentation, external libraries, framework changes, or troubleshooting unfamiliar errors, search the web for authoritative sources and read documentation pages before writing or editing code.
+            """.trimIndent())
+            append("\n\n")
             if (isGoalMode) {
                 append("""
                     AUTONOMOUS GOAL MODE ACTIVE:
                     You are running autonomously to achieve the user's objective: "$userMessage".
                     Guidelines:
                     1. Formulate a plan and execute changes step-by-step.
-                    2. After modifying files, verify your changes using `execute_command` (e.g., run test suites, linters, or compiler commands).
-                    3. If any test or command fails, inspect the error output, diagnose the issue, and apply fixes until all verifications pass.
-                    4. Do not stop until the objective is fully satisfied and all verification tests pass.
+                    2. If you need documentation or library examples, use `web_search` and `fetch_web_page`.
+                    3. After modifying files, verify your changes using `execute_command` (e.g., run test suites, linters, or compiler commands).
+                    4. If any test or command fails, inspect the error output, diagnose the issue, and apply fixes until all verifications pass.
+                    5. Do not stop until the objective is fully satisfied and all verification tests pass.
                 """.trimIndent())
             }
         }.trim().takeIf { it.isNotBlank() }
