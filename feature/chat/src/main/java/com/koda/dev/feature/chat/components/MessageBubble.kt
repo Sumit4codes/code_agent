@@ -52,11 +52,9 @@ fun MessageItem(
     when (message.role) {
         MessageRole.USER -> UserMessageBubble(message = message, modifier = modifier)
         MessageRole.ASSISTANT -> AssistantMessageBubble(message = message, modifier = modifier)
-        MessageRole.TOOL -> ToolResultCard(
-            content = message.content,
-            toolCallId = message.toolCallId,
-            modifier = modifier
-        )
+        MessageRole.TOOL -> {
+            // Intentionally not rendered: Tool results are integrated into preceding Assistant ToolCallCard
+        }
         MessageRole.SYSTEM -> {
             // Minimal system notification
             Box(

@@ -285,7 +285,9 @@ class ChatViewModel @Inject constructor(
                                     } else {
                                         existing
                                     }
-                                } + uiMsg
+                                }
+                            } else if (uiMsg.role == MessageRole.TOOL) {
+                                state.messages
                             } else {
                                 state.messages + uiMsg
                             }
@@ -462,7 +464,7 @@ class ChatViewModel @Inject constructor(
         val isThisTaskRunning = activeTask != null && activeTask.sessionId == sessionId && activeTask.isRunning
 
         _state.value = _state.value.copy(
-            messages = linkedMessages,
+            messages = linkedMessages.filter { it.role != MessageRole.TOOL },
             pendingChanges = restoredPending,
             isStreaming = isThisTaskRunning,
             isGoalMode = isThisTaskRunning && activeTask.isGoalMode,
@@ -751,7 +753,9 @@ class ChatViewModel @Inject constructor(
                                                         }
                                                     )
                                                 } else existing
-                                            } + uiMsg
+                                            }
+                                        } else if (uiMsg.role == MessageRole.TOOL) {
+                                            state.messages
                                         } else {
                                             state.messages + uiMsg
                                         }

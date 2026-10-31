@@ -69,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.feature.chat.components.ChatInputBar
 import com.koda.dev.feature.chat.components.EmptyChatState
@@ -116,8 +117,12 @@ fun ChatScreen(
         }
     }
 
+    val displayMessages = remember(state.messages) {
+        state.messages.filter { it.role != MessageRole.TOOL }
+    }
+
     // Total item count in LazyColumn
-    val totalItemsCount = state.messages.size + if (state.isStreaming) 1 else 0
+    val totalItemsCount = displayMessages.size + if (state.isStreaming) 1 else 0
 
     // Track whether the user has manually scrolled up away from bottom
     var userScrolledUp by remember { mutableStateOf(false) }
@@ -141,7 +146,7 @@ fun ChatScreen(
     }
 
     // Smoothly scroll when a new message is added or streaming starts/stops
-    LaunchedEffect(state.messages.size, state.isStreaming) {
+    LaunchedEffect(displayMessages.size, state.isStreaming) {
         if (totalItemsCount > 0 && !userScrolledUp) {
             listState.animateScrollToItem(totalItemsCount - 1)
         }
@@ -361,7 +366,7 @@ fun ChatScreen(
                 }
 
                 // Messages area or Empty State
-                if (state.messages.isEmpty() && !state.isStreaming) {
+                if (displayMessages.isEmpty() && !state.isStreaming) {
                     EmptyChatState(
                         hasProject = state.projectUri != null,
                         projectName = state.projectName,
@@ -379,7 +384,7 @@ fun ChatScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(state.messages, key = { it.id }) { message ->
+                        items(displayMessages, key = { it.id }) { message ->
                             MessageItem(message = message)
                         }
 
