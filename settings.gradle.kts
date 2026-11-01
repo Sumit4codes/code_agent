@@ -28,9 +28,14 @@ rootProject.name = "KodaDev"
 // the incompatible x86_64 aapt2 from Maven.
 val osArch = System.getProperty("os.arch")?.lowercase() ?: ""
 if (osArch.contains("aarch64") || osArch.contains("arm64")) {
-    val bundledAapt2 = file("tools/bin/arm64-v8a/aapt2")
-    if (bundledAapt2.exists() && !gradle.startParameter.projectProperties.containsKey("android.aapt2FromMavenOverride")) {
-        gradle.startParameter.projectProperties["android.aapt2FromMavenOverride"] = bundledAapt2.absolutePath
+    val aapt2Candidates = listOf(
+        file("tools/bin/arm64-v8a/aapt2"),
+        file("/opt/codeagent-tools/aapt2"),
+        file("/opt/android-sdk/build-tools/37.0.0/aapt2")
+    )
+    val usableAapt2 = aapt2Candidates.firstOrNull { it.exists() && it.canExecute() }
+    if (usableAapt2 != null && System.getProperty("android.aapt2FromMavenOverride") == null) {
+        System.setProperty("android.aapt2FromMavenOverride", usableAapt2.absolutePath)
     }
 }
 

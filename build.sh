@@ -246,13 +246,23 @@ setup_aapt2() {
 
     # 2. Check architecture - if aarch64/arm64, use bundled ARM64 binary if not already set
     if [ -z "$aapt2_target" ] && { [ "$host_arch" = "aarch64" ] || [ "$host_arch" = "arm64" ]; }; then
-        local bundled_aapt2="$SCRIPT_DIR/tools/bin/arm64-v8a/aapt2"
-        if [ -x "$bundled_aapt2" ]; then
-            aapt2_target="$bundled_aapt2"
-        elif [ -f "$bundled_aapt2" ]; then
-            chmod +x "$bundled_aapt2"
-            aapt2_target="$bundled_aapt2"
-        fi
+        local candidates=(
+            "$SCRIPT_DIR/tools/bin/arm64-v8a/aapt2"
+            "/opt/codeagent-tools/aapt2"
+            "/opt/android-sdk/build-tools/37.0.0/aapt2"
+        )
+        for cand in "${candidates[@]}"; do
+            if [ -x "$cand" ]; then
+                aapt2_target="$cand"
+                break
+            elif [ -f "$cand" ]; then
+                chmod +x "$cand" 2>/dev/null || true
+                if [ -x "$cand" ]; then
+                    aapt2_target="$cand"
+                    break
+                fi
+            fi
+        done
     fi
 
     if [ -n "$aapt2_target" ]; then
@@ -288,7 +298,7 @@ GRADLE_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -k|--check)
-            "$SCRIPT_DIR/scripts/check-env.sh"
+            bash "$SCRIPT_DIR/scripts/check-env.sh"
             exit $?
             ;;
         --aapt2)
@@ -402,7 +412,7 @@ START_TIME=$(date +%s)
 
 # Run Gradle
 set +e
-./gradlew "${TASKS[@]}" "${GRADLE_ARGS[@]}"
+bash ./gradlew "${TASKS[@]}" "${GRADLE_ARGS[@]}"
 GRADLE_STATUS=$?
 set -e
 

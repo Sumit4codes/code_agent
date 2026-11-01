@@ -345,7 +345,7 @@ echo ""
 START_TIME=$(date +%s)
 
 set +e
-./gradlew "${TASKS[@]}" "${GRADLE_ARGS[@]}"
+bash ./gradlew "${TASKS[@]}" "${GRADLE_ARGS[@]}"
 GRADLE_STATUS=$?
 set -e
 
