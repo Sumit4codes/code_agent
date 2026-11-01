@@ -140,6 +140,56 @@
 2. **Permission Boundary:** Combining `MANAGE_EXTERNAL_STORAGE` (All Files Access) with `ACCESSIBILITY_SERVICE` (touch injection and screen reader) in a single application creates severe Google Play Store compliance and security risks. Keeping Koda Dev focused on code/development and Koda Flow focused on device touch automation ensures compliance and clarity.
 3. **Full Monolithic Refactor:** Complete migration of all 14 module package namespaces to `com.koda.dev.*` and application ID to `com.koda.dev`.
 
+## D18: Native ARM64 AAPT2 Integration & On-Device Self-Building Architecture
+**Decision:** Bundle a native ARM64 (`aarch64`) AAPT2 executable in `tools/bin/arm64-v8a/aapt2`, configure dynamic AGP binary overriding via `System.setProperty("android.aapt2FromMavenOverride", ...)`, and optimize Gradle daemon memory limits to `-Xmx1536m` to enable Koda Dev to build itself on physical Android devices.
+
+**Rationale:**
+1. **Architecture Mismatch Elimination:** Android Gradle Plugin (AGP) normally downloads x86_64 AAPT2 binaries from Google Maven. Running on ARM64 Android devices under PRoot threw `Exec format error`. Since the rest of the Android compilation toolchain (Gradle, `kotlinc`, KSP, D8/R8, `javac`) runs on the JVM, AAPT2 was the only native barrier to on-device Android compilation.
+2. **Gradle 9+ Compatibility:** In modern Gradle, `gradle.startParameter.projectProperties` is an `ImmutableMap` and throws `UnsupportedOperationException` upon mutation. Setting `System.setProperty("android.aapt2FromMavenOverride", usableAapt2.absolutePath)` in `settings.gradle.kts` overrides the binary cleanly across all Gradle versions.
+3. **FUSE noexec Bypass & Mobile Heap Safety:** Android mounts `/sdcard` with the `noexec` flag, which prevents `./gradlew` from executing directly; scripts wrap Gradle execution via `bash ./gradlew ...`. Setting `-Xmx1536m` in `gradle.properties` prevents Android's Low Memory Killer (LMK) from aborting the build daemon during resource-heavy linking phases on devices with 4–8 GB of physical RAM.
+
+**Trade-off:** The bundled AAPT2 binary adds ~6.7 MB to the repository and APK distribution.
+
+## D19: Autonomous Background Task Management (`manage_task`) & Reactive Stall Watchdog
+**Decision:** Implement an autonomous background task engine in `core:agent` exposed through the `manage_task` agent tool (`list`, `status`, `kill`, `send_input`), enforce a hard concurrency limit of 5 background tasks, and attach a reactive stall watchdog with an active task UI pill strip in `feature:chat`.
+
+**Rationale:**
+1. **Prevent Agent Deadlocks:** Coding agents executing long-running tasks (e.g. `gradlew assembleDebug`, local servers, test runners, watchers) previously blocked the synchronous command execution pipeline indefinitely if a command produced continuous output or waited for user input.
+2. **Agent-First Task Governance:** Rather than killing tasks externally with an arbitrary timeout, the agent is granted full oversight: it can background a command after a configurable synchronous wait (`WaitMsBeforeAsync`), periodically inspect recent stdout/stderr lines with `status`, pipe interactive keystrokes with `send_input`, or terminate runaway jobs with `kill`.
+3. **Mobile Resource Protection:** Mobile devices have strict CPU, battery, and memory budgets. Limiting active tasks to 5 (`MAX_CONCURRENT_TASKS = 5`) prevents the agent from spawning unbounded subprocesses that trigger system-level thermal throttling or OOM kills.
+4. **Transparent User UI:** Active background processes are visually displayed directly in the chat screen via an interactive task strip with live animated pulses, elapsed run timers, and one-tap manual kill buttons.
+
+**Trade-off:** Long commands require asynchronous multi-turn coordination between the agent and the background task dispatcher.
+
+## D20: Antiroute Tunnel Provider with CameraX QR Code Scanner
+**Decision:** Integrate Antiroute as a first-class AI provider and implement an in-app CameraX QR code scanner with Google ML Kit barcode analysis to automatically parse tunnel endpoints and authentication tokens.
+
+**Rationale:**
+1. **Zero-Configuration Onboarding:** Setting up private LLM proxies and remote tunneling services (such as Antiroute) requires entering lengthy URLs, ports, and bearer tokens. Typing or copy-pasting these across apps on mobile touch keyboards is cumbersome and prone to error.
+2. **Instant Camera Pairing:** Scanning the QR code displayed in the Antiroute CLI automatically populates the base URL and API key fields in `SettingsScreen` and validates connectivity instantly.
+3. **Privacy & Security:** Antiroute tunnels allow users to securely connect Koda Dev to home servers, desktop GPUs, or private API gateways over encrypted tunnels without exposing static public IP addresses.
+
+**Trade-off:** Adds CameraX and ML Kit barcode dependencies to the app.
+
+## D21: Agent Web Intelligence via Jsoup Web Search & Content Fetching
+**Decision:** Equip the autonomous agent with `web_search` and `fetch_web_page` tools backed by native Jsoup HTTP scraping, controlled by a user-configurable toggle in Settings.
+
+**Rationale:**
+1. **Live Knowledge & Error Recovery:** LLMs frequently produce outdated code patterns or hallucinate non-existent API methods for newly released libraries. Providing web search gives the agent real-time access to official documentation, StackOverflow discussions, and GitHub issue trackers during debugging sessions.
+2. **Lightweight & Fast:** Rather than bundling a heavyweight headless browser engine (such as Chromium / Puppeteer), Jsoup performs fast HTTP requests and parses HTML directly into clean, token-efficient Markdown, consuming minimal memory and bandwidth.
+3. **Privacy Control:** Users who prefer strictly offline or local air-gapped coding can disable web search entirely with one tap in Settings.
+
+**Trade-off:** Cannot render complex single-page applications (SPAs) that require client-side JavaScript execution.
+
+## D22: Koda Obsidian Design System & JetBrains Mono Typography
+**Decision:** Unify all UI themes around the **Koda Obsidian** palette (`#0D1117` background, `#161B22` surface, `#30363D` borders, `#238636` accent) and adopt **JetBrains Mono** as the primary monospace font across all terminal, editor, code block, and agent status components.
+
+**Rationale:**
+1. **Developer-First Aesthetic:** High-contrast dark interfaces reduce eye strain during prolonged mobile development sessions and provide a cohesive, professional IDE appearance.
+2. **Monospace Legibility:** JetBrains Mono is purpose-designed for developers, offering clear character distinctions (e.g. `0` vs `O`, `1` vs `l` vs `I`), distinct programming ligatures, and optimal vertical metrics for high-density mobile screens.
+3. **Visual Cohesion:** Unifies the design language across the project explorer, interactive terminal tabs, AI chat stream, and diff review screens.
+
+
 
 
 

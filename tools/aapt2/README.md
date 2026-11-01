@@ -34,18 +34,38 @@ AGP accepts the property `android.aapt2FromMavenOverride` pointing to a local AA
 1. **Automatic Detection in `settings.gradle.kts`:**
    When Gradle runs on an `aarch64` or `arm64` JVM, `settings.gradle.kts` automatically sets:
    ```kotlin
-   gradle.startParameter.projectProperties["android.aapt2FromMavenOverride"] = bundledAapt2.absolutePath
+   val osArch = System.getProperty("os.arch")?.lowercase() ?: ""
+   if (osArch.contains("aarch64") || osArch.contains("arm64")) {
+       val aapt2Candidates = listOf(
+           file("tools/bin/arm64-v8a/aapt2"),
+           file("/opt/codeagent-tools/aapt2"),
+           file("/opt/android-sdk/build-tools/37.0.0/aapt2")
+       )
+       val usableAapt2 = aapt2Candidates.firstOrNull { it.exists() && it.canExecute() }
+       if (usableAapt2 != null && System.getProperty("android.aapt2FromMavenOverride") == null) {
+           System.setProperty("android.aapt2FromMavenOverride", usableAapt2.absolutePath)
+       }
+   }
    ```
+   > [!NOTE]
+   > In modern Gradle 9.x, `gradle.startParameter.projectProperties` is an `ImmutableMap` and attempting to mutate it throws `UnsupportedOperationException`. Using `System.setProperty("android.aapt2FromMavenOverride", ...)` configures AGP reliably without Gradle version incompatibilities.
+
 2. **Helper Script (`./build.sh`):**
    When `./build.sh` detects `uname -m` as `aarch64` or `arm64`, it automatically passes:
    ```bash
    -Pandroid.aapt2FromMavenOverride=tools/bin/arm64-v8a/aapt2
    ```
+
 3. **Manual Override:**
    You can also specify it explicitly in `gradle.properties`:
    ```properties
    android.aapt2FromMavenOverride=/path/to/code_agent/tools/bin/arm64-v8a/aapt2
    ```
+
+## Mobile & On-Device Build Tips
+
+- **Android FUSE `/sdcard` `noexec` Filesystem:** Android storage mounts `/sdcard` with the `noexec` flag, which causes direct `./gradlew` execution to fail with `Permission denied`. Always execute Gradle using `bash ./gradlew ...` (handled automatically by `./build.sh` and `./test.sh`).
+- **Daemon Memory Limits:** Set `org.gradle.jvmargs=-Xmx1536m` in `gradle.properties` when compiling on mobile devices to prevent the Android Low Memory Killer (LMK) from aborting the build daemon.
 
 ## Compiling From Source
 
