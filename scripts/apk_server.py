@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CodeAgent Local APK HTTP Server & Terminal QR Code Generator
+Koda Dev Local APK HTTP Server & Terminal QR Code Generator
 Serves the built Android APK over the local network and prints an ANSI QR code
 directly in the terminal for instant scanning and installation from Android devices.
 """
@@ -98,7 +98,7 @@ def build_landing_page(apk_name: str, apk_size_str: str, build_time_str: str, do
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Install CodeAgent</title>
+    <title>Install Koda Dev</title>
     <style>
         :root {{
             --bg: #0D1117;
@@ -234,7 +234,7 @@ def build_landing_page(apk_name: str, apk_size_str: str, build_time_str: str, do
             <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
         </div>
         <span class="badge">Local Dev Build</span>
-        <h1>CodeAgent Android</h1>
+        <h1>Koda Dev Android</h1>
         <p class="subtitle">AI Coding Agent for Android</p>
 
         <div class="meta-box">
@@ -275,7 +275,7 @@ def build_landing_page(apk_name: str, apk_size_str: str, build_time_str: str, do
 class ApkRequestHandler(http.server.BaseHTTPRequestHandler):
     """Custom HTTP handler serving the APK with Range request support and a landing page."""
 
-    server_version = "CodeAgentInstaller/1.0"
+    server_version = "KodaDevInstaller/1.0"
 
     def __init__(self, apk_path: str, apk_filename: str, *args, **kwargs):
         self.apk_path = apk_path
@@ -447,7 +447,7 @@ def run_server(apk_path: str, port: int, bind_addr: str = "0.0.0.0", override_ip
     direct_apk_url = f"http://{host_ip}:{actual_port}/{apk_filename}"
 
     print(f"\n{COLOR_BOLD}======================================================{COLOR_RESET}")
-    print(f"{COLOR_BOLD}           CodeAgent Local Install Server             {COLOR_RESET}")
+    print(f"{COLOR_BOLD}           Koda Dev Local Install Server             {COLOR_RESET}")
     print(f"{COLOR_BOLD}======================================================{COLOR_RESET}")
     print(f"  {COLOR_GREEN}✔ APK Package:{COLOR_RESET}    {COLOR_BOLD}{apk_filename}{COLOR_RESET} ({apk_size_mb:.1f} MB)")
     print(f"  {COLOR_GREEN}✔ APK Path:{COLOR_RESET}       {apk_path}")

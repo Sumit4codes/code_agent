@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.codeagent.app.core.agent"
+    namespace = "com.koda.dev.app.core.agent"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions {
@@ -34,6 +34,7 @@ dependencies {
     implementation(project(":core:terminal"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     testImplementation(project(":core:testing"))

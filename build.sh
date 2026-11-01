@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build script for CodeAgent Android Application
+# Build script for Koda Dev Android Application
 #
 # Usage:
 #   ./build.sh [options] [-- gradle options]
@@ -61,7 +61,7 @@ log_error() {
 
 show_help() {
     cat << 'EOF'
-CodeAgent Build Script
+Koda Dev Build Script
 
 Usage:
   ./build.sh [options] [extra gradle args...]
@@ -73,6 +73,8 @@ Options:
   -c, --clean        Run Gradle clean before building
   -i, --install      Install debug/release APK to connected device via adb
   -a, --all          Build all build variants (assemble)
+  -k, --check        Run on-device environment diagnostics check and exit
+  --aapt2 <path>     Explicit path to custom AAPT2 binary (e.g. for ARM64)
   -o, --offline      Run Gradle with --offline
   -v, --verbose      Run Gradle with --info
   -s, --stacktrace   Run Gradle with --stacktrace
@@ -80,6 +82,7 @@ Options:
 
 Examples:
   ./build.sh                  # Build debug APK
+  ./build.sh --check          # Check JDK, SDK, and AAPT2 readiness
   ./build.sh --clean          # Clean and build debug APK
   ./build.sh --release        # Build release APK
   ./build.sh --bundle         # Build Android App Bundle
@@ -224,6 +227,66 @@ setup_android_sdk() {
 }
 
 # -----------------------------------------------------------------------------
+# AAPT2 ARM64 Override for On-Device Builds
+# -----------------------------------------------------------------------------
+CUSTOM_AAPT2=""
+
+setup_aapt2() {
+    local host_arch
+    host_arch="$(uname -m)"
+
+    local aapt2_target=""
+
+    # 1. Check custom path provided via flag or env
+    if [ -n "$CUSTOM_AAPT2" ] && [ -x "$CUSTOM_AAPT2" ]; then
+        aapt2_target="$CUSTOM_AAPT2"
+    elif [ -n "${AAPT2_OVERRIDE:-}" ] && [ -x "$AAPT2_OVERRIDE" ]; then
+        aapt2_target="$AAPT2_OVERRIDE"
+    fi
+
+    # 2. Check architecture - if aarch64/arm64, use bundled ARM64 binary if not already set
+    if [ -z "$aapt2_target" ] && { [ "$host_arch" = "aarch64" ] || [ "$host_arch" = "arm64" ]; }; then
+        local candidates=(
+            "$SCRIPT_DIR/tools/bin/arm64-v8a/aapt2"
+            "/opt/codeagent-tools/aapt2"
+            "/opt/android-sdk/build-tools/37.0.0/aapt2"
+        )
+        for cand in "${candidates[@]}"; do
+            if [ -x "$cand" ]; then
+                aapt2_target="$cand"
+                break
+            elif [ -f "$cand" ]; then
+                chmod +x "$cand" 2>/dev/null || true
+                if [ -x "$cand" ]; then
+                    aapt2_target="$cand"
+                    break
+                fi
+            fi
+        done
+    fi
+
+    if [ -n "$aapt2_target" ]; then
+        GRADLE_ARGS+=("-Pandroid.aapt2FromMavenOverride=$aapt2_target")
+        log_info "Using ARM64 AAPT2 binary: ${COLOR_CYAN}$aapt2_target${COLOR_RESET}"
+    fi
+
+    # Memory Safety for ARM64 On-Device Builds (LMK prevention)
+    if [ "$host_arch" = "aarch64" ] || [ "$host_arch" = "arm64" ]; then
+        local has_no_daemon=false
+        for arg in "${GRADLE_ARGS[@]}"; do
+            if [ "$arg" = "--no-daemon" ]; then
+                has_no_daemon=true
+                break
+            fi
+        done
+        if [ "$has_no_daemon" = false ]; then
+            GRADLE_ARGS+=("--no-daemon" "-Dorg.gradle.parallel=false" "-Dorg.gradle.workers.max=2")
+            log_info "Auto-enabled on-device memory protection: ${COLOR_CYAN}--no-daemon, max-workers=2${COLOR_RESET}"
+        fi
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Parse Arguments
 # -----------------------------------------------------------------------------
 BUILD_VARIANT="debug"
@@ -234,6 +297,15 @@ GRADLE_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -k|--check)
+            bash "$SCRIPT_DIR/scripts/check-env.sh"
+            exit $?
+            ;;
+        --aapt2)
+            shift
+            CUSTOM_AAPT2="$1"
+            shift
+            ;;
         -d|--debug)
             BUILD_VARIANT="debug"
             shift
@@ -290,11 +362,12 @@ done
 # Main Execution
 # -----------------------------------------------------------------------------
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
-echo -e "${COLOR_BOLD}              CodeAgent Build Tool                    ${COLOR_RESET}"
+echo -e "${COLOR_BOLD}              Koda Dev Build Tool                    ${COLOR_RESET}"
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
 
 setup_jdk
 setup_android_sdk
+setup_aapt2
 
 if [ ! -f "./gradlew" ]; then
     log_error "Gradle wrapper ./gradlew not found in $SCRIPT_DIR"
@@ -339,7 +412,7 @@ START_TIME=$(date +%s)
 
 # Run Gradle
 set +e
-./gradlew "${TASKS[@]}" "${GRADLE_ARGS[@]}"
+bash ./gradlew "${TASKS[@]}" "${GRADLE_ARGS[@]}"
 GRADLE_STATUS=$?
 set -e
 

@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.codeagent.app.feature.settings"
+    namespace = "com.koda.dev.app.feature.settings"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions {
@@ -39,6 +39,10 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.zxing.core)
     implementation(libs.okhttp)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)

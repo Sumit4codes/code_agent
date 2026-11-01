@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Install script for CodeAgent Android Application
+# Install script for Koda Dev Android Application
 #
 # Provides two install methods:
 #   1. Direct installation via ADB (USB or Wi-Fi debugging)
@@ -63,9 +63,9 @@ log_error() {
 
 show_help() {
     cat << 'EOF'
-CodeAgent Installer
+Koda Dev Installer
 
-Install CodeAgent on your Android device via ADB or local Wi-Fi QR code.
+Install Koda Dev on your Android device via ADB or local Wi-Fi QR code.
 
 Usage:
   ./install.sh [options]
@@ -78,7 +78,7 @@ Options:
   -p, --port <port>     Port for QR code server (default: 8080)
   -i, --ip <address>    Override advertised IP address in QR code
   -d, --device <serial> Target specific ADB device serial
-  -l, --launch          Launch CodeAgent automatically after ADB install
+  -l, --launch          Launch Koda Dev automatically after ADB install
   -h, --help            Display this help message
 
 Examples:
@@ -294,18 +294,18 @@ install_via_adb() {
 
     log_info "Pushing and installing APK ($apk_file)..."
     if adb "${device_args[@]}" install -r -d "$apk_file"; then
-        log_success "CodeAgent installed successfully via ADB!"
+        log_success "Koda Dev installed successfully via ADB!"
 
         if [ "$AUTO_LAUNCH" = true ]; then
-            log_info "Launching CodeAgent on device..."
-            adb "${device_args[@]}" shell am start -n com.codeagent.app/.MainActivity &>/dev/null || true
+            log_info "Launching Koda Dev on device..."
+            adb "${device_args[@]}" shell am start -n com.koda.dev.app/.MainActivity &>/dev/null || true
         else
             echo ""
-            read -r -p "Would you like to launch CodeAgent on the device now? [Y/n]: " launch_choice
+            read -r -p "Would you like to launch Koda Dev on the device now? [Y/n]: " launch_choice
             case "${launch_choice:-Y}" in
                 [yY]|[yY][eE][sS])
-                    log_info "Launching CodeAgent..."
-                    adb "${device_args[@]}" shell am start -n com.codeagent.app/.MainActivity &>/dev/null || true
+                    log_info "Launching Koda Dev..."
+                    adb "${device_args[@]}" shell am start -n com.koda.dev.app/.MainActivity &>/dev/null || true
                     log_success "Application launched!"
                     ;;
             esac
@@ -351,7 +351,7 @@ install_via_server() {
 # Main Execution
 # -----------------------------------------------------------------------------
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
-echo -e "${COLOR_BOLD}              CodeAgent Install Tool                  ${COLOR_RESET}"
+echo -e "${COLOR_BOLD}              Koda Dev Install Tool                  ${COLOR_RESET}"
 echo -e "${COLOR_BOLD}======================================================${COLOR_RESET}"
 
 APK_PATH="$(build_apk_if_needed)"

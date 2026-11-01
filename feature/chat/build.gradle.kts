@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.codeagent.app.feature.chat"
+    namespace = "com.koda.dev.app.feature.chat"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions {
@@ -31,6 +31,7 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:ai"))
     implementation(project(":core:agent"))
+    implementation(project(":core:terminal"))
     implementation(project(":core:files"))
     implementation(project(":core:data"))
     implementation(libs.androidx.core.ktx)
