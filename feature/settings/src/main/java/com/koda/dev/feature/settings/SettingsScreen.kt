@@ -441,7 +441,10 @@ private fun ProvidersSection(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 if (providers.isNotEmpty()) {
-                    Badge { Text(providers.size.toString()) }
+                    Badge(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) { Text(providers.size.toString()) }
                 }
             }
 
@@ -602,6 +605,15 @@ private fun ProviderCard(
                             )
                         }
                     }
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                // Model, Type & Endpoint
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     if (provider.providerType == ProviderType.ANTIROUTE || provider.id.startsWith("antiroute")) {
                         Surface(
                             shape = MaterialTheme.shapes.extraSmall,
@@ -617,15 +629,7 @@ private fun ProviderCard(
                             )
                         }
                     }
-                }
 
-                Spacer(Modifier.height(4.dp))
-
-                // Model & Endpoint
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
                     Surface(
                         shape = MaterialTheme.shapes.extraSmall,
                         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -1778,6 +1782,7 @@ private fun CloudSyncCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -1795,7 +1800,7 @@ private fun CloudSyncCard(
                         Text(
                             text = "Zero-Knowledge E2EE (GitHub Gist)",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -1809,7 +1814,9 @@ private fun CloudSyncCard(
                             text = "Connected",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -1887,7 +1894,12 @@ private fun CloudSyncCard(
                         } else {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Sync to Cloud", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                text = "Sync Now",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
 
@@ -1898,7 +1910,12 @@ private fun CloudSyncCard(
                     ) {
                         Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Restore", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            text = "Restore",
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             } else {
@@ -2146,7 +2163,7 @@ private fun ConnectSyncDialog(
                                     Text(
                                         text = "Waiting for authorization in browser...",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.outline
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
