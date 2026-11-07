@@ -192,4 +192,89 @@ class AgentOrchestratorTest {
 
         assertTrue(messageAddeds.isNotEmpty())
     }
+
+    @Test
+    fun `mid-run steering guidance is drained and injected into messages between tool calls`() = runTest {
+        fs.putFile("fileA.txt", "Content A")
+        val steeringInbox = SteeringInbox()
+
+        // Turn 1: AI calls read_file
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.ToolCallComplete(
+                    ToolCall("c-read", "read_file", """{"path":"fileA.txt"}""")
+                ),
+                ChatStreamEvent.Done
+            )
+        )
+        // Turn 2: AI completes following steering
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Acknowledged steering. Finishing up."),
+                ChatStreamEvent.Done
+            )
+        )
+
+        // User steers mid-run
+        steeringInbox.send("Wait, make sure you don't edit fileA, just inspect it.")
+
+        val events = mutableListOf<AgentEvent>()
+        val context = AgentContext(sessionId = "s-steer", projectId = "p1")
+
+        val result = orchestrator.run(
+            userMessage = "Process files",
+            context = context,
+            model = "test-model",
+            steeringInbox = steeringInbox,
+            onEvent = { events.add(it) }
+        )
+
+        // Verify steering guidance was injected as a USER message
+        val userMessages = result.messages.filter { it.role == ChatMessage.Role.USER }
+        assertTrue("Expected steering guidance in messages", userMessages.any { it.content.contains("<user_steering_guidance>") })
+        assertTrue(userMessages.any { it.content.contains("Wait, make sure you don't edit fileA") })
+
+        val messageAddeds = events.filterIsInstance<AgentEvent.MessageAdded>()
+        assertTrue(messageAddeds.any { it.message.content.contains("<user_steering_guidance>") })
+    }
+
+    @Test
+    fun `mid-run steering guidance sent when agent produces no tools continues execution for another turn`() = runTest {
+        val steeringInbox = SteeringInbox()
+
+        // Turn 1: AI is about to finish without tools
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Here is the initial response."),
+                ChatStreamEvent.Done
+            )
+        )
+        // Turn 2: User steered, AI answers steering
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Understood your guidance. Here is the updated answer."),
+                ChatStreamEvent.Done
+            )
+        )
+
+        // Send steering before execution reaches completion
+        steeringInbox.send("Also add documentation comments to all functions.")
+
+        val context = AgentContext(sessionId = "s-steer-continue", projectId = "p1")
+        val result = orchestrator.run(
+            userMessage = "Write code",
+            context = context,
+            model = "test-model",
+            steeringInbox = steeringInbox
+        )
+
+        // Result should contain messages from both turns
+        val assistantMessages = result.messages.filter { it.role == ChatMessage.Role.ASSISTANT }
+        assertEquals(2, assistantMessages.size)
+        assertTrue(assistantMessages[0].content.contains("initial response"))
+        assertTrue(assistantMessages[1].content.contains("updated answer"))
+
+        val userMessages = result.messages.filter { it.role == ChatMessage.Role.USER }
+        assertTrue(userMessages.any { it.content.contains("Also add documentation comments") })
+    }
 }

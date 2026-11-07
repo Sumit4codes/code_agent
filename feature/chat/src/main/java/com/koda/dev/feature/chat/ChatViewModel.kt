@@ -513,8 +513,28 @@ class ChatViewModel @Inject constructor(
         )
     }
 
+    fun steerCurrentTask(text: String) {
+        val cleanText = text.trim()
+        if (cleanText.isBlank()) return
+        val currentSessionId = _state.value.sessionId
+        val accepted = if (currentSessionId != null) {
+            agentWorkManager.sendSteeringMessage(currentSessionId, cleanText)
+        } else {
+            false
+        }
+
+        if (!accepted && !_state.value.isStreaming) {
+            // Task already finished or not running; send as regular next turn
+            sendMessage(cleanText)
+        }
+    }
+
     fun sendMessage(text: String) {
-        if (text.isBlank() || _state.value.isStreaming) return
+        if (text.isBlank()) return
+        if (_state.value.isStreaming) {
+            steerCurrentTask(text)
+            return
+        }
 
         val isGoal = text.trimStart().startsWith("/goal")
         val cleanGoalPrompt = if (isGoal) text.trimStart().removePrefix("/goal").trim() else text

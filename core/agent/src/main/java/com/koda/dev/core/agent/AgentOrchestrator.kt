@@ -68,6 +68,7 @@ class AgentOrchestrator @Inject constructor(
         maxTokens: Int = 4096,
         systemPrompt: String? = null,
         isGoalMode: Boolean = false,
+        steeringInbox: SteeringInbox? = null,
         onEvent: ((AgentEvent) -> Unit)? = null,
         onDelta: ((String) -> Unit)? = null
     ): AgentRunResult = mutex.withLock {
@@ -99,6 +100,15 @@ class AgentOrchestrator @Inject constructor(
                 1. KEEP RUNNING: If recent output shows active compilation, downloads, or ongoing test progress, allow it to continue.
                 2. KILL: If you see a [STALL WARNING], an infinite loop, or a prompt waiting on stdin that cannot be satisfied, call `manage_task(action="kill", task_id="...")` immediately.
                 3. Maximum 5 background tasks can run at once. Clean up tasks with `kill` when finished or no longer needed.
+            """.trimIndent())
+            append("\n\n")
+            append("""
+                MID-RUN USER STEERING & GUIDANCE:
+                The user may send live steering directives during your task enclosed in `<user_steering_guidance>...</user_steering_guidance>`.
+                When you receive user steering guidance:
+                1. Immediately prioritize and adhere to the user's new instructions or constraints over prior assumptions.
+                2. Acknowledge the user's guidance concisely in your next response.
+                3. Adapt your ongoing execution without restarting completed, valid work.
             """.trimIndent())
             append("\n\n")
             if (isGoalMode) {
@@ -231,8 +241,28 @@ class AgentOrchestrator @Inject constructor(
             newMessages.add(assistantMessage)
             onEvent?.invoke(AgentEvent.MessageAdded(assistantMessage))
 
-            // If no tool calls, the agent is done
-            if (toolCalls.isEmpty()) break
+            // If no tool calls, check if there is pending mid-run steering before finishing
+            if (toolCalls.isEmpty()) {
+                val pendingSteering = steeringInbox?.drain() ?: emptyList()
+                if (pendingSteering.isNotEmpty()) {
+                    for (steer in pendingSteering) {
+                        val formatted = buildString {
+                            append("<user_steering_guidance>\n")
+                            append(steer)
+                            append("\n</user_steering_guidance>")
+                        }
+                        val steerMsg = ChatMessage(
+                            role = ChatMessage.Role.USER,
+                            content = formatted
+                        )
+                        messages.add(steerMsg)
+                        newMessages.add(steerMsg)
+                        onEvent?.invoke(AgentEvent.MessageAdded(steerMsg))
+                    }
+                    continue // Continue loop to address the user's live guidance
+                }
+                break
+            }
 
             // Execute tool calls and add results
             for (tc in toolCalls) {
@@ -269,6 +299,25 @@ class AgentOrchestrator @Inject constructor(
                 messages.add(toolMsg)
                 newMessages.add(toolMsg)
                 onEvent?.invoke(AgentEvent.MessageAdded(toolMsg))
+            }
+
+            // Drain any user steering directives submitted during tool execution
+            val pendingSteering = steeringInbox?.drain() ?: emptyList()
+            if (pendingSteering.isNotEmpty()) {
+                for (steer in pendingSteering) {
+                    val formatted = buildString {
+                        append("<user_steering_guidance>\n")
+                        append(steer)
+                        append("\n</user_steering_guidance>")
+                    }
+                    val steerMsg = ChatMessage(
+                        role = ChatMessage.Role.USER,
+                        content = formatted
+                    )
+                    messages.add(steerMsg)
+                    newMessages.add(steerMsg)
+                    onEvent?.invoke(AgentEvent.MessageAdded(steerMsg))
+                }
             }
         }
 

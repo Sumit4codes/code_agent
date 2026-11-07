@@ -84,6 +84,7 @@ class AgentWorkManager @Inject constructor(
     )
     val liveEvents: SharedFlow<AgentEvent> = _liveEvents.asSharedFlow()
 
+    private val steeringInbox = com.koda.dev.core.agent.SteeringInbox()
     private var activeJob: Job? = null
     val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -101,6 +102,7 @@ class AgentWorkManager @Inject constructor(
         // Cancel in-flight job if any, but do not send stop intent to service since we are starting a new task
         activeJob?.cancel()
         activeJob = null
+        steeringInbox.clear()
 
         val taskId = UUID.randomUUID().toString()
         val initialTask = AgentTaskState(
@@ -138,6 +140,7 @@ class AgentWorkManager @Inject constructor(
     fun cancelCurrentTask() {
         activeJob?.cancel()
         activeJob = null
+        steeringInbox.clear()
         val current = _activeTaskState.value
         if (current != null && current.isRunning) {
             val duration = System.currentTimeMillis() - current.startTimeMs
@@ -151,6 +154,22 @@ class AgentWorkManager @Inject constructor(
         try {
             KodaWorkService.stopWork(context)
         } catch (_: Throwable) {}
+    }
+
+    /**
+     * Enqueue a live mid-run steering message to the active running task.
+     * Returns true if a running task matches the session and accepted the guidance.
+     */
+    fun sendSteeringMessage(sessionId: String, message: String): Boolean {
+        val activeTask = _activeTaskState.value
+        if (activeTask != null && activeTask.isRunning && activeTask.sessionId == sessionId) {
+            steeringInbox.send(message)
+            _activeTaskState.update { current ->
+                current?.copy(currentAction = "Applying user guidance...")
+            }
+            return true
+        }
+        return false
     }
 
     private suspend fun executeTask(
@@ -240,6 +259,7 @@ class AgentWorkManager @Inject constructor(
                 temperature = temperature,
                 systemPrompt = systemPrompt,
                 isGoalMode = task.isGoalMode,
+                steeringInbox = steeringInbox,
                 onDelta = { delta ->
                     streamBuffer.append(delta)
                     val currentText = streamBuffer.toString()

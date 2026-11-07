@@ -370,12 +370,21 @@ fun ChatScreen(
                     onInputChange = { inputText = it },
                     onSend = {
                         if (inputText.isNotBlank()) {
-                            userScrolledUp = false
-                            viewModel.sendMessage(inputText)
+                            val textToSend = inputText
                             inputText = ""
+                            userScrolledUp = false
+                            viewModel.sendMessage(textToSend)
                         }
                     },
                     onCancel = { viewModel.cancelGeneration() },
+                    onSteer = {
+                        if (inputText.isNotBlank()) {
+                            val steerText = inputText
+                            inputText = ""
+                            userScrolledUp = false
+                            viewModel.steerCurrentTask(steerText)
+                        }
+                    },
                     isStreaming = state.isStreaming,
                     hasProject = state.projectUri != null,
                     projectName = state.projectName,
