@@ -70,6 +70,7 @@ fun InlineDiffCard(
     originalContent: String?,
     proposedContent: String?,
     pendingChange: PendingChange? = null,
+    statusOverride: ChangeStatus? = null,
     onApprove: ((PendingChange) -> Unit)? = null,
     onReject: ((PendingChange) -> Unit)? = null,
     onOpenFullReview: ((PendingChange?) -> Unit)? = null,
@@ -114,7 +115,7 @@ fun InlineDiffCard(
         ChangeType.DELETE -> "DELETE" to Color(0xFFF85149)  // Red
     }
 
-    val status = pendingChange?.status ?: ChangeStatus.PENDING
+    val status = statusOverride ?: pendingChange?.status ?: ChangeStatus.PENDING
 
     Surface(
         shape = RoundedCornerShape(12.dp),

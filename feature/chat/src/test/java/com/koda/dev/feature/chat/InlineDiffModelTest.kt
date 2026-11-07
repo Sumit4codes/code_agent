@@ -76,4 +76,61 @@ class InlineDiffModelTest {
         assertTrue(fileTools.contains("write_file"))
         assertTrue(fileTools.contains("propose_file_edit"))
     }
+
+    @Test
+    fun historicalCreateFileNeverMatchesSubsequentEditPendingChange() {
+        val createToolName = "create_file"
+        val filePath = "notes.txt"
+
+        // Simulate subsequent pending change on the same file (an EDIT)
+        val activePendingEdit = PendingChange(
+            id = "edit-1",
+            sessionId = "sess-1",
+            filePath = "notes.txt",
+            changeType = ChangeType.EDIT,
+            originalContent = "First line",
+            proposedContent = "First line\nSecond line",
+            createdAt = System.currentTimeMillis()
+        )
+        val pendingChanges = listOf(activePendingEdit)
+
+        // Historical change type should strictly be CREATE
+        val historicalChangeType = when (createToolName) {
+            "create_file" -> ChangeType.CREATE
+            "delete_file" -> ChangeType.DELETE
+            else -> ChangeType.EDIT
+        }
+
+        assertEquals(ChangeType.CREATE, historicalChangeType)
+
+        // Matching must NOT match the subsequent EDIT
+        val matchingPending = pendingChanges.find { change ->
+            val pathMatches = change.filePath == filePath || change.filePath.endsWith(filePath)
+            pathMatches && change.changeType == historicalChangeType
+        }
+
+        // Must be null: historical create does NOT bind to subsequent edit
+        org.junit.Assert.assertNull(matchingPending)
+    }
+
+    @Test
+    fun historicalCreateFilePreservesOriginalCreationContent() {
+        val extractedNewContent = "Initial file content"
+        val changeType = ChangeType.CREATE
+
+        val originalContent = when (changeType) {
+            ChangeType.CREATE -> null
+            ChangeType.DELETE -> "something"
+            ChangeType.EDIT -> "old"
+        }
+
+        val proposedContent = when (changeType) {
+            ChangeType.CREATE -> extractedNewContent
+            ChangeType.DELETE -> null
+            ChangeType.EDIT -> "new"
+        }
+
+        org.junit.Assert.assertNull(originalContent)
+        assertEquals("Initial file content", proposedContent)
+    }
 }

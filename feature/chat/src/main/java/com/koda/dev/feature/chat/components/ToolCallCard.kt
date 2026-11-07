@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.koda.dev.core.model.ChangeStatus
 import com.koda.dev.core.model.ChangeType
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.model.ToolCallData
@@ -89,7 +90,7 @@ fun ToolCallCard(
     }
 
     if (isFileTool) {
-        val (filePath, oldContent, newContent) = remember(toolCall.arguments) {
+        val (filePath, extractedOldContent, extractedNewContent) = remember(toolCall.arguments) {
             try {
                 val json = Json.parseToJsonElement(toolCall.arguments).jsonObject
                 val path = json["path"]?.jsonPrimitive?.content
@@ -100,6 +101,7 @@ fun ToolCallCard(
                     ?: json["target"]?.jsonPrimitive?.content
                     ?: json["Target"]?.jsonPrimitive?.content
                 val new = json["content"]?.jsonPrimitive?.content
+                    ?: json["new_content"]?.jsonPrimitive?.content
                     ?: json["replacement"]?.jsonPrimitive?.content
                     ?: json["Replacement"]?.jsonPrimitive?.content
                 Triple(path, old, new)
@@ -108,29 +110,71 @@ fun ToolCallCard(
             }
         }
 
-        val matchingPendingChange = remember(pendingChanges, filePath) {
-            pendingChanges.find {
-                it.filePath == filePath ||
-                    it.filePath.endsWith(filePath) ||
-                    (filePath.isNotBlank() && filePath.endsWith(it.filePath))
+        // Determine immutable historical change type from the tool call itself
+        val historicalChangeType = remember(normName, extractedOldContent, toolCall.arguments) {
+            when {
+                normName == ToolNames.CREATE_FILE -> ChangeType.CREATE
+                normName == ToolNames.DELETE_FILE -> ChangeType.DELETE
+                normName == ToolNames.PROPOSE_FILE_EDIT || normName == "edit_file" -> ChangeType.EDIT
+                normName == "write_file" -> {
+                    try {
+                        val json = Json.parseToJsonElement(toolCall.arguments).jsonObject
+                        if (json.containsKey("old_content") || json.containsKey("target") || json.containsKey("Target")) {
+                            ChangeType.EDIT
+                        } else {
+                            ChangeType.CREATE
+                        }
+                    } catch (_: Exception) {
+                        ChangeType.CREATE
+                    }
+                }
+                else -> ChangeType.EDIT
             }
         }
 
-        val changeType = remember(normName, matchingPendingChange) {
+        // Only match a pending change if it corresponds to the SAME file AND the SAME change type!
+        // This prevents an active edit change from converting a historical create_file card into an edit card.
+        val matchingPendingChange = remember(pendingChanges, filePath, historicalChangeType) {
+            pendingChanges.find { change ->
+                val pathMatches = change.filePath == filePath ||
+                    change.filePath.endsWith(filePath) ||
+                    (filePath.isNotBlank() && filePath.endsWith(change.filePath))
+                pathMatches && change.changeType == historicalChangeType
+            }
+        }
+
+        val originalContent = remember(historicalChangeType, extractedOldContent, matchingPendingChange) {
+            when (historicalChangeType) {
+                ChangeType.CREATE -> null
+                ChangeType.DELETE -> matchingPendingChange?.originalContent ?: extractedOldContent
+                ChangeType.EDIT -> matchingPendingChange?.originalContent ?: extractedOldContent
+            }
+        }
+
+        val proposedContent = remember(historicalChangeType, extractedNewContent, matchingPendingChange) {
+            when (historicalChangeType) {
+                ChangeType.CREATE -> extractedNewContent ?: matchingPendingChange?.proposedContent
+                ChangeType.DELETE -> null
+                ChangeType.EDIT -> matchingPendingChange?.proposedContent ?: extractedNewContent
+            }
+        }
+
+        val statusOverride = remember(matchingPendingChange, toolCall.result, toolCall.success) {
             when {
-                matchingPendingChange != null -> matchingPendingChange.changeType
-                normName == ToolNames.CREATE_FILE || normName == "write_file" -> ChangeType.CREATE
-                normName == ToolNames.DELETE_FILE -> ChangeType.DELETE
-                else -> ChangeType.EDIT
+                matchingPendingChange != null -> matchingPendingChange.status
+                toolCall.result?.contains("reject", ignoreCase = true) == true -> ChangeStatus.REJECTED
+                toolCall.success == true || toolCall.result != null -> ChangeStatus.APPLIED
+                else -> ChangeStatus.APPLIED
             }
         }
 
         InlineDiffCard(
             filePath = filePath.ifBlank { matchingPendingChange?.filePath ?: "modified file" },
-            changeType = changeType,
-            originalContent = matchingPendingChange?.originalContent ?: oldContent,
-            proposedContent = matchingPendingChange?.proposedContent ?: newContent,
+            changeType = historicalChangeType,
+            originalContent = originalContent,
+            proposedContent = proposedContent,
             pendingChange = matchingPendingChange,
+            statusOverride = statusOverride,
             onApprove = onApproveChange,
             onReject = onRejectChange,
             onOpenFullReview = onOpenFullReview,
