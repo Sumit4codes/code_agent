@@ -60,6 +60,7 @@ class TermuxSessionManager @Inject constructor(
                 ubuntuBootstrapManager?.ensureGitConfigured()
 
                 val argList = mutableListOf<String>()
+                argList.add(prootExec)
                 argList.add("--kill-on-exit")
                 argList.add("-r")
                 argList.add(ubuntuDir.absolutePath)
@@ -176,6 +177,7 @@ class TermuxSessionManager @Inject constructor(
                 alpineBootstrapManager?.ensureGitConfigured()
 
                 val argList = mutableListOf<String>()
+                argList.add(prootExec)
                 argList.add("--kill-on-exit")
                 argList.add("-r")
                 argList.add(alpineDir.absolutePath)
@@ -292,11 +294,12 @@ class TermuxSessionManager @Inject constructor(
             printf '%s\n' 'Tap the [Setup Ubuntu] button above to bootstrap the'
             printf '%s\n' 'Ubuntu container with apt, GCC, Python 3, and OpenJDK 21.'
             printf '\n\033[1;38;5;208m%s\033[0m\n' '========================================================'
+            trap 'exit 0' INT TERM
             while true; do
-                read -r _
+                read -r _ || break
             done
         """.trimIndent()
-        val args = arrayOf("-c", setupScript)
+        val args = arrayOf(hostRunner, "-c", setupScript)
 
         val env = arrayOf(
             "TERM=xterm-256color",
