@@ -139,11 +139,11 @@ object PopularProviders {
         name = "NVIDIA NIM",
         providerType = ProviderType.OPENAI_COMPATIBLE,
         defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
-        defaultModel = "meta/llama-3.3-70b-instruct",
+        defaultModel = "nvidia/nemotron-3.5-super-vl-120b-a12b",
         fallbackModels = listOf(
+            "nvidia/nemotron-3.5-super-vl-120b-a12b",
             "meta/llama-3.3-70b-instruct",
             "nvidia/llama-3.1-nemotron-70b-instruct",
-            "nvidia/nemotron-3-super-120b-a12b",
             "deepseek-ai/deepseek-r1",
             "mistralai/mistral-large-2-instruct"
         ),
