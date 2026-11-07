@@ -174,7 +174,8 @@ fun ChatScreen(
         }
     }
 
-    Scaffold(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
@@ -516,6 +517,7 @@ fun ChatScreen(
             projectName = state.projectName.ifBlank { null },
             onDismiss = { showTerminalSheet = false }
         )
+    }
     }
 }
 

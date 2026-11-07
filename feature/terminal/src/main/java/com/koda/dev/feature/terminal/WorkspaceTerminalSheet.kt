@@ -70,6 +70,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -96,8 +97,16 @@ fun WorkspaceTerminalSheet(
     val focusRequester = remember { FocusRequester() }
     val isKeyboardOpen = WindowInsets.isImeVisible
 
-    // Back handler intercepts system back gesture to dismiss the sheet
-    BackHandler(onBack = onDismiss)
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    // Back handler: if keyboard is open, close keyboard first; otherwise dismiss the sheet
+    BackHandler {
+        if (isKeyboardOpen) {
+            keyboardController?.hide()
+        } else {
+            onDismiss()
+        }
+    }
 
     LaunchedEffect(projectId) {
         if (!projectId.isNullOrBlank()) {
@@ -296,17 +305,16 @@ fun WorkspaceTerminalSheet(
                         // Soft keyboard toggle
                         IconButton(
                             onClick = {
-                                val view = terminalViewInstance
-                                if (view != null) {
-                                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                    if (isKeyboardOpen) {
-                                        imm?.hideSoftInputFromWindow(view.windowToken, 0)
-                                    } else {
+                                if (isKeyboardOpen) {
+                                    keyboardController?.hide()
+                                } else {
+                                    val view = terminalViewInstance
+                                    if (view != null) {
                                         view.isFocusable = true
                                         view.isFocusableInTouchMode = true
                                         view.requestFocus()
-                                        imm?.showSoftInput(view, 0)
                                     }
+                                    keyboardController?.show()
                                 }
                             },
                             modifier = Modifier.size(32.dp)
