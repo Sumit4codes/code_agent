@@ -26,6 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -230,6 +231,7 @@ class AgentWorkManager @Inject constructor(
             )
 
             var stepCounter = 0
+            val insertJobs = java.util.Collections.synchronizedList(mutableListOf<Job>())
 
             val result = agentOrchestrator.run(
                 userMessage = task.userPrompt,
@@ -283,31 +285,39 @@ class AgentWorkManager @Inject constructor(
                                 toolCallId = msg.toolCallId,
                                 timestamp = System.currentTimeMillis()
                             )
-                            coroutineScope.launch(ioDispatcher) {
+                            val job = coroutineScope.launch(ioDispatcher) {
                                 try {
                                     messageDao.insert(entity)
                                 } catch (e: Exception) {
                                     Log.w("AgentWorkManager", "Failed to insert message entity", e)
                                 }
                             }
+                            insertJobs.add(job)
                         }
                         else -> {}
                     }
                 }
             )
 
-            // Persist pending changes
+            // Ensure all asynchronous message inserts have settled before marking task complete
+            try {
+                insertJobs.joinAll()
+            } catch (_: Exception) {}
+
+            // Persist and register pending changes
             for (pc in result.pendingChanges) {
                 try {
+                    val boundChange = pc.copy(sessionId = task.sessionId)
+                    pendingChangeManager.addChange(boundChange)
                     val pcEntity = PendingChangeEntity(
-                        id = pc.id,
+                        id = boundChange.id,
                         sessionId = task.sessionId,
-                        filePath = pc.filePath,
-                        changeType = pc.changeType.name,
-                        originalContent = pc.originalContent,
-                        proposedContent = pc.proposedContent,
-                        createdAt = pc.createdAt,
-                        status = pc.status.name
+                        filePath = boundChange.filePath,
+                        changeType = boundChange.changeType.name,
+                        originalContent = boundChange.originalContent,
+                        proposedContent = boundChange.proposedContent,
+                        createdAt = boundChange.createdAt,
+                        status = boundChange.status.name
                     )
                     pendingChangeDao.upsert(pcEntity)
                 } catch (e: Exception) {

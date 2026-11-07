@@ -85,7 +85,7 @@ class ChatViewModel @Inject constructor(
     private var chatHistory: List<ChatMessage> = emptyList()
     private var agentJob: Job? = null
     private var sessionsJob: Job? = null
-    private var activeGoalTaskId: String? = null
+    private var activeTaskId: String? = null
 
     init {
         // Observe active background tasks to surface in the UI
@@ -128,14 +128,14 @@ class ChatViewModel @Inject constructor(
                 val currentSessionId = _state.value.sessionId ?: return@collect
                 if (taskState.sessionId == currentSessionId) {
                     val isNowRunning = taskState.isRunning
-                    val currentGoalId = activeGoalTaskId
+                    val currentTaskId = activeTaskId
 
-                    // Ignore stale/completed tasks from previous runs if they don't match activeGoalTaskId
-                    if (!isNowRunning && currentGoalId != null && taskState.taskId != currentGoalId) {
+                    // Ignore stale/completed tasks from previous runs if they don't match activeTaskId
+                    if (!isNowRunning && currentTaskId != null && taskState.taskId != currentTaskId) {
                         return@collect
                     }
-                    if (!isNowRunning && currentGoalId == taskState.taskId) {
-                        activeGoalTaskId = null
+                    if (!isNowRunning && currentTaskId == taskState.taskId) {
+                        activeTaskId = null
                     }
 
                     _state.update { current ->
@@ -161,6 +161,7 @@ class ChatViewModel @Inject constructor(
                     }
 
                     if (!isNowRunning && taskState.completedSuccessfully == true) {
+                        syncMessagesFromDb(currentSessionId)
                         try {
                             sessionDao.updateTitle(
                                 id = currentSessionId,
@@ -394,6 +395,62 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    private suspend fun syncMessagesFromDb(sessionId: String): List<Message> {
+        try {
+            val entities = messageDao.getBySessionList(sessionId)
+            val restoredMessages = entities.map { entity ->
+                val toolCalls = entity.toolCallsJson?.let { parseToolCalls(it) } ?: emptyList()
+                Message(
+                    id = entity.id,
+                    sessionId = entity.sessionId,
+                    role = try { MessageRole.valueOf(entity.role) } catch (_: Exception) { MessageRole.ASSISTANT },
+                    content = entity.content,
+                    toolCalls = toolCalls,
+                    toolCallId = entity.toolCallId,
+                    timestamp = entity.timestamp
+                )
+            }
+
+            val toolResultsById = restoredMessages.filter { it.role == MessageRole.TOOL && it.toolCallId != null }
+                .associate { it.toolCallId!! to it.content }
+
+            val linkedMessages = restoredMessages.map { msg ->
+                if (msg.role == MessageRole.ASSISTANT && msg.toolCalls.isNotEmpty()) {
+                    msg.copy(
+                        toolCalls = msg.toolCalls.map { tc ->
+                            if (tc.result == null && toolResultsById.containsKey(tc.id)) {
+                                tc.copy(result = toolResultsById[tc.id])
+                            } else tc
+                        }
+                    )
+                } else msg
+            }
+
+            chatHistory = linkedMessages.map { msg ->
+                ChatMessage(
+                    role = when (msg.role) {
+                        MessageRole.SYSTEM -> ChatMessage.Role.SYSTEM
+                        MessageRole.USER -> ChatMessage.Role.USER
+                        MessageRole.ASSISTANT -> ChatMessage.Role.ASSISTANT
+                        MessageRole.TOOL -> ChatMessage.Role.TOOL
+                    },
+                    content = msg.content,
+                    toolCalls = msg.toolCalls.map { tc ->
+                        com.koda.dev.core.ai.ToolCall(id = tc.id, name = tc.name, arguments = tc.arguments)
+                    },
+                    toolCallId = msg.toolCallId
+                )
+            }
+
+            val displayMessages = linkedMessages.filter { it.role != MessageRole.TOOL }
+            _state.update { it.copy(messages = displayMessages) }
+            return displayMessages
+        } catch (e: Exception) {
+            Log.w("ChatViewModel", "Failed to sync messages from DB", e)
+            return emptyList()
+        }
+    }
+
     private suspend fun restoreSession(sessionId: String, treeUri: Uri, name: String, projectId: String) {
         val sessionEntity = sessionDao.getById(sessionId)
         val title = sessionEntity?.title ?: "Chat with $name"
@@ -406,52 +463,7 @@ class ChatViewModel @Inject constructor(
         )
 
         // Load persisted messages
-        val entities = messageDao.getBySessionList(sessionId)
-        val restoredMessages = entities.map { entity ->
-            val toolCalls = entity.toolCallsJson?.let { parseToolCalls(it) } ?: emptyList()
-            Message(
-                id = entity.id,
-                sessionId = entity.sessionId,
-                role = try { MessageRole.valueOf(entity.role) } catch (_: Exception) { MessageRole.ASSISTANT },
-                content = entity.content,
-                toolCalls = toolCalls,
-                toolCallId = entity.toolCallId,
-                timestamp = entity.timestamp
-            )
-        }
-
-        // Link tool results into preceding assistant tool calls
-        val toolResultsById = restoredMessages.filter { it.role == MessageRole.TOOL && it.toolCallId != null }
-            .associate { it.toolCallId!! to it.content }
-
-        val linkedMessages = restoredMessages.map { msg ->
-            if (msg.role == MessageRole.ASSISTANT && msg.toolCalls.isNotEmpty()) {
-                msg.copy(
-                    toolCalls = msg.toolCalls.map { tc ->
-                        if (tc.result == null && toolResultsById.containsKey(tc.id)) {
-                            tc.copy(result = toolResultsById[tc.id])
-                        } else tc
-                    }
-                )
-            } else msg
-        }
-
-        // Rebuild in-memory chat history from persisted messages
-        chatHistory = linkedMessages.map { msg ->
-            ChatMessage(
-                role = when (msg.role) {
-                    MessageRole.SYSTEM -> ChatMessage.Role.SYSTEM
-                    MessageRole.USER -> ChatMessage.Role.USER
-                    MessageRole.ASSISTANT -> ChatMessage.Role.ASSISTANT
-                    MessageRole.TOOL -> ChatMessage.Role.TOOL
-                },
-                content = msg.content,
-                toolCalls = msg.toolCalls.map { tc ->
-                    com.koda.dev.core.ai.ToolCall(id = tc.id, name = tc.name, arguments = tc.arguments)
-                },
-                toolCallId = msg.toolCallId
-            )
-        }
+        val restoredMessages = syncMessagesFromDb(sessionId)
 
         // Load pending changes
         val pendingEntities = pendingChangeDao.getPendingBySessionList(sessionId)
@@ -472,7 +484,7 @@ class ChatViewModel @Inject constructor(
         val isThisTaskRunning = activeTask != null && activeTask.sessionId == sessionId && activeTask.isRunning
 
         _state.value = _state.value.copy(
-            messages = linkedMessages.filter { it.role != MessageRole.TOOL },
+            messages = restoredMessages,
             pendingChanges = restoredPending,
             isStreaming = isThisTaskRunning,
             isGoalMode = isThisTaskRunning && activeTask.isGoalMode,
@@ -592,236 +604,38 @@ class ChatViewModel @Inject constructor(
         val projectName = _state.value.projectName
         val projectUri = _state.value.projectUri
 
-        if (isGoal) {
-            // Milestone 14: Background Headless Goal Mode Execution
-            agentJob?.cancel()
-            agentJob = null
-            persistMessage(userMsg)
-            chatHistory = chatHistory + ChatMessage(ChatMessage.Role.USER, cleanGoalPrompt)
+        val promptToSend = if (isGoal) cleanGoalPrompt else text
+        agentJob?.cancel()
+        agentJob = null
+        persistMessage(userMsg)
+        chatHistory = chatHistory + ChatMessage(ChatMessage.Role.USER, promptToSend)
 
-            viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    val activeConfig = settingsRepository.getActiveProvider()
-                    val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
-                    val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
-                    val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val activeConfig = settingsRepository.getActiveProvider()
+                val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
+                val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
+                val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
 
-                    val taskId = agentWorkManager.startTask(
-                        sessionId = currentSessionId,
-                        projectId = projectId,
-                        projectName = projectName,
-                        projectUri = projectUri,
-                        prompt = cleanGoalPrompt,
-                        model = currentModel,
-                        isGoalMode = true,
-                        systemPrompt = effectiveSystemPrompt
-                    )
-                    activeGoalTaskId = taskId
-                } catch (e: Exception) {
-                    Log.e("ChatViewModel", "Failed to launch goal task", e)
-                    _state.update {
-                        it.copy(
-                            isStreaming = false,
-                            isGoalMode = false,
-                            error = "Failed to start Goal Mode: ${e.message ?: "Unknown error"}"
-                        )
-                    }
-                }
-            }
-        } else {
-            // Interactive conversational execution directly in ViewModel for smooth real-time streaming
-            persistMessage(userMsg)
-            chatHistory = chatHistory + ChatMessage(ChatMessage.Role.USER, text)
-
-            agentJob = viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    val activeConfig = settingsRepository.getActiveProvider()
-                    val currentModel = activeConfig?.model?.takeIf { it.isNotBlank() } ?: _state.value.model
-                    val custom = activeConfig?.systemPrompt?.takeIf { it.isNotBlank() }
-                    val effectiveSystemPrompt = buildSystemPrompt(projectName, custom)
-
-                    val streamBuffer = StringBuilder()
-                    var lastDeltaTime = 0L
-                    val toolOutputBuffer = StringBuilder()
-                    var lastToolChunkTime = 0L
-                    val maxToolOutputPreview = 24_000
-
-                    fun flushStreamBuffer() {
-                        if (streamBuffer.isNotEmpty()) {
-                            val flushed = streamBuffer.toString()
-                            _state.update { it.copy(streamingText = flushed) }
-                        }
-                    }
-
-                    val result = agentOrchestrator.run(
-                        userMessage = text,
-                        context = AgentContext(
-                            sessionId = currentSessionId,
-                            projectId = projectId,
-                            history = chatHistory.dropLast(1)
-                        ),
-                        model = currentModel,
-                        systemPrompt = effectiveSystemPrompt,
+                val taskId = agentWorkManager.startTask(
+                    sessionId = currentSessionId,
+                    projectId = projectId,
+                    projectName = projectName,
+                    projectUri = projectUri,
+                    prompt = promptToSend,
+                    model = currentModel,
+                    isGoalMode = isGoal,
+                    systemPrompt = effectiveSystemPrompt
+                )
+                activeTaskId = taskId
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Failed to launch agent task", e)
+                _state.update {
+                    it.copy(
+                        isStreaming = false,
                         isGoalMode = false,
-                        onEvent = { event ->
-                            when (event) {
-                                is AgentEvent.TextDelta -> {
-                                    streamBuffer.append(event.text)
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastDeltaTime >= 50L) {
-                                        lastDeltaTime = now
-                                        val textSnapshot = streamBuffer.toString()
-                                        _state.update { it.copy(streamingText = textSnapshot) }
-                                    }
-                                }
-                                is AgentEvent.ToolCallStart -> {
-                                    flushStreamBuffer()
-                                    streamBuffer.clear()
-                                    toolOutputBuffer.clear()
-                                    _state.update {
-                                        it.copy(
-                                            activeTool = ActiveToolExecution(
-                                                id = event.toolCallId,
-                                                name = event.toolName,
-                                                arguments = event.arguments,
-                                                status = ToolExecutionStatus.RUNNING,
-                                                output = "",
-                                                startTime = System.currentTimeMillis()
-                                            ),
-                                            streamingText = ""
-                                        )
-                                    }
-                                }
-                                is AgentEvent.ToolCallOutputChunk -> {
-                                    toolOutputBuffer.append(event.chunk).append('\n')
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastToolChunkTime >= 60L) {
-                                        lastToolChunkTime = now
-                                        val currentStr = if (toolOutputBuffer.length > maxToolOutputPreview) {
-                                            toolOutputBuffer.substring(toolOutputBuffer.length - maxToolOutputPreview)
-                                        } else {
-                                            toolOutputBuffer.toString()
-                                        }
-                                        _state.update { state ->
-                                            val current = state.activeTool
-                                            if (current != null && current.id == event.toolCallId) {
-                                                state.copy(activeTool = current.copy(output = currentStr))
-                                            } else state
-                                        }
-                                    }
-                                }
-                                is AgentEvent.ToolCallComplete -> {
-                                    toolOutputBuffer.clear()
-                                    _state.update { state ->
-                                        val current = state.activeTool
-                                        if (current != null && current.id == event.toolCallId) {
-                                            state.copy(
-                                                activeTool = current.copy(
-                                                    status = if (event.success) ToolExecutionStatus.SUCCESS else ToolExecutionStatus.ERROR,
-                                                    output = event.output,
-                                                    durationMs = event.durationMs
-                                                )
-                                            )
-                                        } else state
-                                    }
-                                }
-                                is AgentEvent.MessageAdded -> {
-                                    streamBuffer.clear()
-                                    toolOutputBuffer.clear()
-                                    val msg = event.message
-                                    val uiMsg = Message(
-                                        id = UUID.randomUUID().toString(),
-                                        sessionId = currentSessionId,
-                                        role = when (msg.role) {
-                                            ChatMessage.Role.ASSISTANT -> MessageRole.ASSISTANT
-                                            ChatMessage.Role.TOOL -> MessageRole.TOOL
-                                            ChatMessage.Role.USER -> MessageRole.USER
-                                            ChatMessage.Role.SYSTEM -> MessageRole.SYSTEM
-                                        },
-                                        content = msg.content,
-                                        toolCalls = msg.toolCalls.map { tc ->
-                                            ToolCallData(
-                                                id = tc.id,
-                                                name = tc.name,
-                                                arguments = tc.arguments,
-                                                result = if (msg.role == ChatMessage.Role.ASSISTANT) null else msg.content
-                                            )
-                                        },
-                                        toolCallId = msg.toolCallId,
-                                        timestamp = System.currentTimeMillis()
-                                    )
-
-                                    _state.update { state ->
-                                        val updatedMessages = if (uiMsg.role == MessageRole.TOOL && uiMsg.toolCallId != null) {
-                                            state.messages.map { existing ->
-                                                if (existing.role == MessageRole.ASSISTANT && existing.toolCalls.any { it.id == uiMsg.toolCallId }) {
-                                                    existing.copy(
-                                                        toolCalls = existing.toolCalls.map { tc ->
-                                                            if (tc.id == uiMsg.toolCallId) tc.copy(result = uiMsg.content) else tc
-                                                        }
-                                                    )
-                                                } else existing
-                                            }
-                                        } else if (uiMsg.role == MessageRole.TOOL) {
-                                            state.messages
-                                        } else {
-                                            state.messages + uiMsg
-                                        }
-
-                                        state.copy(
-                                            messages = updatedMessages,
-                                            activeTool = if (uiMsg.role == MessageRole.TOOL) null else state.activeTool,
-                                            streamingText = ""
-                                        )
-                                    }
-                                    persistMessage(uiMsg)
-                                }
-                            }
-                        }
+                        error = "Failed to start ${if (isGoal) "Goal Mode" else "Agent"}: ${e.message ?: "Unknown error"}"
                     )
-
-                    chatHistory = chatHistory + result.newMessages
-
-                    for (change in result.pendingChanges) {
-                        pendingChangeManager.addChange(change.copy(sessionId = currentSessionId))
-                    }
-
-                    _state.update {
-                        it.copy(
-                            isStreaming = false,
-                            streamingText = "",
-                            activeTool = null,
-                            pendingChanges = it.pendingChanges + result.pendingChanges.map { ch -> ch.copy(sessionId = currentSessionId) }
-                        )
-                    }
-
-                    try {
-                        sessionDao.updateTitle(
-                            id = currentSessionId,
-                            title = _state.value.sessionTitle.ifBlank { "Chat with ${_state.value.projectName}" },
-                            updatedAt = System.currentTimeMillis()
-                        )
-                    } catch (_: Exception) {}
-
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    _state.update {
-                        it.copy(
-                            isStreaming = false,
-                            streamingText = "",
-                            activeTool = null,
-                            error = "Generation cancelled"
-                        )
-                    }
-                } catch (e: Exception) {
-                    Log.e("ChatViewModel", "Error running agent", e)
-                    _state.update {
-                        it.copy(
-                            isStreaming = false,
-                            streamingText = "",
-                            activeTool = null,
-                            error = "Agent error: ${e.message ?: "Unknown error"}"
-                        )
-                    }
                 }
             }
         }
@@ -885,7 +699,7 @@ class ChatViewModel @Inject constructor(
     fun cancelGeneration() {
         agentJob?.cancel()
         agentJob = null
-        activeGoalTaskId = null
+        activeTaskId = null
         agentWorkManager.cancelCurrentTask()
         _state.update {
             it.copy(
