@@ -81,6 +81,7 @@ import com.koda.dev.feature.chat.components.MessageItem
 import com.koda.dev.feature.chat.components.PendingChangesBanner
 import com.koda.dev.feature.chat.components.SessionHistorySheet
 import com.koda.dev.feature.chat.components.StreamingBubble
+import com.koda.dev.feature.chat.components.groupMessagesIntoTurns
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -125,7 +126,7 @@ fun ChatScreen(
     }
 
     val displayMessages = remember(state.messages) {
-        state.messages.filter { it.role != MessageRole.TOOL }
+        groupMessagesIntoTurns(state.messages)
     }
 
     // Total item count in LazyColumn
@@ -415,8 +416,12 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(displayMessages, key = { it.id }) { message ->
+                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
+                            val isLive = state.isStreaming && isLastItem
+
                             MessageItem(
                                 message = message,
+                                isLive = isLive,
                                 pendingChanges = state.pendingChanges,
                                 onApproveChange = { viewModel.approveChange(it) },
                                 onRejectChange = { viewModel.rejectChange(it) },

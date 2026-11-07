@@ -49,6 +49,7 @@ import java.util.Locale
 fun MessageItem(
     message: Message,
     modifier: Modifier = Modifier,
+    isLive: Boolean = false,
     pendingChanges: List<PendingChange> = emptyList(),
     onApproveChange: ((PendingChange) -> Unit)? = null,
     onRejectChange: ((PendingChange) -> Unit)? = null,
@@ -59,6 +60,7 @@ fun MessageItem(
         MessageRole.ASSISTANT -> AssistantMessageBubble(
             message = message,
             modifier = modifier,
+            isLive = isLive,
             pendingChanges = pendingChanges,
             onApproveChange = onApproveChange,
             onRejectChange = onRejectChange,
@@ -170,6 +172,7 @@ fun UserMessageBubble(
 fun AssistantMessageBubble(
     message: Message,
     modifier: Modifier = Modifier,
+    isLive: Boolean = false,
     pendingChanges: List<PendingChange> = emptyList(),
     onApproveChange: ((PendingChange) -> Unit)? = null,
     onRejectChange: ((PendingChange) -> Unit)? = null,
@@ -270,25 +273,23 @@ fun AssistantMessageBubble(
                     }
                 }
 
+                // Tool calls accordion section (collapses on completion to keep chat clean)
+                if (message.toolCalls.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ToolCallsAccordion(
+                        toolCalls = message.toolCalls,
+                        isLive = isLive,
+                        messageId = message.id,
+                        pendingChanges = pendingChanges,
+                        onApproveChange = onApproveChange,
+                        onRejectChange = onRejectChange,
+                        onOpenFullReview = onOpenFullReview
+                    )
+                }
+
                 if (message.content.isNotBlank()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     MarkdownText(content = message.content)
-                }
-
-                // Tool calls section
-                if (message.toolCalls.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (tc in message.toolCalls) {
-                            ToolCallCard(
-                                toolCall = tc,
-                                pendingChanges = pendingChanges,
-                                onApproveChange = onApproveChange,
-                                onRejectChange = onRejectChange,
-                                onOpenFullReview = onOpenFullReview
-                            )
-                        }
-                    }
                 }
             }
         }
