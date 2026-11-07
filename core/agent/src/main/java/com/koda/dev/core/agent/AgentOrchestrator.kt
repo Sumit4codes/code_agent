@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,7 +43,8 @@ sealed class AgentEvent {
         val durationMs: Long
     ) : AgentEvent()
     data class MessageAdded(
-        val message: ChatMessage
+        val message: ChatMessage,
+        val messageId: String = UUID.randomUUID().toString()
     ) : AgentEvent()
 }
 

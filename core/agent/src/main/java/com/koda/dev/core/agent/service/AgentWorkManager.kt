@@ -272,7 +272,7 @@ class AgentWorkManager @Inject constructor(
                             }
                             val msg = event.message
                             val entity = MessageEntity(
-                                id = UUID.randomUUID().toString(),
+                                id = event.messageId,
                                 sessionId = task.sessionId,
                                 role = when (msg.role) {
                                     ChatMessage.Role.USER -> "USER"

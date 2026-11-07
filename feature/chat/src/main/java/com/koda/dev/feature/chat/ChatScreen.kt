@@ -82,6 +82,7 @@ import com.koda.dev.feature.chat.components.PendingChangesBanner
 import com.koda.dev.feature.chat.components.SessionHistorySheet
 import com.koda.dev.feature.chat.components.StreamingBubble
 import com.koda.dev.feature.chat.components.groupMessagesIntoTurns
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -135,13 +136,17 @@ fun ChatScreen(
     // Track whether the user has manually scrolled up away from bottom
     var userScrolledUp by remember { mutableStateOf(false) }
 
-    // When manual scrolling finishes, check whether the user is positioned near the bottom
+    // When manual scrolling finishes, check whether the user is positioned away from bottom
     LaunchedEffect(listState.isScrollInProgress) {
         if (!listState.isScrollInProgress) {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
-            if (lastVisible != null) {
-                val isAtBottom = lastVisible.index == totalItemsCount - 1 && !listState.canScrollForward
-                userScrolledUp = !isAtBottom
+            if (lastVisible != null && totalItemsCount > 0) {
+                // If the last item is visible in the viewport, the user is looking at the latest message
+                if (lastVisible.index == totalItemsCount - 1) {
+                    userScrolledUp = false
+                } else if (lastVisible.index < totalItemsCount - 1) {
+                    userScrolledUp = true
+                }
             }
         }
     }
@@ -149,14 +154,37 @@ fun ChatScreen(
     // Determine if user has scrolled up away from bottom
     val isScrolledUp by remember {
         derivedStateOf {
-            userScrolledUp || listState.canScrollForward
+            userScrolledUp && listState.canScrollForward
         }
     }
 
-    // Smoothly scroll when a new message is added or streaming starts/stops
-    LaunchedEffect(displayMessages.size, state.isStreaming) {
+    // Smoothly scroll when a new message turn is added
+    LaunchedEffect(displayMessages.size) {
         if (totalItemsCount > 0 && !userScrolledUp) {
             listState.animateScrollToItem(totalItemsCount - 1)
+        }
+    }
+
+    // When streaming finishes (state.isStreaming transitions true -> false):
+    // Reset userScrolledUp since user was following the run, and keep the view anchored
+    // to the latest completed message through the accordion collapse animation.
+    LaunchedEffect(state.isStreaming) {
+        if (!state.isStreaming && totalItemsCount > 0) {
+            userScrolledUp = false
+            listState.animateScrollToItem(totalItemsCount - 1)
+            // Wait for tool accordion collapse animation (150ms) to settle
+            delay(180)
+            if (totalItemsCount > 0 && !userScrolledUp) {
+                val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+                if (lastVisible != null && lastVisible.index == totalItemsCount - 1) {
+                    val overflow = (lastVisible.offset + lastVisible.size + listState.layoutInfo.afterContentPadding) - listState.layoutInfo.viewportEndOffset
+                    if (overflow > 0) {
+                        listState.scrollBy(overflow.toFloat())
+                    }
+                } else if (lastVisible != null && lastVisible.index < totalItemsCount - 1) {
+                    listState.scrollToItem(totalItemsCount - 1)
+                }
+            }
         }
     }
 

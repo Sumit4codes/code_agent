@@ -138,37 +138,53 @@ class ChatViewModel @Inject constructor(
                         activeTaskId = null
                     }
 
-                    _state.update { current ->
-                        val newPending = if (!isNowRunning && taskState.completedSuccessfully == true && taskState.pendingChanges.isNotEmpty()) {
-                            val existingIds = current.pendingChanges.map { it.id }.toSet()
-                            val toAdd = taskState.pendingChanges.filter { it.id !in existingIds }
-                            current.pendingChanges + toAdd
+                    if (isNowRunning) {
+                        _state.update { current ->
+                            current.copy(
+                                isStreaming = true,
+                                isGoalMode = taskState.isGoalMode,
+                                activeStepCount = taskState.stepCount,
+                                streamingText = if (taskState.streamingDelta.isNotBlank()) taskState.streamingDelta else current.streamingText
+                            )
+                        }
+                    } else {
+                        // Task completed or stopped - fetch messages first so the transition is atomic
+                        val syncedMessages = if (taskState.completedSuccessfully == true) {
+                            loadMessagesFromDb(currentSessionId)
                         } else {
-                            current.pendingChanges
+                            emptyList()
                         }
 
-                        current.copy(
-                            isStreaming = isNowRunning,
-                            isGoalMode = isNowRunning && taskState.isGoalMode,
-                            activeStepCount = taskState.stepCount,
-                            streamingText = if (isNowRunning) {
-                                if (taskState.streamingDelta.isNotBlank()) taskState.streamingDelta else current.streamingText
-                            } else "",
-                            activeTool = if (!isNowRunning) null else current.activeTool,
-                            error = if (!isNowRunning && taskState.completedSuccessfully == false) taskState.error else current.error,
-                            pendingChanges = newPending
-                        )
-                    }
+                        _state.update { current ->
+                            val newPending = if (taskState.completedSuccessfully == true && taskState.pendingChanges.isNotEmpty()) {
+                                val existingIds = current.pendingChanges.map { it.id }.toSet()
+                                val toAdd = taskState.pendingChanges.filter { it.id !in existingIds }
+                                current.pendingChanges + toAdd
+                            } else {
+                                current.pendingChanges
+                            }
 
-                    if (!isNowRunning && taskState.completedSuccessfully == true) {
-                        syncMessagesFromDb(currentSessionId)
-                        try {
-                            sessionDao.updateTitle(
-                                id = currentSessionId,
-                                title = _state.value.sessionTitle.ifBlank { "Chat with ${_state.value.projectName}" },
-                                updatedAt = System.currentTimeMillis()
+                            current.copy(
+                                isStreaming = false,
+                                isGoalMode = false,
+                                activeStepCount = taskState.stepCount,
+                                streamingText = "",
+                                activeTool = null,
+                                error = if (taskState.completedSuccessfully == false) taskState.error else current.error,
+                                pendingChanges = newPending,
+                                messages = if (syncedMessages.isNotEmpty()) syncedMessages else current.messages
                             )
-                        } catch (_: Exception) {}
+                        }
+
+                        if (taskState.completedSuccessfully == true) {
+                            try {
+                                sessionDao.updateTitle(
+                                    id = currentSessionId,
+                                    title = _state.value.sessionTitle.ifBlank { "Chat with ${_state.value.projectName}" },
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                            } catch (_: Exception) {}
+                        }
                     }
                 }
             }
@@ -261,7 +277,7 @@ class ChatViewModel @Inject constructor(
                         toolOutputBuffer.clear()
                         val msg = event.message
                         val uiMsg = Message(
-                            id = UUID.randomUUID().toString(),
+                            id = event.messageId,
                             sessionId = currentSessionId,
                             role = when (msg.role) {
                                 ChatMessage.Role.ASSISTANT -> MessageRole.ASSISTANT
@@ -396,6 +412,12 @@ class ChatViewModel @Inject constructor(
     }
 
     private suspend fun syncMessagesFromDb(sessionId: String): List<Message> {
+        val displayMessages = loadMessagesFromDb(sessionId)
+        _state.update { it.copy(messages = displayMessages) }
+        return displayMessages
+    }
+
+    private suspend fun loadMessagesFromDb(sessionId: String): List<Message> {
         try {
             val entities = messageDao.getBySessionList(sessionId)
             val restoredMessages = entities.map { entity ->
@@ -442,11 +464,9 @@ class ChatViewModel @Inject constructor(
                 )
             }
 
-            val displayMessages = linkedMessages.filter { it.role != MessageRole.TOOL }
-            _state.update { it.copy(messages = displayMessages) }
-            return displayMessages
+            return linkedMessages.filter { it.role != MessageRole.TOOL }
         } catch (e: Exception) {
-            Log.w("ChatViewModel", "Failed to sync messages from DB", e)
+            Log.w("ChatViewModel", "Failed to load messages from DB", e)
             return emptyList()
         }
     }
