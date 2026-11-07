@@ -313,6 +313,8 @@ class ChatViewModel @Inject constructor(
                                 }
                             } else if (uiMsg.role == MessageRole.TOOL) {
                                 state.messages
+                            } else if (state.messages.any { it.id == uiMsg.id }) {
+                                state.messages
                             } else {
                                 state.messages + uiMsg
                             }
@@ -517,13 +519,31 @@ class ChatViewModel @Inject constructor(
         val cleanText = text.trim()
         if (cleanText.isBlank()) return
         val currentSessionId = _state.value.sessionId
+        val steerId = UUID.randomUUID().toString()
         val accepted = if (currentSessionId != null) {
-            agentWorkManager.sendSteeringMessage(currentSessionId, cleanText)
+            agentWorkManager.sendSteeringMessage(currentSessionId, cleanText, steerId)
         } else {
             false
         }
 
-        if (!accepted && !_state.value.isStreaming) {
+        if (accepted && currentSessionId != null) {
+            // Optimistically display the steering bubble immediately in the chat stream
+            val formatted = buildString {
+                append("<user_steering_guidance>\n")
+                append(cleanText)
+                append("\n</user_steering_guidance>")
+            }
+            val steerMsg = Message(
+                id = steerId,
+                sessionId = currentSessionId,
+                role = MessageRole.USER,
+                content = formatted,
+                timestamp = System.currentTimeMillis()
+            )
+            _state.update { state ->
+                if (state.messages.any { it.id == steerId }) state else state.copy(messages = state.messages + steerMsg)
+            }
+        } else if (!accepted && !_state.value.isStreaming) {
             // Task already finished or not running; send as regular next turn
             sendMessage(cleanText)
         }

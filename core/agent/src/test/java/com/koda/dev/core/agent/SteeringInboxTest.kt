@@ -22,7 +22,7 @@ class SteeringInboxTest {
 
         assertTrue(inbox.hasPending)
         val drained = inbox.drain()
-        assertEquals(listOf("First guidance", "Second guidance"), drained)
+        assertEquals(listOf("First guidance", "Second guidance"), drained.map { it.text })
         assertFalse(inbox.hasPending)
         assertTrue(inbox.drain().isEmpty())
     }

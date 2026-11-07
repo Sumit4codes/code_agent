@@ -249,7 +249,7 @@ class AgentOrchestrator @Inject constructor(
                     for (steer in pendingSteering) {
                         val formatted = buildString {
                             append("<user_steering_guidance>\n")
-                            append(steer)
+                            append(steer.text)
                             append("\n</user_steering_guidance>")
                         }
                         val steerMsg = ChatMessage(
@@ -258,7 +258,7 @@ class AgentOrchestrator @Inject constructor(
                         )
                         messages.add(steerMsg)
                         newMessages.add(steerMsg)
-                        onEvent?.invoke(AgentEvent.MessageAdded(steerMsg))
+                        onEvent?.invoke(AgentEvent.MessageAdded(steerMsg, messageId = steer.id))
                     }
                     continue // Continue loop to address the user's live guidance
                 }
@@ -266,14 +266,43 @@ class AgentOrchestrator @Inject constructor(
             }
 
             // Execute tool calls and add results
-            for (tc in toolCalls) {
+            for ((index, tc) in toolCalls.withIndex()) {
+                // If user provided steering guidance during previous tools, skip remaining planned tools
+                if (index > 0 && steeringInbox?.hasPending == true) {
+                    val skippedOutput = "Tool execution skipped: User provided mid-run steering guidance"
+                    onEvent?.invoke(
+                        AgentEvent.ToolCallComplete(
+                            toolCallId = tc.id,
+                            toolName = ToolNames.normalize(tc.name),
+                            arguments = tc.arguments,
+                            output = skippedOutput,
+                            success = false,
+                            durationMs = 0
+                        )
+                    )
+                    val toolMsg = ChatMessage(
+                        role = ChatMessage.Role.TOOL,
+                        content = skippedOutput,
+                        toolCallId = tc.id
+                    )
+                    messages.add(toolMsg)
+                    newMessages.add(toolMsg)
+                    onEvent?.invoke(AgentEvent.MessageAdded(toolMsg))
+                    continue
+                }
+
                 val cleanName = ToolNames.normalize(tc.name)
                 val startTime = System.currentTimeMillis()
                 onEvent?.invoke(AgentEvent.ToolCallStart(tc.id, cleanName, tc.arguments))
 
-                val result = toolExecutor.execute(cleanName, tc.arguments, onOutput = { chunk ->
-                    onEvent?.invoke(AgentEvent.ToolCallOutputChunk(tc.id, chunk))
-                })
+                val result = toolExecutor.execute(
+                    name = cleanName,
+                    argumentsJson = tc.arguments,
+                    onOutput = { chunk ->
+                        onEvent?.invoke(AgentEvent.ToolCallOutputChunk(tc.id, chunk))
+                    },
+                    yieldEarlyIf = { steeringInbox?.hasPending == true }
+                )
                 val duration = System.currentTimeMillis() - startTime
                 val toolOutput = if (result.success) result.output else "Error: ${result.output}"
 
@@ -308,7 +337,7 @@ class AgentOrchestrator @Inject constructor(
                 for (steer in pendingSteering) {
                     val formatted = buildString {
                         append("<user_steering_guidance>\n")
-                        append(steer)
+                        append(steer.text)
                         append("\n</user_steering_guidance>")
                     }
                     val steerMsg = ChatMessage(
@@ -317,7 +346,7 @@ class AgentOrchestrator @Inject constructor(
                     )
                     messages.add(steerMsg)
                     newMessages.add(steerMsg)
-                    onEvent?.invoke(AgentEvent.MessageAdded(steerMsg))
+                    onEvent?.invoke(AgentEvent.MessageAdded(steerMsg, messageId = steer.id))
                 }
             }
         }

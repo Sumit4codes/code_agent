@@ -1,6 +1,8 @@
 package com.koda.dev.core.terminal
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.*
@@ -62,6 +64,26 @@ class ManagedTaskManagerTest {
         val afterKill = taskManager.getStatus(running.taskId)
         assertNotNull(afterKill)
         assertFalse(afterKill!!.isAlive)
+    }
+
+    @Test
+    fun `command yields early to background if yieldEarlyIf triggers`() = runTest {
+        var shouldYield = false
+        val job = backgroundScope.launch {
+            kotlinx.coroutines.delay(150)
+            shouldYield = true
+        }
+
+        val result = taskManager.launch(
+            command = "sleep 30",
+            waitSeconds = 10,
+            yieldEarlyIf = { shouldYield }
+        )
+
+        assertTrue(result is TaskLaunchResult.Running)
+        val running = result as TaskLaunchResult.Running
+        taskManager.kill(running.taskId)
+        job.cancel()
     }
 
     @Test

@@ -141,7 +141,8 @@ interface TaskManager {
         workingDir: File? = null,
         waitSeconds: Int = ManagedTaskManager.DEFAULT_WAIT_SECONDS,
         isBackground: Boolean = false,
-        onOutputChunk: ((String) -> Unit)? = null
+        onOutputChunk: ((String) -> Unit)? = null,
+        yieldEarlyIf: (() -> Boolean)? = null
     ): TaskLaunchResult
 
     fun getStatus(taskId: String): TaskStatusInfo?
@@ -216,7 +217,8 @@ class ManagedTaskManager @Inject constructor(
         workingDir: File?,
         waitSeconds: Int,
         isBackground: Boolean,
-        onOutputChunk: ((String) -> Unit)?
+        onOutputChunk: ((String) -> Unit)?,
+        yieldEarlyIf: (() -> Boolean)?
     ): TaskLaunchResult = withContext(Dispatchers.IO) {
         val trimmed = command.trim()
         if (trimmed.isEmpty()) {
@@ -317,6 +319,10 @@ class ManagedTaskManager @Inject constructor(
                     output = if (finalOutput.isNotEmpty()) finalOutput else "(command finished with exit code ${task.exitCode ?: 0})",
                     exitCode = task.exitCode ?: 0
                 )
+            }
+            if (yieldEarlyIf?.invoke() == true) {
+                // User provided steering guidance! Immediately background this command so the agent yields
+                break
             }
             delay(waitIntervalMs)
             elapsed += waitIntervalMs

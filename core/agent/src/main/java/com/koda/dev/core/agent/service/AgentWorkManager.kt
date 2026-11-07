@@ -160,10 +160,10 @@ class AgentWorkManager @Inject constructor(
      * Enqueue a live mid-run steering message to the active running task.
      * Returns true if a running task matches the session and accepted the guidance.
      */
-    fun sendSteeringMessage(sessionId: String, message: String): Boolean {
+    fun sendSteeringMessage(sessionId: String, message: String, messageId: String = UUID.randomUUID().toString()): Boolean {
         val activeTask = _activeTaskState.value
         if (activeTask != null && activeTask.isRunning && activeTask.sessionId == sessionId) {
-            steeringInbox.send(message)
+            steeringInbox.send(message, messageId)
             _activeTaskState.update { current ->
                 current?.copy(currentAction = "Applying user guidance...")
             }

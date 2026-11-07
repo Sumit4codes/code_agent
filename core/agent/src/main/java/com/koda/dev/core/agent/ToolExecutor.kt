@@ -88,7 +88,8 @@ class ToolExecutor @Inject constructor(
     suspend fun execute(
         name: String,
         argumentsJson: String,
-        onOutput: ((String) -> Unit)? = null
+        onOutput: ((String) -> Unit)? = null,
+        yieldEarlyIf: (() -> Boolean)? = null
     ): ToolResult = withContext(Dispatchers.IO) {
         val args = try {
             Json.parseToJsonElement(argumentsJson).jsonObject
@@ -122,7 +123,7 @@ class ToolExecutor @Inject constructor(
             ToolNames.PROPOSE_FILE_EDIT -> executeProposeEdit(fs, args)
             ToolNames.CREATE_FILE -> executeCreateFile(fs, args)
             ToolNames.DELETE_FILE -> executeDeleteFile(fs, args)
-            ToolNames.EXECUTE_COMMAND -> executeCommand(args, onOutput)
+            ToolNames.EXECUTE_COMMAND -> executeCommand(args, onOutput, yieldEarlyIf)
             else -> ToolResult(false, "Unknown tool: $name")
         }
     }
@@ -516,7 +517,11 @@ class ToolExecutor @Inject constructor(
         }
     }
 
-    private suspend fun executeCommand(args: JsonObject, onOutput: ((String) -> Unit)? = null): ToolResult {
+    private suspend fun executeCommand(
+        args: JsonObject,
+        onOutput: ((String) -> Unit)? = null,
+        yieldEarlyIf: (() -> Boolean)? = null
+    ): ToolResult {
         val command = argString(args, "command") ?: return ToolResult(false, "Missing 'command' argument")
         val waitSeconds = argInt(args, "wait_seconds") ?: com.koda.dev.core.terminal.ManagedTaskManager.DEFAULT_WAIT_SECONDS
         val isBackground = args["is_background"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
@@ -529,7 +534,8 @@ class ToolExecutor @Inject constructor(
             workingDir = currentWorkDir,
             waitSeconds = waitSeconds,
             isBackground = isBackground,
-            onOutputChunk = onOutput
+            onOutputChunk = onOutput,
+            yieldEarlyIf = yieldEarlyIf
         )) {
             is com.koda.dev.core.terminal.TaskLaunchResult.Completed -> {
                 ToolResult(
