@@ -107,8 +107,9 @@ class PendingChangeManagerTest {
     }
 
     @Test
-    fun `reject marks change as REJECTED without modifying file`() = runTest {
-        fs.putFile("keep.txt", "original")
+    fun `reject edit reverts file content to originalContent and marks status REJECTED`() = runTest {
+        // File has the agent's staged modified content
+        fs.putFile("keep.txt", "modified")
 
         val change = PendingChange(
             id = "c4",
@@ -121,10 +122,62 @@ class PendingChangeManagerTest {
         )
         manager.addChange(change)
 
-        manager.reject(change)
+        val result = manager.reject(change)
+        assertTrue(result.isSuccess)
 
+        // File must be rolled back to original
         val fileUri = fs.resolveRelativeUri(rootUri, "keep.txt")!!
         assertEquals("original", fs.readTextFile(fileUri))
+
+        val all = dao.getAllBySession("s1").first()
+        assertEquals(ChangeStatus.REJECTED.name, all.first().status)
+    }
+
+    @Test
+    fun `reject create deletes newly created file and marks status REJECTED`() = runTest {
+        fs.putFile("created.txt", "new file content")
+
+        val change = PendingChange(
+            id = "c_create",
+            sessionId = "s1",
+            filePath = "created.txt",
+            changeType = ChangeType.CREATE,
+            originalContent = null,
+            proposedContent = "new file content",
+            createdAt = 4100L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+        assertTrue(result.isSuccess)
+
+        // Created file must be deleted on rejection
+        val fileUri = fs.resolveRelativeUri(rootUri, "created.txt")
+        assertNull(fileUri)
+
+        val all = dao.getAllBySession("s1").first()
+        assertEquals(ChangeStatus.REJECTED.name, all.first().status)
+    }
+
+    @Test
+    fun `reject delete restores file with originalContent and marks status REJECTED`() = runTest {
+        val change = PendingChange(
+            id = "c_del",
+            sessionId = "s1",
+            filePath = "restored.txt",
+            changeType = ChangeType.DELETE,
+            originalContent = "restored original",
+            proposedContent = null,
+            createdAt = 4200L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+        assertTrue(result.isSuccess)
+
+        // File must be recreated with original content
+        val fileUri = fs.resolveRelativeUri(rootUri, "restored.txt")!!
+        assertEquals("restored original", fs.readTextFile(fileUri))
 
         val all = dao.getAllBySession("s1").first()
         assertEquals(ChangeStatus.REJECTED.name, all.first().status)

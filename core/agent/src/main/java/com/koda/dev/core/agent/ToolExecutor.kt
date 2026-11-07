@@ -396,6 +396,9 @@ class ToolExecutor @Inject constructor(
 
         val proposedContent = resolveResult.proposedContent
 
+        // Write directly to workspace filesystem so terminal execution and verification work immediately
+        fs.writeTextFile(fileUri, proposedContent)
+
         val change = PendingChange(
             id = java.util.UUID.randomUUID().toString(),
             sessionId = "",
@@ -408,7 +411,7 @@ class ToolExecutor @Inject constructor(
 
         return ToolResult(
             success = true,
-            output = "Edit proposed for $relPath. Awaiting user approval.",
+            output = "Applied edit to $relPath in workspace. You can now execute terminal commands to build, run, or test it. Changes are staged for user review.",
             pendingChange = change
         )
     }
@@ -418,6 +421,23 @@ class ToolExecutor @Inject constructor(
         val content = argString(args, "content") ?: return ToolResult(false, "Missing 'content' argument")
 
         val relPath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
+
+        val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
+        val parentUri = resolveOrCreateParent(fs, rootUri, relPath)
+            ?: return ToolResult(false, "Cannot resolve or create parent directory for: $rawPath")
+
+        val fileName = relPath.substringAfterLast("/")
+        val existingUri = fs.resolveRelativeUri(rootUri, relPath)
+        val targetUri = if (existingUri != null) {
+            existingUri
+        } else {
+            val mimeType = mimeTypeForFileName(fileName)
+            fs.createFile(parentUri, fileName, mimeType)
+                ?: return ToolResult(false, "Failed to create file: $rawPath")
+        }
+
+        // Write content directly to the file in the workspace
+        fs.writeTextFile(targetUri, content)
 
         val change = PendingChange(
             id = java.util.UUID.randomUUID().toString(),
@@ -431,7 +451,7 @@ class ToolExecutor @Inject constructor(
 
         return ToolResult(
             success = true,
-            output = "File creation proposed for $relPath. Awaiting user approval.",
+            output = "Created file $relPath in workspace. You can now execute terminal commands to build, run, or test it. Changes are staged for user review.",
             pendingChange = change
         )
     }
@@ -447,6 +467,9 @@ class ToolExecutor @Inject constructor(
 
         val originalContent = fs.readTextFile(fileUri)
 
+        // Delete from workspace filesystem
+        fs.deleteFile(fileUri)
+
         val change = PendingChange(
             id = java.util.UUID.randomUUID().toString(),
             sessionId = "",
@@ -459,7 +482,7 @@ class ToolExecutor @Inject constructor(
 
         return ToolResult(
             success = true,
-            output = "File deletion proposed for $relPath. Awaiting user approval.",
+            output = "Deleted $relPath from workspace. Staged for user review.",
             pendingChange = change
         )
     }

@@ -170,7 +170,7 @@ class ToolExecutorTest {
     }
 
     @Test
-    fun `execute propose_file_edit creates pending change`() = runTest {
+    fun `execute propose_file_edit creates pending change and writes to workspace`() = runTest {
         fs.putFile("file.kt", "val a = 1")
 
         val result = executor.execute(
@@ -183,6 +183,10 @@ class ToolExecutorTest {
         assertEquals(ChangeType.EDIT, result.pendingChange?.changeType)
         assertEquals("val a = 1", result.pendingChange?.originalContent)
         assertEquals("val a = 2", result.pendingChange?.proposedContent)
+
+        // Verifies the file is written immediately so terminal commands can run
+        val fileUri = fs.resolveRelativeUri(rootUri, "file.kt")!!
+        assertEquals("val a = 2", fs.readTextFile(fileUri))
     }
 
     @Test
@@ -197,6 +201,9 @@ class ToolExecutorTest {
         assertTrue(result.success)
         assertNotNull(result.pendingChange)
         assertEquals("fun foo() {\n    val a = 100\n    val b = 2\n}", result.pendingChange?.proposedContent)
+
+        val fileUri = fs.resolveRelativeUri(rootUri, "foo.kt")!!
+        assertEquals("fun foo() {\n    val a = 100\n    val b = 2\n}", fs.readTextFile(fileUri))
     }
 
     @Test
@@ -219,7 +226,7 @@ class ToolExecutorTest {
     }
 
     @Test
-    fun `execute create_file creates CREATE pending change`() = runTest {
+    fun `execute create_file creates CREATE pending change and writes to workspace`() = runTest {
         val result = executor.execute(
             "create_file",
             """{"path":"new_file.kt","content":"val newVar = true"}"""
@@ -228,10 +235,14 @@ class ToolExecutorTest {
         assertNotNull(result.pendingChange)
         assertEquals(ChangeType.CREATE, result.pendingChange?.changeType)
         assertEquals("val newVar = true", result.pendingChange?.proposedContent)
+
+        // Verifies the file is written immediately so terminal commands can run
+        val fileUri = fs.resolveRelativeUri(rootUri, "new_file.kt")!!
+        assertEquals("val newVar = true", fs.readTextFile(fileUri))
     }
 
     @Test
-    fun `execute delete_file creates DELETE pending change`() = runTest {
+    fun `execute delete_file creates DELETE pending change and removes from workspace`() = runTest {
         fs.putFile("delete_me.txt", "bye")
 
         val result = executor.execute(
@@ -242,6 +253,9 @@ class ToolExecutorTest {
         assertNotNull(result.pendingChange)
         assertEquals(ChangeType.DELETE, result.pendingChange?.changeType)
         assertEquals("bye", result.pendingChange?.originalContent)
+
+        val fileUri = fs.resolveRelativeUri(rootUri, "delete_me.txt")
+        org.junit.Assert.assertNull(fileUri)
     }
 
     @Test

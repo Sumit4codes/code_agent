@@ -84,7 +84,7 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = "propose_file_edit",
-                description = "Propose an edit to an existing file. For partial edits, provide 'old_content' (the exact text to replace) and 'content' (the replacement text). For whole-file changes, provide 'content' with the entire file. The change will be shown as a diff for user approval before applying.",
+                description = "Edit an existing file in the project. The change is applied immediately to the workspace so you can build, run, or test it with execute_command, and is also staged as a diff for user review. For partial edits, provide 'old_content' (the exact text to replace) and 'content' (the replacement text). For whole-file changes, provide 'content' with the entire file.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "path" to PropertyDef("string", "Relative file path from project root."),
@@ -99,7 +99,7 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = "create_file",
-                description = "Create a new file in the project. The change will require user approval before applying.",
+                description = "Create a new file in the project. The file is created immediately in the workspace so you can compile, run, or test it with execute_command, and is also staged for user review.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "path" to PropertyDef("string", "Relative file path from project root."),
@@ -113,7 +113,7 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = "delete_file",
-                description = "Delete a file from the project. Requires explicit user confirmation. Use with extreme caution.",
+                description = "Delete a file from the project. The file is deleted immediately and staged for user review.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "path" to PropertyDef("string", "Relative file path from project root.")

@@ -84,8 +84,55 @@ class PendingChangeManager @Inject constructor(
         }
     }
 
-    suspend fun reject(change: PendingChange) {
-        pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
+    suspend fun reject(change: PendingChange): Result<String> {
+        val fs = fileSystem
+        val rootUri = projectRootUri
+        if (fs == null || rootUri == null) {
+            pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
+            return Result.success("Rejected change for ${change.filePath}")
+        }
+
+        return try {
+            val orig = change.originalContent
+            when (change.changeType) {
+                ChangeType.CREATE -> {
+                    // Rollback creation: delete the newly created file from disk
+                    val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
+                    if (fileUri != null) {
+                        fs.deleteFile(fileUri)
+                    }
+                }
+                ChangeType.EDIT -> {
+                    // Rollback edit: revert file content back to originalContent
+                    val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
+                    if (fileUri != null && orig != null) {
+                        fs.writeTextFile(fileUri, orig)
+                    }
+                }
+                ChangeType.DELETE -> {
+                    // Rollback deletion: recreate the file with originalContent
+                    if (orig != null) {
+                        val parentUri = resolveOrCreateParent(fs, rootUri, change.filePath)
+                        if (parentUri != null) {
+                            val fileName = change.filePath.substringAfterLast("/")
+                            val targetUri = fs.resolveRelativeUri(rootUri, change.filePath)
+                                ?: run {
+                                    val mimeType = mimeTypeForFileName(fileName)
+                                    fs.createFile(parentUri, fileName, mimeType)
+                                }
+                            if (targetUri != null) {
+                                fs.writeTextFile(targetUri, orig)
+                            }
+                        }
+                    }
+                }
+            }
+            pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
+            Result.success("Reverted change for ${change.filePath}")
+        } catch (e: Exception) {
+            pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
+            Result.failure(e)
+        }
     }
 
     suspend fun approveAll(sessionId: String): List<Result<String>> {
@@ -94,29 +141,10 @@ class PendingChangeManager @Inject constructor(
         return changes.map { approve(it) }
     }
 
-    suspend fun rejectAll(sessionId: String) {
+    suspend fun rejectAll(sessionId: String): List<Result<String>> {
         val entities = pendingChangeDao.getPendingBySession(sessionId).first()
-        entities.forEach { entity ->
-            pendingChangeDao.updateStatus(entity.id, ChangeStatus.REJECTED.name)
-        }
-    }
-
-    private suspend fun resolveOrCreateParent(fs: ProjectFileSystem, rootUri: Uri, relPath: String): Uri? {
-        val segments = relPath.split("/").filter { it.isNotEmpty() }
-        if (segments.size <= 1) return rootUri
-        val parentSegments = segments.dropLast(1)
-        var currentUri = rootUri
-        for (segment in parentSegments) {
-            val children = fs.listChildren(currentUri)
-            val existing = children.find { it.name == segment }
-            if (existing != null) {
-                if (!existing.isDirectory) return null
-                currentUri = existing.uri
-            } else {
-                currentUri = fs.createDirectory(currentUri, segment) ?: return null
-            }
-        }
-        return currentUri
+        val changes = entities.map { it.toModel() }
+        return changes.reversed().map { reject(it) }
     }
 
     private fun PendingChange.toEntity() = PendingChangeEntity(
@@ -141,16 +169,3 @@ private fun PendingChangeEntity.toModel() = PendingChange(
     createdAt = createdAt,
     status = ChangeStatus.valueOf(status)
 )
-
-private fun mimeTypeForFileName(fileName: String): String {
-    val ext = fileName.substringAfterLast('.', "").lowercase()
-    return when (ext) {
-        "json" -> "application/json"
-        "xml" -> "application/xml"
-        "html", "htm" -> "text/html"
-        "css" -> "text/css"
-        "csv" -> "text/csv"
-        "js", "mjs" -> "application/javascript"
-        else -> "text/plain"
-    }
-}

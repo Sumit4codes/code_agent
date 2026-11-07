@@ -85,6 +85,11 @@ class AgentOrchestrator @Inject constructor(
             """.trimIndent())
             append("\n\n")
             append("""
+                WORKSPACE & FILE OPERATIONS:
+                When you create or edit files using `create_file` or `propose_file_edit`, the files are applied immediately to your workspace. You do NOT need to wait for or ask the user to approve changes before executing commands. You can and should immediately use `execute_command` to compile, run, test, or lint your code (e.g. running gcc, python, pytest, cargo test) to verify that your changes work. Changes are simultaneously staged for the user's visual diff review.
+            """.trimIndent())
+            append("\n\n")
+            append("""
                 TASK MANAGEMENT & PROCESS CONTROL:
                 Commands that take longer than 20s automatically move to background tasks with a task_id. You can also launch background daemons via `execute_command(command="...", is_background=true)`.
                 Use `manage_task(action="status", task_id="...")` to inspect live progress, runtime, and output.
