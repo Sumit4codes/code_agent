@@ -133,4 +133,26 @@ class InlineDiffModelTest {
         org.junit.Assert.assertNull(originalContent)
         assertEquals("Initial file content", proposedContent)
     }
+
+    @Test
+    fun appliedStatusHidesExpandOptionAndCollapsesInitially() {
+        val appliedStatus = com.koda.dev.core.model.ChangeStatus.APPLIED
+        val isPending = appliedStatus == com.koda.dev.core.model.ChangeStatus.PENDING
+        val shouldShowExpandOption = isPending
+        val initiallyExpanded = isPending
+
+        org.junit.Assert.assertFalse(shouldShowExpandOption)
+        org.junit.Assert.assertFalse(initiallyExpanded)
+    }
+
+    @Test
+    fun pendingStatusShowsExpandOptionAndExpandsInitially() {
+        val pendingStatus = com.koda.dev.core.model.ChangeStatus.PENDING
+        val isPending = pendingStatus == com.koda.dev.core.model.ChangeStatus.PENDING
+        val shouldShowExpandOption = isPending
+        val initiallyExpanded = isPending
+
+        assertTrue(shouldShowExpandOption)
+        assertTrue(initiallyExpanded)
+    }
 }

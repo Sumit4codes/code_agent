@@ -77,7 +77,10 @@ fun InlineDiffCard(
     initiallyExpanded: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    var isExpanded by remember { mutableStateOf(initiallyExpanded) }
+    val status = statusOverride ?: pendingChange?.status ?: ChangeStatus.PENDING
+    var isExpanded by remember(status) {
+        mutableStateOf(if (status == ChangeStatus.PENDING) initiallyExpanded else false)
+    }
 
     val hunks = remember(originalContent, proposedContent, filePath) {
         if (changeType == ChangeType.EDIT && originalContent != null && proposedContent != null) {
@@ -114,8 +117,6 @@ fun InlineDiffCard(
         ChangeType.CREATE -> "CREATE" to Color(0xFF2EA043)  // Green
         ChangeType.DELETE -> "DELETE" to Color(0xFFF85149)  // Red
     }
-
-    val status = statusOverride ?: pendingChange?.status ?: ChangeStatus.PENDING
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -218,8 +219,8 @@ fun InlineDiffCard(
                     }
                 }
 
-                // Open in full bottom sheet button
-                if (onOpenFullReview != null) {
+                // Open in full bottom sheet button (only visible while change is pending)
+                if (onOpenFullReview != null && status == ChangeStatus.PENDING) {
                     IconButton(
                         onClick = { onOpenFullReview(pendingChange) },
                         modifier = Modifier.size(24.dp)

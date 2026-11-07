@@ -178,7 +178,7 @@ fun ToolCallCard(
             onApprove = onApproveChange,
             onReject = onRejectChange,
             onOpenFullReview = onOpenFullReview,
-            initiallyExpanded = true,
+            initiallyExpanded = statusOverride == ChangeStatus.PENDING,
             modifier = modifier
         )
         return
