@@ -202,6 +202,10 @@ class TerminalViewModel @Inject constructor(
 
     fun openProject(projectId: String) {
         viewModelScope.launch(ioDispatcher) {
+            val current = _uiState.value
+            if (current.projectId == projectId && sessionHolders.isNotEmpty()) {
+                return@launch
+            }
             val project = projectDao.getById(projectId) ?: return@launch
             val rawUri = project.treeUri
             val treeUri = try { Uri.parse(rawUri) } catch (_: Exception) { null }

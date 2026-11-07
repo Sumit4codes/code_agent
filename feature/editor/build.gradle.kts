@@ -30,6 +30,7 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:files"))
     implementation(project(":core:data"))
+    implementation(project(":feature:terminal"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

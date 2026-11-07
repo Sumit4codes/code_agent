@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Terminal
+import com.koda.dev.feature.terminal.WorkspaceTerminalSheet
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -110,6 +112,7 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     var showHistorySheet by remember { mutableStateOf(false) }
     var showDiffBottomSheet by remember { mutableStateOf(false) }
+    var showTerminalSheet by remember { mutableStateOf(false) }
     var selectedDiffChange by remember { mutableStateOf<PendingChange?>(null) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -286,6 +289,15 @@ fun ChatScreen(
                 },
                 actions = {
                     if (state.projectUri != null) {
+                        IconButton(
+                            onClick = { showTerminalSheet = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = "Project Terminal",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                         IconButton(
                             onClick = { viewModel.startNewSession() },
                             enabled = !state.isStreaming
@@ -494,6 +506,15 @@ fun ChatScreen(
                 showDiffBottomSheet = false
                 selectedDiffChange = null
             }
+        )
+    }
+
+    if (showTerminalSheet) {
+        val effectiveProjectId = if (state.projectId.isNotBlank()) state.projectId else projectId
+        WorkspaceTerminalSheet(
+            projectId = effectiveProjectId.ifBlank { null },
+            projectName = state.projectName.ifBlank { null },
+            onDismiss = { showTerminalSheet = false }
         )
     }
 }

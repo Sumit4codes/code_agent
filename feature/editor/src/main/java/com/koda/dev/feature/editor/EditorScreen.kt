@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koda.dev.core.files.FileNode
+import com.koda.dev.feature.terminal.WorkspaceTerminalSheet
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -59,6 +60,7 @@ fun EditorScreen(
     var wrapLines by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var userSplitPreference by remember { mutableStateOf<Boolean?>(null) }
+    var showTerminalSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank() && projectId != "none") {
@@ -120,7 +122,7 @@ fun EditorScreen(
                         onToggleWrapLines = {
                             wrapLines = !wrapLines
                         },
-                        onOpenTerminal = onOpenTerminal,
+                        onOpenTerminal = { showTerminalSheet = true },
                         onCopyContent = {
                             state.fileContent?.let { content ->
                                 clipboardManager.setText(AnnotatedString(content))
@@ -227,6 +229,14 @@ fun EditorScreen(
                     }
                 }
             }
+        }
+
+        if (showTerminalSheet) {
+            WorkspaceTerminalSheet(
+                projectId = projectId.ifBlank { null },
+                projectName = state.projectName.ifBlank { null },
+                onDismiss = { showTerminalSheet = false }
+            )
         }
     }
 }
