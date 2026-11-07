@@ -60,6 +60,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.koda.dev.core.model.ChangeType
+import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.model.ToolCallData
 import com.koda.dev.core.model.ToolNames
 import kotlinx.coroutines.delay
@@ -71,8 +73,73 @@ import kotlinx.serialization.json.jsonPrimitive
 fun ToolCallCard(
     toolCall: ToolCallData,
     modifier: Modifier = Modifier,
-    initiallyExpanded: Boolean = false
+    initiallyExpanded: Boolean = false,
+    pendingChanges: List<PendingChange> = emptyList(),
+    onApproveChange: ((PendingChange) -> Unit)? = null,
+    onRejectChange: ((PendingChange) -> Unit)? = null,
+    onOpenFullReview: ((PendingChange?) -> Unit)? = null
 ) {
+    val normName = remember(toolCall.name) { ToolNames.normalize(toolCall.name) }
+    val isFileTool = remember(normName) {
+        normName == ToolNames.PROPOSE_FILE_EDIT ||
+            normName == ToolNames.CREATE_FILE ||
+            normName == ToolNames.DELETE_FILE ||
+            normName == "edit_file" ||
+            normName == "write_file"
+    }
+
+    if (isFileTool) {
+        val (filePath, oldContent, newContent) = remember(toolCall.arguments) {
+            try {
+                val json = Json.parseToJsonElement(toolCall.arguments).jsonObject
+                val path = json["path"]?.jsonPrimitive?.content
+                    ?: json["Path"]?.jsonPrimitive?.content
+                    ?: json["file_path"]?.jsonPrimitive?.content
+                    ?: ""
+                val old = json["old_content"]?.jsonPrimitive?.content
+                    ?: json["target"]?.jsonPrimitive?.content
+                    ?: json["Target"]?.jsonPrimitive?.content
+                val new = json["content"]?.jsonPrimitive?.content
+                    ?: json["replacement"]?.jsonPrimitive?.content
+                    ?: json["Replacement"]?.jsonPrimitive?.content
+                Triple(path, old, new)
+            } catch (_: Exception) {
+                Triple("", null, null)
+            }
+        }
+
+        val matchingPendingChange = remember(pendingChanges, filePath) {
+            pendingChanges.find {
+                it.filePath == filePath ||
+                    it.filePath.endsWith(filePath) ||
+                    (filePath.isNotBlank() && filePath.endsWith(it.filePath))
+            }
+        }
+
+        val changeType = remember(normName, matchingPendingChange) {
+            when {
+                matchingPendingChange != null -> matchingPendingChange.changeType
+                normName == ToolNames.CREATE_FILE || normName == "write_file" -> ChangeType.CREATE
+                normName == ToolNames.DELETE_FILE -> ChangeType.DELETE
+                else -> ChangeType.EDIT
+            }
+        }
+
+        InlineDiffCard(
+            filePath = filePath.ifBlank { matchingPendingChange?.filePath ?: "modified file" },
+            changeType = changeType,
+            originalContent = matchingPendingChange?.originalContent ?: oldContent,
+            proposedContent = matchingPendingChange?.proposedContent ?: newContent,
+            pendingChange = matchingPendingChange,
+            onApprove = onApproveChange,
+            onReject = onRejectChange,
+            onOpenFullReview = onOpenFullReview,
+            initiallyExpanded = true,
+            modifier = modifier
+        )
+        return
+    }
+
     var isExpanded by remember { mutableStateOf(initiallyExpanded) }
     val info = remember(toolCall.name) { getToolInfo(toolCall.name) }
     val argSummary = remember(toolCall.arguments) { extractArgSummary(toolCall.arguments) }

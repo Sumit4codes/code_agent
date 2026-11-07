@@ -15,8 +15,8 @@ object DiffEngine {
         filePath: String = "",
         contextLines: Int = 3
     ): List<DiffHunk> {
-        val originalLines = original.lines()
-        val proposedLines = proposed.lines()
+        val originalLines = if (original.isEmpty()) emptyList() else original.lines()
+        val proposedLines = if (proposed.isEmpty()) emptyList() else proposed.lines()
 
         val patch: Patch<String> = DiffUtils.diff(originalLines, proposedLines)
         val hunks = mutableListOf<DiffHunk>()

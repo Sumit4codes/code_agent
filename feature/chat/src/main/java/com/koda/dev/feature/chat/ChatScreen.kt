@@ -74,6 +74,7 @@ import com.koda.dev.core.model.PendingChange
 import com.koda.dev.feature.chat.components.ActiveTasksStrip
 import com.koda.dev.feature.chat.components.ChatInputBar
 import com.koda.dev.feature.chat.components.EmptyChatState
+import com.koda.dev.feature.chat.components.InChatDiffBottomSheet
 import com.koda.dev.feature.chat.components.MessageItem
 import com.koda.dev.feature.chat.components.PendingChangesBanner
 import com.koda.dev.feature.chat.components.SessionHistorySheet
@@ -108,6 +109,8 @@ fun ChatScreen(
 
     var inputText by remember { mutableStateOf("") }
     var showHistorySheet by remember { mutableStateOf(false) }
+    var showDiffBottomSheet by remember { mutableStateOf(false) }
+    var selectedDiffChange by remember { mutableStateOf<PendingChange?>(null) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val scaffoldState = rememberTopAppBarState()
@@ -364,7 +367,10 @@ fun ChatScreen(
                         onRejectAll = { viewModel.rejectAllChanges() },
                         onApprove = { viewModel.approveChange(it) },
                         onReject = { viewModel.rejectChange(it) },
-                        onReviewDiffs = onReviewDiffs
+                        onReviewDiffs = {
+                            selectedDiffChange = state.pendingChanges.firstOrNull()
+                            showDiffBottomSheet = true
+                        }
                     )
                 }
 
@@ -396,7 +402,16 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(displayMessages, key = { it.id }) { message ->
-                            MessageItem(message = message)
+                            MessageItem(
+                                message = message,
+                                pendingChanges = state.pendingChanges,
+                                onApproveChange = { viewModel.approveChange(it) },
+                                onRejectChange = { viewModel.rejectChange(it) },
+                                onOpenFullReview = { change ->
+                                    selectedDiffChange = change ?: state.pendingChanges.firstOrNull()
+                                    showDiffBottomSheet = true
+                                }
+                            )
                         }
 
                         if (state.isStreaming) {
@@ -463,6 +478,21 @@ fun ChatScreen(
             },
             onDeleteSession = { sessionId ->
                 viewModel.deleteSession(sessionId)
+            }
+        )
+    }
+
+    if (showDiffBottomSheet && state.pendingChanges.isNotEmpty()) {
+        InChatDiffBottomSheet(
+            pendingChanges = state.pendingChanges,
+            initialSelectedChange = selectedDiffChange,
+            onApprove = { viewModel.approveChange(it) },
+            onReject = { viewModel.rejectChange(it) },
+            onApproveAll = { viewModel.approveAllChanges() },
+            onRejectAll = { viewModel.rejectAllChanges() },
+            onDismiss = {
+                showDiffBottomSheet = false
+                selectedDiffChange = null
             }
         )
     }

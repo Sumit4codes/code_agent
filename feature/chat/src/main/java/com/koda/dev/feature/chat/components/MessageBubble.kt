@@ -38,6 +38,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.koda.dev.core.model.Message
 import com.koda.dev.core.model.MessageRole
+import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.ui.components.MarkdownText
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -47,11 +48,22 @@ import java.util.Locale
 @Composable
 fun MessageItem(
     message: Message,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    pendingChanges: List<PendingChange> = emptyList(),
+    onApproveChange: ((PendingChange) -> Unit)? = null,
+    onRejectChange: ((PendingChange) -> Unit)? = null,
+    onOpenFullReview: ((PendingChange?) -> Unit)? = null
 ) {
     when (message.role) {
         MessageRole.USER -> UserMessageBubble(message = message, modifier = modifier)
-        MessageRole.ASSISTANT -> AssistantMessageBubble(message = message, modifier = modifier)
+        MessageRole.ASSISTANT -> AssistantMessageBubble(
+            message = message,
+            modifier = modifier,
+            pendingChanges = pendingChanges,
+            onApproveChange = onApproveChange,
+            onRejectChange = onRejectChange,
+            onOpenFullReview = onOpenFullReview
+        )
         MessageRole.TOOL -> {
             // Intentionally not rendered: Tool results are integrated into preceding Assistant ToolCallCard
         }
@@ -157,7 +169,11 @@ fun UserMessageBubble(
 @Composable
 fun AssistantMessageBubble(
     message: Message,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    pendingChanges: List<PendingChange> = emptyList(),
+    onApproveChange: ((PendingChange) -> Unit)? = null,
+    onRejectChange: ((PendingChange) -> Unit)? = null,
+    onOpenFullReview: ((PendingChange?) -> Unit)? = null
 ) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
@@ -264,7 +280,13 @@ fun AssistantMessageBubble(
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (tc in message.toolCalls) {
-                            ToolCallCard(toolCall = tc)
+                            ToolCallCard(
+                                toolCall = tc,
+                                pendingChanges = pendingChanges,
+                                onApproveChange = onApproveChange,
+                                onRejectChange = onRejectChange,
+                                onOpenFullReview = onOpenFullReview
+                            )
                         }
                     }
                 }

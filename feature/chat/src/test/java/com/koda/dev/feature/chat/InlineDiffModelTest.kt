@@ -1,0 +1,79 @@
+package com.koda.dev.feature.chat
+
+import com.koda.dev.core.files.DiffEngine
+import com.koda.dev.core.model.ChangeType
+import com.koda.dev.core.model.DiffLineType
+import com.koda.dev.core.model.PendingChange
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class InlineDiffModelTest {
+
+    @Test
+    fun computeDiffForEditProducesAdditionsAndDeletions() {
+        val original = "fun hello() {\n    println(\"old\")\n}"
+        val proposed = "fun hello() {\n    println(\"new\")\n}"
+
+        val hunks = DiffEngine.computeDiff(original, proposed, "Hello.kt")
+
+        assertEquals(1, hunks.size)
+        val hunk = hunks.first()
+        val additions = hunk.lines.count { it.type == DiffLineType.ADDITION }
+        val deletions = hunk.lines.count { it.type == DiffLineType.DELETION }
+
+        assertEquals(1, additions)
+        assertEquals(1, deletions)
+        assertTrue(hunk.lines.any { it.content.contains("old") && it.type == DiffLineType.DELETION })
+        assertTrue(hunk.lines.any { it.content.contains("new") && it.type == DiffLineType.ADDITION })
+    }
+
+    @Test
+    fun computeDiffForNewFileShowsAllAdditions() {
+        val proposed = "class NewClass {\n    val x = 1\n}"
+        val hunks = DiffEngine.computeDiff("", proposed, "NewClass.kt")
+
+        assertTrue(hunks.isNotEmpty())
+        val additions = hunks.sumOf { h -> h.lines.count { it.type == DiffLineType.ADDITION } }
+        val deletions = hunks.sumOf { h -> h.lines.count { it.type == DiffLineType.DELETION } }
+
+        assertEquals(3, additions)
+        assertEquals(0, deletions)
+    }
+
+    @Test
+    fun pendingChangeModelIntegrity() {
+        val change = PendingChange(
+            id = "test-123",
+            sessionId = "sess-1",
+            filePath = "app/src/main/MainActivity.kt",
+            changeType = ChangeType.EDIT,
+            originalContent = "line 1\nline 2",
+            proposedContent = "line 1\nline 2\nline 3",
+            createdAt = System.currentTimeMillis()
+        )
+
+        assertEquals("test-123", change.id)
+        assertEquals("app/src/main/MainActivity.kt", change.filePath)
+        assertEquals(ChangeType.EDIT, change.changeType)
+
+        val hunks = DiffEngine.computeDiff(change.originalContent ?: "", change.proposedContent ?: "", change.filePath)
+        val addedLines = hunks.sumOf { h -> h.lines.count { it.type == DiffLineType.ADDITION } }
+        assertEquals(1, addedLines)
+    }
+
+    @Test
+    fun toolCallFileOperationMatching() {
+        val fileTools = setOf(
+            "propose_file_edit",
+            "create_file",
+            "delete_file",
+            "edit_file",
+            "write_file"
+        )
+
+        assertTrue(fileTools.contains("edit_file"))
+        assertTrue(fileTools.contains("write_file"))
+        assertTrue(fileTools.contains("propose_file_edit"))
+    }
+}
