@@ -118,12 +118,17 @@ fun WorkspaceTerminalSheet(
         }
     }
 
+    val isExpanded = isFullScreen || isKeyboardOpen
+    val sheetHeightFraction = if (isExpanded) 1.0f else 0.58f
+
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding(),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // Scrim above sheet when in half-height mode
-        if (!isFullScreen) {
+        // Scrim above sheet when in half-height mode and keyboard is closed
+        if (!isExpanded) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -140,18 +145,17 @@ fun WorkspaceTerminalSheet(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(if (isFullScreen) 1.0f else 0.58f)
-                .imePadding(),
-            shape = if (isFullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                .fillMaxHeight(sheetHeightFraction),
+            shape = if (isExpanded) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
             color = TerminalBg,
-            border = if (!isFullScreen) BorderStroke(1.dp, Color(0xFF30363D)) else null,
+            border = if (!isExpanded) BorderStroke(1.dp, Color(0xFF30363D)) else null,
             shadowElevation = 16.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (isFullScreen) Modifier.statusBarsPadding() else Modifier)
-                    .navigationBarsPadding()
+                    .then(if (isExpanded) Modifier.statusBarsPadding() else Modifier)
+                    .then(if (!isKeyboardOpen) Modifier.navigationBarsPadding() else Modifier)
             ) {
                 // Drag Handle (clickable to toggle half/full height, draggable to dismiss)
                 Box(
@@ -483,8 +487,6 @@ fun WorkspaceTerminalSheet(
                                 isFocusable = true
                                 isFocusableInTouchMode = true
                                 requestFocus()
-                                val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                imm?.showSoftInput(this, 0)
                             }
                         }
                     },
