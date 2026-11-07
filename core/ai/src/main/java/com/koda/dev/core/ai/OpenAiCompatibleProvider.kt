@@ -132,9 +132,19 @@ class OpenAiCompatibleProvider(
                     !errorBody.isNullOrBlank() -> {
                         try {
                             val json = Json.parseToJsonElement(errorBody).jsonObject
-                            json["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+                            val detail = json["detail"]?.jsonPrimitive?.contentOrNull
+                            val title = json["title"]?.jsonPrimitive?.contentOrNull
+                            val parsed = json["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
                                 ?: json["message"]?.jsonPrimitive?.contentOrNull
+                                ?: detail
+                                ?: title
                                 ?: errorBody
+
+                            if (detail != null && detail.contains("Not found for account", ignoreCase = true)) {
+                                "NVIDIA NIM (404): $detail\n\nCause: Public API Endpoints are not active for your personal account on build.nvidia.com or this model is restricted. Please check your account on build.nvidia.com or try another model (e.g. meta/llama-3.3-70b-instruct)."
+                            } else {
+                                parsed
+                            }
                         } catch (_: Exception) {
                             errorBody
                         }

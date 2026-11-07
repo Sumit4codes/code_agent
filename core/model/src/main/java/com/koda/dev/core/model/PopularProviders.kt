@@ -134,6 +134,24 @@ object PopularProviders {
         description = "Run open-weight models privately on local device or LAN"
     )
 
+    val NVIDIA = PopularProvider(
+        id = "nvidia",
+        name = "NVIDIA NIM",
+        providerType = ProviderType.OPENAI_COMPATIBLE,
+        defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
+        defaultModel = "meta/llama-3.3-70b-instruct",
+        fallbackModels = listOf(
+            "meta/llama-3.3-70b-instruct",
+            "nvidia/llama-3.1-nemotron-70b-instruct",
+            "nvidia/nemotron-3-super-120b-a12b",
+            "deepseek-ai/deepseek-r1",
+            "mistralai/mistral-large-2-instruct"
+        ),
+        apiKeyPlaceholder = "nvapi-...",
+        apiKeyHelpUrl = "https://build.nvidia.com",
+        description = "NVIDIA NIM serverless inference on build.nvidia.com"
+    )
+
     val CUSTOM = PopularProvider(
         id = "custom",
         name = "Custom Provider",
@@ -155,6 +173,7 @@ object PopularProviders {
         DEEPSEEK,
         GROQ,
         GEMINI,
+        NVIDIA,
         OLLAMA,
         CUSTOM
     )
