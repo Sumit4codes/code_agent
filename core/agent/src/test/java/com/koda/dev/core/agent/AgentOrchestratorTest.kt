@@ -277,4 +277,23 @@ class AgentOrchestratorTest {
         val userMessages = result.messages.filter { it.role == ChatMessage.Role.USER }
         assertTrue(userMessages.any { it.content.contains("Also add documentation comments") })
     }
+
+    @Test
+    fun `system prompt instructs agent not to pipe build commands to tail or head`() = runTest {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Done"),
+                ChatStreamEvent.Done
+            )
+        )
+        val context = AgentContext(sessionId = "s-prompt-check", projectId = "p1")
+        val result = orchestrator.run(
+            userMessage = "test",
+            context = context,
+            model = "test-model"
+        )
+        val systemMessage = result.messages.first { it.role == ChatMessage.Role.SYSTEM }
+        assertTrue(systemMessage.content.contains("NEVER PIPE BUILDS/TESTS TO TAIL OR HEAD"))
+        assertTrue(systemMessage.content.contains("tail"))
+    }
 }

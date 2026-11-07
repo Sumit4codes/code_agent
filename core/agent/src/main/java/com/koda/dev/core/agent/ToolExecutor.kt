@@ -593,7 +593,12 @@ class ToolExecutor @Inject constructor(
                 sb.append("Silence: ${status.silenceSeconds}s since last output\n")
 
                 if (status.isStalled) {
-                    sb.append("\n[STALL WARNING] Process has produced 0 output for ${status.silenceSeconds} seconds. It may be deadlocked, waiting for unhandled stdin, or hung on network. You may kill it using manage_task(action='kill', task_id='$taskId').\n")
+                    val isPipedToTailOrHead = Regex("""\|\s*(tail|head)\b""").containsMatchIn(status.command)
+                    if (isPipedToTailOrHead) {
+                        sb.append("\n[STALL WARNING] Process has produced 0 output for ${status.silenceSeconds} seconds. NOTICE: This command is piped to 'tail' or 'head', which buffers all output until the process exits (EOF). Do NOT pipe build or test commands to tail/head.\n")
+                    } else {
+                        sb.append("\n[STALL WARNING] Process has produced 0 output for ${status.silenceSeconds} seconds. It may be deadlocked, waiting for unhandled stdin, or hung on network. You may kill it using manage_task(action='kill', task_id='$taskId').\n")
+                    }
                 }
 
                 sb.append("\nRecent Output:\n")

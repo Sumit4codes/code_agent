@@ -100,6 +100,7 @@ class AgentOrchestrator @Inject constructor(
                 1. KEEP RUNNING: If recent output shows active compilation, downloads, or ongoing test progress, allow it to continue.
                 2. KILL: If you see a [STALL WARNING], an infinite loop, or a prompt waiting on stdin that cannot be satisfied, call `manage_task(action="kill", task_id="...")` immediately.
                 3. Maximum 5 background tasks can run at once. Clean up tasks with `kill` when finished or no longer needed.
+                4. NEVER PIPE BUILDS/TESTS TO TAIL OR HEAD: Do NOT pipe long-running, test, or build commands to `tail` or `head` (e.g. `bash build.sh 2>&1 | tail -60` or `./gradlew ... | tail -n 50`). In Unix, `tail` buffers and blocks ALL output until the process exits (EOF), which prevents real-time streaming to the user chat UI and triggers false stall warnings. The task runner and circular buffer already automatically capture and truncate output. Run commands directly (e.g. `bash build.sh` or `./test.sh`).
             """.trimIndent())
             append("\n\n")
             append("""

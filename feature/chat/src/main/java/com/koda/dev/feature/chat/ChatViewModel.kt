@@ -707,6 +707,7 @@ class ChatViewModel @Inject constructor(
             append("\nTASK MANAGEMENT & PROCESS CONTROL:\n")
             append("- Long-running commands (e.g. dev servers, file watchers, builds, continuous tests) automatically move to the background after wait_seconds (default 20s).\n")
             append("- You can also pass `is_background: true` to `execute_command` to immediately background a task.\n")
+            append("- NEVER PIPE BUILDS/TESTS TO TAIL OR HEAD: Do NOT pipe long-running, test, or build commands to `tail` or `head` (e.g. `bash build.sh 2>&1 | tail -60`). Piping to `tail` buffers until the command exits (EOF), preventing real-time terminal streaming in chat and causing false stall warnings. Run commands directly (e.g. `bash build.sh` or `./test.sh`). Output is automatically capped and managed by the task buffer.\n")
             append("- Use `manage_task` to inspect, control, or kill background tasks:\n")
             append("  * `status`: Check task output, runtime, and status. Pay close attention to [STALL WARNING] (indicates >= 30s of no output).\n")
             append("  * `send_input`: Send input (e.g. 'y', answers, or commands) to interactive processes waiting on stdin.\n")
