@@ -281,6 +281,33 @@ class ChatViewModel @Inject constructor(
                     is AgentEvent.ContextEstimated -> {
                         _state.update { it.copy(contextUsage = event.usage) }
                     }
+                    is AgentEvent.ContextCompacted -> {
+                        flushStreamBuffer()
+                        streamBuffer.clear()
+                        toolOutputBuffer.clear()
+                        val noticeMsg = Message(
+                            id = event.noticeMessageId,
+                            sessionId = currentSessionId,
+                            role = MessageRole.ASSISTANT,
+                            content = event.noticeMessage.content,
+                            timestamp = System.currentTimeMillis()
+                        )
+                        _state.update { state ->
+                            if (state.messages.any { it.id == noticeMsg.id }) {
+                                state
+                            } else {
+                                state.copy(
+                                    messages = state.messages + noticeMsg,
+                                    streamingText = ""
+                                )
+                            }
+                        }
+                        val tail = chatHistory.takeLast(2)
+                        chatHistory = listOf(
+                            ChatMessage(role = ChatMessage.Role.SYSTEM, content = "${HistoryCompactor.COMPACTION_PREFIX}\n${event.summary}")
+                        ) + tail
+                        recalculateContextUsage()
+                    }
                     is AgentEvent.MessageAdded -> {
                         flushStreamBuffer()
                         streamBuffer.clear()

@@ -70,7 +70,10 @@ object ModelCatalogResolver {
         // Mistral family
         "mistral-large-latest" to 128_000,
         "mistral-small-latest" to 128_000,
-        "codestral-latest" to 256_000
+        "codestral-latest" to 256_000,
+
+        // Test models for context & compaction validation
+        "test-1k" to 1_000
     )
 
     /**

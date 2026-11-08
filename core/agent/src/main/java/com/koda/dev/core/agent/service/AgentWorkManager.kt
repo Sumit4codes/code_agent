@@ -314,6 +314,30 @@ class AgentWorkManager @Inject constructor(
                             }
                             insertJobs.add(job)
                         }
+                        is AgentEvent.ContextCompacted -> {
+                            streamBuffer.clear()
+                            _activeTaskState.update { current ->
+                                current?.copy(streamingDelta = "")
+                            }
+                            val msg = event.noticeMessage
+                            val entity = MessageEntity(
+                                id = event.noticeMessageId,
+                                sessionId = task.sessionId,
+                                role = "ASSISTANT",
+                                content = msg.content,
+                                toolCallsJson = null,
+                                toolCallId = null,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            val job = coroutineScope.launch(ioDispatcher) {
+                                try {
+                                    messageDao.insert(entity)
+                                } catch (e: Exception) {
+                                    Log.w("AgentWorkManager", "Failed to insert auto-compaction notice entity", e)
+                                }
+                            }
+                            insertJobs.add(job)
+                        }
                         else -> {}
                     }
                 }

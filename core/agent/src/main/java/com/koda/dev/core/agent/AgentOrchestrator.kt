@@ -50,6 +50,11 @@ sealed class AgentEvent {
         val messageId: String = UUID.randomUUID().toString()
     ) : AgentEvent()
     data class ContextEstimated(val usage: ContextUsageState) : AgentEvent()
+    data class ContextCompacted(
+        val summary: String,
+        val noticeMessage: ChatMessage,
+        val noticeMessageId: String = UUID.randomUUID().toString()
+    ) : AgentEvent()
 }
 
 @Singleton
@@ -62,6 +67,8 @@ class AgentOrchestrator @Inject constructor(
 
     companion object {
         const val MAX_CONTEXT_TOKENS = 100_000
+        const val AUTO_COMPACT_THRESHOLD = 0.80f
+        const val MIN_AUTO_COMPACT_CHARS = 500
     }
 
     suspend fun run(
@@ -154,6 +161,7 @@ class AgentOrchestrator @Inject constructor(
         var lastAssistantContent = ""
         var consecutiveRunningStatusChecks = 0
         var lastRunningStatusTaskId: String? = null
+        var autoCompactionAttempts = 0
 
         while (currentCoroutineContext().isActive) {
             iteration++
@@ -169,14 +177,76 @@ class AgentOrchestrator @Inject constructor(
                 break
             }
 
-            val hygieneMessages = ContextHygiene.shrinkToolResults(messages)
-            val currentEstimate = ContextEstimator.estimate(
+            var hygieneMessages = ContextHygiene.shrinkToolResults(messages)
+            var currentEstimate = ContextEstimator.estimate(
                 messages = hygieneMessages,
                 systemPrompt = effectiveSystemPrompt,
                 tools = toolRegistry.allSpecs(),
                 maxTokens = com.koda.dev.core.ai.ModelCatalogResolver.resolveContextLimit(model)
             )
             onEvent?.invoke(AgentEvent.ContextEstimated(currentEstimate))
+
+            // Autonomous 80% context threshold compaction guard
+            if (currentEstimate.fraction >= AUTO_COMPACT_THRESHOLD &&
+                autoCompactionAttempts < 2 &&
+                canAutoCompact(messages)
+            ) {
+                autoCompactionAttempts++
+                val startIndex = if (messages.firstOrNull()?.role == ChatMessage.Role.SYSTEM) 1 else 0
+                val endIndex = (messages.size - 2).coerceAtLeast(startIndex)
+                if (endIndex - startIndex >= 2) {
+                    val candidateMessages = messages.subList(startIndex, endIndex).toList()
+                    val noticeText = "\n\n> 📦 *Context reached 80% threshold (${currentEstimate.usedTokens}/${currentEstimate.maxTokens} tokens). Automatically compacting earlier history...*\n\n"
+                    onDelta?.invoke(noticeText)
+                    onEvent?.invoke(AgentEvent.TextDelta(noticeText))
+
+                    try {
+                        val summary = HistoryCompactor.summarizeHistory(aiProvider, candidateMessages, model)
+                        if (summary.isNotBlank()) {
+                            val formattedNotice = buildString {
+                                append("### 📦 Context Compacted (80% Threshold Reached)\n\n")
+                                append("Earlier conversation turns have been automatically summarized to free up working context:\n\n")
+                                append(summary)
+                            }
+                            val noticeMsg = ChatMessage(
+                                role = ChatMessage.Role.ASSISTANT,
+                                content = formattedNotice
+                            )
+                            val systemSummaryMsg = ChatMessage(
+                                role = ChatMessage.Role.SYSTEM,
+                                content = "${HistoryCompactor.COMPACTION_PREFIX}\n$summary"
+                            )
+
+                            val retainedTail = messages.subList(endIndex, messages.size).toList()
+                            messages.clear()
+                            if (startIndex == 1 && effectiveSystemPrompt != null) {
+                                messages.add(ChatMessage(role = ChatMessage.Role.SYSTEM, content = effectiveSystemPrompt))
+                            }
+                            messages.add(systemSummaryMsg)
+                            messages.addAll(retainedTail)
+
+                            newMessages.add(noticeMsg)
+                            onEvent?.invoke(
+                                AgentEvent.ContextCompacted(
+                                    summary = summary,
+                                    noticeMessage = noticeMsg
+                                )
+                            )
+
+                            hygieneMessages = ContextHygiene.shrinkToolResults(messages)
+                            currentEstimate = ContextEstimator.estimate(
+                                messages = hygieneMessages,
+                                systemPrompt = effectiveSystemPrompt,
+                                tools = toolRegistry.allSpecs(),
+                                maxTokens = com.koda.dev.core.ai.ModelCatalogResolver.resolveContextLimit(model)
+                            )
+                            onEvent?.invoke(AgentEvent.ContextEstimated(currentEstimate))
+                        }
+                    } catch (_: Exception) {
+                        // If auto-compaction fails, proceed with current working context
+                    }
+                }
+            }
 
             val request = ChatRequest(
                 messages = hygieneMessages,
@@ -513,4 +583,12 @@ internal fun pruneSupersededStatusChecks(messages: MutableList<ChatMessage>, tas
             messages[i] = msg.copy(content = "(Task $taskId status output superseded by newer check)")
         }
     }
+}
+
+internal fun canAutoCompact(messages: List<ChatMessage>): Boolean {
+    val startIndex = if (messages.firstOrNull()?.role == ChatMessage.Role.SYSTEM) 1 else 0
+    val endIndex = messages.size - 2
+    if (endIndex - startIndex < 2) return false
+    val candidateChars = messages.subList(startIndex, endIndex).sumOf { it.content.length }
+    return candidateChars >= AgentOrchestrator.MIN_AUTO_COMPACT_CHARS
 }

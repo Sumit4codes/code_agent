@@ -354,4 +354,85 @@ class AgentOrchestratorTest {
         assertEquals("(Task task_99 status output superseded by newer check)", msgs[0].content)
         assertEquals("(Task task_99 status output superseded by newer check)", msgs[1].content)
     }
+
+    @Test
+    fun `canAutoCompact validates minimum candidate messages and character content`() {
+        // Too few messages
+        val shortList = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "hello"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "world")
+        )
+        org.junit.Assert.assertFalse(canAutoCompact(shortList))
+
+        // Enough messages but sparse content (< 500 chars)
+        val sparseList = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "m1"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "m2"),
+            ChatMessage(role = ChatMessage.Role.USER, content = "m3"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "m4")
+        )
+        org.junit.Assert.assertFalse(canAutoCompact(sparseList))
+
+        // Enough messages with substantial content (>= 500 chars in candidate slice)
+        val substantialList = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "x".repeat(300)),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "y".repeat(300)),
+            ChatMessage(role = ChatMessage.Role.USER, content = "tail1"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "tail2")
+        )
+        assertTrue(canAutoCompact(substantialList))
+    }
+
+    @Test
+    fun `auto compaction triggers when context exceeds 80 percent threshold`() = runTest {
+        // Enqueue response 1: HistoryCompactor summarization call
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("### Current Objectives\n- Fixed authentication bug"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        // Enqueue response 2: Agent response after compaction
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Continuing with next task step..."),
+                ChatStreamEvent.Done
+            )
+        )
+
+        val longText = "a".repeat(1500)
+        val initialHistory = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "Task 1: $longText"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Result 1: $longText"),
+            ChatMessage(role = ChatMessage.Role.USER, content = "Task 2: do something"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Result 2: done")
+        )
+
+        val events = mutableListOf<AgentEvent>()
+        val context = AgentContext(sessionId = "s1", projectId = "p1", history = initialHistory)
+
+        val result = orchestrator.run(
+            userMessage = "Next task step",
+            context = context,
+            model = "test-1k",
+            onEvent = { events.add(it) }
+        )
+
+        // Verify ContextCompacted event was emitted
+        val compactEvents = events.filterIsInstance<AgentEvent.ContextCompacted>()
+        assertEquals(1, compactEvents.size)
+        assertTrue(compactEvents[0].summary.contains("Fixed authentication bug"))
+
+        // Verify result.messages contains the compaction prefix
+        val systemCompactedMsg = result.messages.firstOrNull {
+            it.role == ChatMessage.Role.SYSTEM && it.content.startsWith(HistoryCompactor.COMPACTION_PREFIX)
+        }
+        assertNotNull(systemCompactedMsg)
+        assertTrue(systemCompactedMsg!!.content.contains("Fixed authentication bug"))
+
+        // Verify recent tail was retained
+        assertTrue(result.messages.any { it.role == ChatMessage.Role.USER && it.content == "Next task step" })
+        assertTrue(result.newMessages.any { it.role == ChatMessage.Role.ASSISTANT && it.content.contains("Continuing with next task step...") })
+    }
 }
