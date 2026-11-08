@@ -287,7 +287,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun openAddProviderDialog(preset: PopularProvider = PopularProviders.COMMUNITY_FREE) {
+    fun openAddProviderDialog(preset: PopularProvider = PopularProviders.KILO_FREE) {
         val hasExisting = _state.value.providers.isNotEmpty()
         val templateId = preset.id
         val generatedId = if (preset.isCustom) "custom_${System.currentTimeMillis()}" else preset.id

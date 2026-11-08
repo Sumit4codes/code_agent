@@ -40,6 +40,7 @@ class DefaultModelFetcher @Inject constructor(
 
         val isKeyless = apiKey.isBlank() ||
             apiKey.equals("keyless", ignoreCase = true) ||
+            apiKey.equals("kilo-free", ignoreCase = true) ||
             apiKey.equals("koda-community-free", ignoreCase = true) ||
             cleanUrl.contains("kilo.ai", ignoreCase = true)
 

@@ -28,6 +28,7 @@ class OpenAiCompatibleProvider(
     private fun isKeyless(): Boolean =
         apiKey.isBlank() ||
         apiKey.equals("keyless", ignoreCase = true) ||
+        apiKey.equals("kilo-free", ignoreCase = true) ||
         apiKey.equals("koda-community-free", ignoreCase = true) ||
         baseUrl.contains("kilo.ai", ignoreCase = true)
 
@@ -179,7 +180,7 @@ class OpenAiCompatibleProvider(
                                 "NVIDIA NIM (404): $detail\n\nCause: Public API Endpoints are not active for your personal account on build.nvidia.com or this model is restricted. Please check your account on build.nvidia.com or try another model (e.g. meta/llama-3.3-70b-instruct)."
                             } else if (response?.code == 429 || parsed.contains("limit reached", ignoreCase = true) || parsed.contains("rate limit", ignoreCase = true) || parsed.contains("PROMOTION_MODEL_LIMIT_REACHED", ignoreCase = true)) {
                                 if (baseUrl.contains("kilo.ai", ignoreCase = true) || isKeyless()) {
-                                    "Koda Community Free Quota Reached (HTTP 429): $parsed\n\nHourly community quota has been reached for your IP. Allowance automatically replenishes over an hourly window, or configure your own provider in Settings."
+                                    "Kilo Free Quota Reached (HTTP 429): $parsed\n\nHourly quota reached for your IP on Kilo gateway. Allowance automatically replenishes over an hourly window, or configure your own provider in Settings."
                                 } else {
                                     "Rate Limit Reached (HTTP 429): $parsed"
                                 }
@@ -189,7 +190,7 @@ class OpenAiCompatibleProvider(
                         } catch (_: Exception) {
                             if (response?.code == 429) {
                                 if (baseUrl.contains("kilo.ai", ignoreCase = true) || isKeyless()) {
-                                    "Koda Community Free Quota Reached (HTTP 429): $errorBody\n\nHourly community quota has been reached for your IP. Allowance automatically replenishes over an hourly window, or configure your own provider in Settings."
+                                    "Kilo Free Quota Reached (HTTP 429): $errorBody\n\nHourly quota reached for your IP on Kilo gateway. Allowance automatically replenishes over an hourly window, or configure your own provider in Settings."
                                 } else {
                                     "Rate Limit Reached (HTTP 429): $errorBody"
                                 }
@@ -200,7 +201,7 @@ class OpenAiCompatibleProvider(
                     }
                     response != null -> {
                         if (response.code == 429 && (baseUrl.contains("kilo.ai", ignoreCase = true) || isKeyless())) {
-                            "Koda Community Free Quota Reached (HTTP 429): Hourly community gateway allowance reached for your IP. It automatically replenishes over an hourly window, or you can switch to your own API key in Settings."
+                            "Kilo Free Quota Reached (HTTP 429): Hourly gateway allowance reached for your IP on Kilo. It automatically replenishes over an hourly window, or you can switch to your own API key in Settings."
                         } else {
                             "HTTP error ${response.code}: ${response.message.ifBlank { "Request failed" }}"
                         }
