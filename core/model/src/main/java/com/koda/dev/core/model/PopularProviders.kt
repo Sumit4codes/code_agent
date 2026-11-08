@@ -17,6 +17,24 @@ data class PopularProvider(
 )
 
 object PopularProviders {
+    val COMMUNITY_FREE = PopularProvider(
+        id = "community_free",
+        name = "Koda Community (Free)",
+        providerType = ProviderType.OPENAI_COMPATIBLE,
+        defaultBaseUrl = "https://api.kilo.ai/api/gateway",
+        defaultModel = "kilo-auto/free",
+        fallbackModels = listOf(
+            "kilo-auto/free",
+            "nvidia/nemotron-3.5-super-vl:free",
+            "nvidia/nemotron-3.5-lightning:free",
+            "cohere/north-mini-code:free",
+            "openrouter/free"
+        ),
+        apiKeyPlaceholder = "Not required (Keyless Community Gateway)",
+        apiKeyHelpUrl = null,
+        description = "Free out-of-the-box coding models via open community gateway (~200 req/hr per IP)"
+    )
+
     val ANTIROUTE = PopularProvider(
         id = "antiroute",
         name = "Antiroute Tunnel",
@@ -166,6 +184,7 @@ object PopularProviders {
     )
 
     val allPopular: List<PopularProvider> = listOf(
+        COMMUNITY_FREE,
         ANTIROUTE,
         OPENROUTER,
         OPENAI,

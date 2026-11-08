@@ -137,6 +137,28 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `openAddProviderDialog defaults to COMMUNITY_FREE and keyless save works`() = runTest {
+        val viewModel = SettingsViewModel(repository, modelFetcher, testDispatcher)
+        advanceUntilIdle()
+
+        viewModel.openAddProviderDialog()
+        val editor = viewModel.state.value.editorState
+        assertTrue(editor.isOpen)
+        assertEquals("community_free", editor.selectedTemplateId)
+        assertEquals("Koda Community (Free)", editor.name)
+        assertEquals("https://api.kilo.ai/api/gateway", editor.baseUrl)
+        assertEquals("kilo-auto/free", editor.model)
+
+        viewModel.saveProviderFromEditor()
+        advanceUntilIdle()
+
+        val saved = repository.getProvider("community_free")
+        assertNotNull(saved)
+        assertEquals("https://api.kilo.ai/api/gateway", saved?.baseUrl)
+        assertEquals("kilo-auto/free", saved?.model)
+    }
+
+    @Test
     fun `fetchModelsForEditor populates availableModels dynamically`() = runTest {
         modelFetcher.responseToReturn = Result.success(listOf("deepseek-chat", "deepseek-reasoner"))
 

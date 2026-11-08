@@ -45,11 +45,20 @@ object ModelCatalogResolver {
 
         // NVIDIA NIM / Nemotron family
         "nvidia/nemotron-3.5-super-vl-120b-a12b" to 128_000,
+        "nvidia/nemotron-3.5-super-vl:free" to 1_000_000,
+        "nvidia/nemotron-3.5-lightning:free" to 1_000_000,
         "nvidia/llama-3.1-nemotron-70b-instruct" to 128_000,
         "meta/llama-3.3-70b-instruct" to 128_000,
         "meta/llama-3.1-70b-instruct" to 128_000,
         "meta/llama-3.1-8b-instruct" to 128_000,
         "meta/llama-3.1-405b-instruct" to 128_000,
+
+        // Community Free Models
+        "kilo-auto/free" to 256_000,
+        "cohere/north-mini-code:free" to 256_000,
+        "openrouter/free" to 200_000,
+        "reflection/beam-free" to 1_048_576,
+        "liquid/lfm-3-1.7b:free" to 262_144,
 
         // DeepSeek family
         "deepseek/deepseek-r1" to 128_000,

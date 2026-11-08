@@ -34,6 +34,10 @@ class ModelCatalogResolverTest {
         assertEquals(200_000, ModelCatalogResolver.resolveContextLimit("o1"))
         assertEquals(128_000, ModelCatalogResolver.resolveContextLimit("nvidia/nemotron-3.5-super-vl-120b-a12b"))
         assertEquals(128_000, ModelCatalogResolver.resolveContextLimit("deepseek-r1"))
+        assertEquals(256_000, ModelCatalogResolver.resolveContextLimit("kilo-auto/free"))
+        assertEquals(1_000_000, ModelCatalogResolver.resolveContextLimit("nvidia/nemotron-3.5-super-vl:free"))
+        assertEquals(256_000, ModelCatalogResolver.resolveContextLimit("cohere/north-mini-code:free"))
+        assertEquals(200_000, ModelCatalogResolver.resolveContextLimit("openrouter/free"))
     }
 
     @Test
