@@ -490,7 +490,7 @@ class ChatViewModel @Inject constructor(
                 } else msg
             }
 
-            chatHistory = linkedMessages.map { msg ->
+            val fullChatHistory = linkedMessages.map { msg ->
                 ChatMessage(
                     role = when (msg.role) {
                         MessageRole.SYSTEM -> ChatMessage.Role.SYSTEM
@@ -505,6 +505,7 @@ class ChatViewModel @Inject constructor(
                     toolCallId = msg.toolCallId
                 )
             }
+            chatHistory = ContextHygiene.sliceAfterCompaction(fullChatHistory)
             recalculateContextUsage()
 
             return linkedMessages.filter { it.role != MessageRole.TOOL }
@@ -519,7 +520,9 @@ class ChatViewModel @Inject constructor(
     fun recalculateContextUsage() {
         val currentModel = _state.value.model
         val maxTokens = ModelCatalogResolver.resolveContextLimit(currentModel)
-        val hygieneMessages = ContextHygiene.shrinkToolResults(chatHistory)
+        val activeWorkingHistory = ContextHygiene.sliceAfterCompaction(chatHistory)
+        chatHistory = activeWorkingHistory
+        val hygieneMessages = ContextHygiene.shrinkToolResults(activeWorkingHistory)
         val estimate = ContextEstimator.estimate(
             messages = hygieneMessages,
             systemPrompt = buildSystemPrompt(_state.value.projectName, null),
@@ -529,7 +532,7 @@ class ChatViewModel @Inject constructor(
             lastOutputTokens = _state.value.contextUsage.lastOutputTokens
         )
         val rawEstimate = ContextEstimator.estimate(
-            messages = chatHistory,
+            messages = activeWorkingHistory,
             systemPrompt = buildSystemPrompt(_state.value.projectName, null),
             tools = ToolRegistry.allSpecs(),
             maxTokens = maxTokens
@@ -541,7 +544,7 @@ class ChatViewModel @Inject constructor(
         val shouldAutoCompact = (estimate.fraction >= AgentOrchestrator.AUTO_COMPACT_THRESHOLD ||
                 rawEstimate.fraction >= AgentOrchestrator.AUTO_COMPACT_THRESHOLD) &&
                 !_state.value.isStreaming &&
-                chatHistory.size >= 4 &&
+                activeWorkingHistory.size >= 4 &&
                 (now - lastAutoCompactAttemptTime > 30_000L)
 
         if (shouldAutoCompact) {

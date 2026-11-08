@@ -153,7 +153,8 @@ class AgentOrchestrator @Inject constructor(
         } else {
             history
         }
-        val prunedHistory = pruneStatusHistory(sanitizedHistory)
+        val slicedHistory = ContextHygiene.sliceAfterCompaction(sanitizedHistory)
+        val prunedHistory = pruneStatusHistory(slicedHistory)
         messages.addAll(prunedHistory)
         messages.add(ChatMessage(role = ChatMessage.Role.USER, content = userMessage))
 

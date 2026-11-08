@@ -192,7 +192,7 @@ class AgentWorkManager @Inject constructor(
 
             val historyEntities = if (isUserMsgAlreadyPersisted) existingEntities.dropLast(1) else existingEntities
 
-            val history = historyEntities.map { entity ->
+            val rawHistory = historyEntities.map { entity ->
                 val toolCalls = parseToolCalls(entity.toolCallsJson)
                 ChatMessage(
                     role = when (entity.role) {
@@ -207,6 +207,7 @@ class AgentWorkManager @Inject constructor(
                     toolCallId = entity.toolCallId
                 )
             }
+            val history = com.koda.dev.core.agent.ContextHygiene.sliceAfterCompaction(rawHistory)
 
             // Ensure session exists in DB to prevent foreign key violations
             try {

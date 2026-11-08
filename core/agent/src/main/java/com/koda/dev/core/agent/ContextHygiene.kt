@@ -13,6 +13,35 @@ object ContextHygiene {
     const val MAX_STALE_TOOL_CHARS = 4_000
 
     /**
+     * Slices conversation history for model consumption: finds the last compaction summary
+     * (if any) and retains that summary plus everything that occurred after it.
+     * All messages prior to the compaction boundary are excluded from working prompt memory
+     * because their contents are already represented in the summary.
+     */
+    fun sliceAfterCompaction(history: List<ChatMessage>): List<ChatMessage> {
+        if (history.isEmpty()) return history
+
+        val lastSummaryIdx = history.indexOfLast {
+            (it.role == ChatMessage.Role.SYSTEM && it.content.startsWith(HistoryCompactor.COMPACTION_PREFIX)) ||
+            (it.role == ChatMessage.Role.ASSISTANT && it.content.startsWith("### 📦 Context Compacted"))
+        }
+        if (lastSummaryIdx < 0) return history
+
+        val summaryMsg = history[lastSummaryIdx]
+        val modelSummaryMsg = if (summaryMsg.role == ChatMessage.Role.SYSTEM) {
+            summaryMsg
+        } else {
+            val stripped = summaryMsg.content.removePrefix("### 📦 Context Compacted").trim()
+            ChatMessage(
+                role = ChatMessage.Role.SYSTEM,
+                content = "${HistoryCompactor.COMPACTION_PREFIX}\n$stripped"
+            )
+        }
+
+        return listOf(modelSummaryMsg) + history.subList(lastSummaryIdx + 1, history.size)
+    }
+
+    /**
      * Shrinks older tool execution results in the working prompt context sent to the LLM,
      * while leaving the full un-truncated output intact in the database for the user.
      *

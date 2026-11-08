@@ -52,4 +52,39 @@ class ContextHygieneTest {
             assertEquals(messages[i].content, result[i].content)
         }
     }
+
+    @Test
+    fun sliceAfterCompactionRetainsLatestSummaryAndSubsequentMessages() {
+        val messages = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "Ancient question"),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Ancient large tool output: " + "Z".repeat(5000)),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Ancient answer"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "### 📦 Context Compacted\n\nEarlier conversation turns have been summarized:\n- Objectives: All done"),
+            ChatMessage(role = ChatMessage.Role.USER, content = "hi"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Hello! How can I help?")
+        )
+
+        val sliced = ContextHygiene.sliceAfterCompaction(messages)
+        assertEquals(3, sliced.size)
+        // First message should be the system compaction directive
+        assertEquals(ChatMessage.Role.SYSTEM, sliced[0].role)
+        assertTrue(sliced[0].content.startsWith(HistoryCompactor.COMPACTION_PREFIX))
+        assertTrue(sliced[0].content.contains("Objectives: All done"))
+
+        // Subsequent messages are kept verbatim
+        assertEquals(ChatMessage.Role.USER, sliced[1].role)
+        assertEquals("hi", sliced[1].content)
+        assertEquals(ChatMessage.Role.ASSISTANT, sliced[2].role)
+        assertEquals("Hello! How can I help?", sliced[2].content)
+    }
+
+    @Test
+    fun sliceAfterCompactionReturnsOriginalListIfNoCompactionPresent() {
+        val messages = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "hello"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "world")
+        )
+        val sliced = ContextHygiene.sliceAfterCompaction(messages)
+        assertEquals(messages, sliced)
+    }
 }
