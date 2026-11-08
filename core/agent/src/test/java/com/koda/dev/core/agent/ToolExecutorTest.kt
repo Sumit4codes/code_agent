@@ -360,4 +360,39 @@ class ToolExecutorTest {
         assertTrue(killRes.success)
         assertTrue(killRes.output.contains("was terminated successfully"))
     }
+
+    @Test
+    fun `globMatch handles brace patterns correctly without throwing regex exceptions`() {
+        val pattern = "*.{kts,sh,toml}"
+        assertTrue(executor.globMatch(pattern, "build.gradle.kts"))
+        assertTrue(executor.globMatch(pattern, "scripts/check-env.sh"))
+        assertTrue(executor.globMatch(pattern, "gradle.properties.toml"))
+        assertFalse(executor.globMatch(pattern, "App.kt"))
+        assertFalse(executor.globMatch(pattern, "MainActivity.java"))
+
+        // Malformed brace pattern should not throw
+        assertTrue(executor.globMatch("*.{kts,sh", "test.kts"))
+
+        // Special regex characters in pattern
+        assertTrue(executor.globMatch("file+name[1].txt", "file+name[1].txt"))
+        assertTrue(executor.globMatch("*.kt", "App.kt"))
+        assertTrue(executor.globMatch("*Test*.java", "ToolExecutorTest.java"))
+    }
+
+    @Test
+    fun `execute search_code with brace glob pattern and alternation query`() = runTest {
+        fs.putFile("build.gradle.kts", "org.gradle.parallel=true\norg.gradle.jvmargs=-Xmx2048m")
+        fs.putFile("build.sh", "#!/bin/bash\nexport GRADLE_OPTS=\"-Dorg.gradle.workers.max=4\"")
+        fs.putFile("gradle/libs.versions.toml", "[versions]\nkotlin = \"2.1.0\"")
+        fs.putFile("Main.kt", "fun main() {\n    val parallel = false\n}")
+
+        val result = executor.execute(
+            "search_code",
+            """{"file_pattern":"*.{kts,sh,toml}","query":"no-daemon|parallel|workers.max|org.gradle"}"""
+        )
+        assertTrue(result.success)
+        assertTrue(result.output.contains("build.gradle.kts:1: org.gradle.parallel=true"))
+        assertTrue(result.output.contains("build.sh:2: export GRADLE_OPTS=\"-Dorg.gradle.workers.max=4\""))
+        assertFalse(result.output.contains("Main.kt"))
+    }
 }

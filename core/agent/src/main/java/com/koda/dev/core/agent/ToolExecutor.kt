@@ -91,40 +91,46 @@ class ToolExecutor @Inject constructor(
         onOutput: ((String) -> Unit)? = null,
         yieldEarlyIf: (() -> Boolean)? = null
     ): ToolResult = withContext(Dispatchers.IO) {
-        val args = try {
-            Json.parseToJsonElement(argumentsJson).jsonObject
-        } catch (_: Exception) {
-            return@withContext ToolResult(false, "Invalid JSON arguments: $argumentsJson")
-        }
+        try {
+            val args = try {
+                Json.parseToJsonElement(argumentsJson).jsonObject
+            } catch (_: Exception) {
+                return@withContext ToolResult(false, "Invalid JSON arguments: $argumentsJson")
+            }
 
-        val cleanName = ToolNames.normalize(name)
+            val cleanName = ToolNames.normalize(name)
 
-        // Web search, page fetch, and task management do not require an open project filesystem
-        if (cleanName == ToolNames.WEB_SEARCH) {
-            return@withContext executeWebSearch(args)
-        }
-        if (cleanName == ToolNames.FETCH_WEB_PAGE) {
-            return@withContext executeFetchWebPage(args)
-        }
-        if (cleanName == ToolNames.MANAGE_TASK) {
-            return@withContext executeManageTask(args)
-        }
+            // Web search, page fetch, and task management do not require an open project filesystem
+            if (cleanName == ToolNames.WEB_SEARCH) {
+                return@withContext executeWebSearch(args)
+            }
+            if (cleanName == ToolNames.FETCH_WEB_PAGE) {
+                return@withContext executeFetchWebPage(args)
+            }
+            if (cleanName == ToolNames.MANAGE_TASK) {
+                return@withContext executeManageTask(args)
+            }
 
-        val fs = fileSystem
-        if (fs == null) {
-            return@withContext ToolResult(false, "No project is open. Please open a project first.")
-        }
+            val fs = fileSystem
+            if (fs == null) {
+                return@withContext ToolResult(false, "No project is open. Please open a project first.")
+            }
 
-        when (cleanName) {
-            ToolNames.LIST_FILES -> executeListFiles(fs, args)
-            ToolNames.READ_FILE -> executeReadFile(fs, args)
-            ToolNames.SEARCH_CODE -> executeSearchCode(fs, args)
-            ToolNames.GET_FILE_SUMMARY -> executeGetFileSummary(fs, args)
-            ToolNames.PROPOSE_FILE_EDIT -> executeProposeEdit(fs, args)
-            ToolNames.CREATE_FILE -> executeCreateFile(fs, args)
-            ToolNames.DELETE_FILE -> executeDeleteFile(fs, args)
-            ToolNames.EXECUTE_COMMAND -> executeCommand(args, onOutput, yieldEarlyIf)
-            else -> ToolResult(false, "Unknown tool: $name")
+            when (cleanName) {
+                ToolNames.LIST_FILES -> executeListFiles(fs, args)
+                ToolNames.READ_FILE -> executeReadFile(fs, args)
+                ToolNames.SEARCH_CODE -> executeSearchCode(fs, args)
+                ToolNames.GET_FILE_SUMMARY -> executeGetFileSummary(fs, args)
+                ToolNames.PROPOSE_FILE_EDIT -> executeProposeEdit(fs, args)
+                ToolNames.CREATE_FILE -> executeCreateFile(fs, args)
+                ToolNames.DELETE_FILE -> executeDeleteFile(fs, args)
+                ToolNames.EXECUTE_COMMAND -> executeCommand(args, onOutput, yieldEarlyIf)
+                else -> ToolResult(false, "Unknown tool: $name")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            ToolResult(false, "Tool execution failed: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 
@@ -276,21 +282,29 @@ class ToolExecutor @Inject constructor(
         return ToolResult(true, "$header\n$outputText$notice")
     }
 
-    private suspend fun executeSearchCode(fs: ProjectFileSystem, args: JsonObject): ToolResult {
+    private suspend fun executeSearchCode(fs: ProjectFileSystem, args: JsonObject): ToolResult = runCatching {
         val query = argString(args, "query") ?: return ToolResult(false, "Missing 'query' argument")
         val filePattern = argString(args, "file_pattern")
 
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
         val results = mutableListOf<String>()
-        searchRecursive(fs, rootUri, query, filePattern, results, depth = 0, maxDepth = 10, maxResults = 30)
 
-        return ToolResult(true, if (results.isEmpty()) "No matches found" else results.joinToString("\n"))
+        val queryRegex = if (query.contains('|') || query.contains(".*") || query.contains("\\b")) {
+            runCatching { Regex(query, RegexOption.IGNORE_CASE) }.getOrNull()
+        } else null
+
+        searchRecursive(fs, rootUri, query, queryRegex, filePattern, results, depth = 0, maxDepth = 10, maxResults = 30)
+
+        ToolResult(true, if (results.isEmpty()) "No matches found" else results.joinToString("\n"))
+    }.getOrElse { e ->
+        ToolResult(false, "Search failed: ${e.message ?: e.javaClass.simpleName}")
     }
 
     private suspend fun searchRecursive(
         fs: ProjectFileSystem,
         uri: Uri,
         query: String,
+        queryRegex: Regex?,
         filePattern: String?,
         results: MutableList<String>,
         depth: Int,
@@ -300,7 +314,7 @@ class ToolExecutor @Inject constructor(
     ) {
         if (depth > maxDepth || results.size >= maxResults) return
 
-        val children = fs.listChildren(uri)
+        val children = runCatching { fs.listChildren(uri) }.getOrElse { emptyList() }
         for (child in children) {
             if (results.size >= maxResults) break
             if (PathSafety.shouldIgnore(child.name, child.isDirectory)) continue
@@ -308,16 +322,25 @@ class ToolExecutor @Inject constructor(
             val childPath = if (currentPath.isEmpty()) child.name else "$currentPath/${child.name}"
 
             if (child.isDirectory) {
-                searchRecursive(fs, child.uri, query, filePattern, results, depth + 1, maxDepth, maxResults, childPath)
+                searchRecursive(fs, child.uri, query, queryRegex, filePattern, results, depth + 1, maxDepth, maxResults, childPath)
             } else {
-                if (filePattern != null && !globMatch(filePattern, child.name)) continue
+                if (filePattern != null) {
+                    val matchesName = globMatch(filePattern, child.name)
+                    val matchesPath = if (filePattern.contains('/')) globMatch(filePattern, childPath) else false
+                    if (!matchesName && !matchesPath) continue
+                }
                 val childSize = child.size
                 if (childSize != null && childSize > 500_000) continue
 
-                val content = fs.readTextFile(child.uri) ?: continue
+                val content = runCatching { fs.readTextFile(child.uri) }.getOrNull() ?: continue
                 val lines = content.lines()
                 for ((i, line) in lines.withIndex()) {
-                    if (line.contains(query, ignoreCase = true)) {
+                    val isMatch = if (queryRegex != null) {
+                        queryRegex.containsMatchIn(line) || line.contains(query, ignoreCase = true)
+                    } else {
+                        line.contains(query, ignoreCase = true)
+                    }
+                    if (isMatch) {
                         results.add("$childPath:${i + 1}: ${line.trim().take(120)}")
                         if (results.size >= maxResults) return
                     }
@@ -326,12 +349,104 @@ class ToolExecutor @Inject constructor(
         }
     }
 
-    private fun globMatch(pattern: String, name: String): Boolean {
-        val regex = pattern
-            .replace(".", "\\.")
-            .replace("*", ".*")
-            .replace("?", ".")
-        return Regex(regex).matches(name)
+    internal fun globToRegex(pattern: String): Regex {
+        val sb = StringBuilder("^")
+        var inBrace = false
+        var i = 0
+        val len = pattern.length
+
+        while (i < len) {
+            val c = pattern[i]
+            when (c) {
+                '*' -> {
+                    if (i + 1 < len && pattern[i + 1] == '*') {
+                        sb.append(".*")
+                        i++
+                    } else {
+                        sb.append(".*")
+                    }
+                }
+                '?' -> sb.append(".")
+                '.' -> sb.append("\\.")
+                '\\' -> {
+                    if (i + 1 < len) {
+                        sb.append("\\").append(pattern[i + 1])
+                        i++
+                    } else {
+                        sb.append("\\\\")
+                    }
+                }
+                '{' -> {
+                    sb.append("(?:")
+                    inBrace = true
+                }
+                '}' -> {
+                    if (inBrace) {
+                        sb.append(")")
+                        inBrace = false
+                    } else {
+                        sb.append("\\}")
+                    }
+                }
+                ',' -> {
+                    if (inBrace) {
+                        sb.append("|")
+                    } else {
+                        sb.append(",")
+                    }
+                }
+                '(', ')', '[', ']', '+', '^', '$', '|' -> {
+                    sb.append('\\').append(c)
+                }
+                else -> sb.append(c)
+            }
+            i++
+        }
+        if (inBrace) {
+            sb.append(")")
+        }
+        sb.append("$")
+        return Regex(sb.toString(), RegexOption.IGNORE_CASE)
+    }
+
+    internal fun globMatch(pattern: String, name: String): Boolean {
+        if (pattern.isBlank() || pattern == "*") return true
+        return runCatching {
+            globToRegex(pattern).matches(name)
+        }.getOrElse {
+            fallbackMatch(pattern, name)
+        }
+    }
+
+    private fun fallbackMatch(pattern: String, name: String): Boolean {
+        if (pattern.contains('{') && pattern.contains('}')) {
+            val start = pattern.indexOf('{')
+            val end = pattern.indexOf('}')
+            if (start < end) {
+                val prefix = pattern.substring(0, start)
+                val suffix = pattern.substring(end + 1)
+                val options = pattern.substring(start + 1, end).split(',')
+                for (opt in options) {
+                    if (fallbackMatch("$prefix$opt$suffix", name)) return true
+                }
+                return false
+            }
+        }
+        if (pattern.startsWith("*.")) {
+            val ext = pattern.removePrefix("*.")
+            return name.endsWith(".$ext", ignoreCase = true)
+        }
+        if (pattern.startsWith("*") && pattern.endsWith("*") && pattern.length > 2) {
+            val sub = pattern.removeSurrounding("*")
+            return name.contains(sub, ignoreCase = true)
+        }
+        if (pattern.startsWith("*")) {
+            return name.endsWith(pattern.removePrefix("*"), ignoreCase = true)
+        }
+        if (pattern.endsWith("*")) {
+            return name.startsWith(pattern.removeSuffix("*"), ignoreCase = true)
+        }
+        return name.equals(pattern, ignoreCase = true)
     }
 
     private suspend fun executeGetFileSummary(fs: ProjectFileSystem, args: JsonObject): ToolResult {
