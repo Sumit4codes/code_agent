@@ -66,8 +66,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -94,7 +92,6 @@ fun WorkspaceTerminalSheet(
     var terminalViewInstance by remember { mutableStateOf<TerminalView?>(null) }
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var isFullScreen by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
     val isKeyboardOpen = WindowInsets.isImeVisible
 
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -112,10 +109,6 @@ fun WorkspaceTerminalSheet(
         if (!projectId.isNullOrBlank()) {
             viewModel.openProject(projectId)
         }
-    }
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
     }
 
     // Drag down to dismiss on handle / header
@@ -475,12 +468,6 @@ fun WorkspaceTerminalSheet(
                             setBackgroundColor(android.graphics.Color.parseColor("#0D1117"))
                             viewModel.registerTerminalView(this)
                             terminalViewInstance = this
-                            setOnFocusChangeListener { _, hasFocus ->
-                                if (hasFocus) {
-                                    val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                    imm?.showSoftInput(this, 0)
-                                }
-                            }
                             setOnTouchListener { v, event ->
                                 if (event.action == android.view.MotionEvent.ACTION_UP) {
                                     v.isFocusable = true
@@ -490,11 +477,6 @@ fun WorkspaceTerminalSheet(
                                     imm?.showSoftInput(v, 0)
                                 }
                                 false
-                            }
-                            post {
-                                isFocusable = true
-                                isFocusableInTouchMode = true
-                                requestFocus()
                             }
                         }
                     },
@@ -523,8 +505,6 @@ fun WorkspaceTerminalSheet(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .focusRequester(focusRequester)
-                        .focusable()
                 )
 
                 // Quick Accessory Key Bar

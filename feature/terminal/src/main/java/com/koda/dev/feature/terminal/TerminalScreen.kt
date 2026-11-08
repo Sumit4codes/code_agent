@@ -27,11 +27,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,7 +54,7 @@ fun TerminalScreen(
     val context = LocalContext.current
     var terminalViewInstance by remember { mutableStateOf<TerminalView?>(null) }
     var showFontSizeDialog by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val isKeyboardOpen = WindowInsets.isImeVisible
 
     LaunchedEffect(projectId) {
@@ -65,7 +64,8 @@ fun TerminalScreen(
     }
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        // Switching to terminal page should not open the keyboard automatically; hide if already open
+        keyboardController?.hide()
     }
 
     Scaffold(
@@ -388,12 +388,6 @@ fun TerminalScreen(
                         setBackgroundColor(android.graphics.Color.parseColor("#0D1117"))
                         viewModel.registerTerminalView(this)
                         terminalViewInstance = this
-                        setOnFocusChangeListener { _, hasFocus ->
-                            if (hasFocus) {
-                                val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                imm?.showSoftInput(this, 0)
-                            }
-                        }
                         setOnTouchListener { v, event ->
                             if (event.action == android.view.MotionEvent.ACTION_UP) {
                                 v.isFocusable = true
@@ -403,13 +397,6 @@ fun TerminalScreen(
                                 imm?.showSoftInput(v, 0)
                             }
                             false
-                        }
-                        post {
-                            isFocusable = true
-                            isFocusableInTouchMode = true
-                            requestFocus()
-                            val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                            imm?.showSoftInput(this, 0)
                         }
                     }
                 },
@@ -438,8 +425,6 @@ fun TerminalScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .focusable()
             )
 
             // Quick Accessory Bar
