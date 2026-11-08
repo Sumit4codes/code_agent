@@ -8,10 +8,12 @@ import com.koda.dev.core.agent.AgentContext
 import com.koda.dev.core.agent.AgentEvent
 import com.koda.dev.core.agent.AgentOrchestrator
 import com.koda.dev.core.agent.ContextEstimator
+import com.koda.dev.core.agent.ContextHygiene
 import com.koda.dev.core.agent.ContextUsageState
 import com.koda.dev.core.agent.HistoryCompactor
 import com.koda.dev.core.agent.PendingChangeManager
 import com.koda.dev.core.agent.ToolExecutor
+import com.koda.dev.core.agent.ToolRegistry
 import com.koda.dev.core.agent.service.AgentWorkManager
 import com.koda.dev.core.ai.AiProvider
 import com.koda.dev.core.ai.ChatMessage
@@ -512,17 +514,40 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    private var lastAutoCompactAttemptTime = 0L
+
     fun recalculateContextUsage() {
         val currentModel = _state.value.model
         val maxTokens = ModelCatalogResolver.resolveContextLimit(currentModel)
+        val hygieneMessages = ContextHygiene.shrinkToolResults(chatHistory)
         val estimate = ContextEstimator.estimate(
-            messages = chatHistory,
+            messages = hygieneMessages,
             systemPrompt = buildSystemPrompt(_state.value.projectName, null),
+            tools = ToolRegistry.allSpecs(),
             maxTokens = maxTokens,
             lastInputTokens = _state.value.contextUsage.lastInputTokens,
             lastOutputTokens = _state.value.contextUsage.lastOutputTokens
         )
+        val rawEstimate = ContextEstimator.estimate(
+            messages = chatHistory,
+            systemPrompt = buildSystemPrompt(_state.value.projectName, null),
+            tools = ToolRegistry.allSpecs(),
+            maxTokens = maxTokens
+        )
         _state.update { it.copy(contextUsage = estimate) }
+
+        // Automatically compact when conversation approaches or exceeds 80% threshold and agent is idle
+        val now = System.currentTimeMillis()
+        val shouldAutoCompact = (estimate.fraction >= AgentOrchestrator.AUTO_COMPACT_THRESHOLD ||
+                rawEstimate.fraction >= AgentOrchestrator.AUTO_COMPACT_THRESHOLD) &&
+                !_state.value.isStreaming &&
+                chatHistory.size >= 4 &&
+                (now - lastAutoCompactAttemptTime > 30_000L)
+
+        if (shouldAutoCompact) {
+            lastAutoCompactAttemptTime = now
+            compactHistory()
+        }
     }
 
     fun compactHistory() {
