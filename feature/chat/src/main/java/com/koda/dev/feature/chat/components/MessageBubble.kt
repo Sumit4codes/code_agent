@@ -1,5 +1,8 @@
 package com.koda.dev.feature.chat.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,8 +23,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -45,9 +51,6 @@ import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.ui.components.MarkdownText
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun MessageItem(
@@ -71,7 +74,7 @@ fun MessageItem(
             onOpenFullReview = onOpenFullReview
         )
         MessageRole.TOOL -> {
-            // Intentionally not rendered: Tool results are integrated into preceding Assistant ToolCallCard
+            // Tool results are seamlessly integrated into preceding Assistant AgentTimelineView
         }
         MessageRole.SYSTEM -> {
             // Minimal system notification
@@ -83,12 +86,12 @@ fun MessageItem(
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
+                    color = Color(0xFF21262D)
                 ) {
                     Text(
                         text = message.content,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFF8B949E),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
@@ -97,6 +100,10 @@ fun MessageItem(
     }
 }
 
+/**
+ * Modern user message card matching the reference design:
+ * Clean dark graphite container (#21262D), subtle border, high readability, right-aligned.
+ */
 @Composable
 fun UserMessageBubble(
     message: Message,
@@ -104,7 +111,6 @@ fun UserMessageBubble(
 ) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
-    val formattedTime = remember(message.timestamp) { formatTimestamp(message.timestamp) }
 
     val isSteering = remember(message.content) {
         message.content.contains("<user_steering_guidance>")
@@ -132,18 +138,15 @@ fun UserMessageBubble(
         horizontalAlignment = Alignment.End
     ) {
         Surface(
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 4.dp
+            shape = RoundedCornerShape(18.dp),
+            color = Color(0xFF21262D),
+            border = BorderStroke(
+                1.dp,
+                if (isSteering) Color(0xFF2F81F7).copy(alpha = 0.6f) else Color(0xFF30363D)
             ),
-            color = if (isSteering) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
-            border = if (isSteering) BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)) else null,
-            tonalElevation = 1.dp,
             modifier = Modifier.widthIn(max = 560.dp)
         ) {
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 if (isSteering) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -154,7 +157,7 @@ fun UserMessageBubble(
                             imageVector = Icons.Default.Navigation,
                             contentDescription = null,
                             modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                            tint = Color(0xFF58A6FF)
                         )
                         Text(
                             text = "Mid-Run Steering",
@@ -162,54 +165,32 @@ fun UserMessageBubble(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp
                             ),
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = Color(0xFF58A6FF)
                         )
                     }
                 }
 
                 Text(
                     text = displayContent,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isSteering) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.5.sp,
+                        lineHeight = 21.sp
+                    ),
+                    color = Color(0xFFF0F6FC)
                 )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Footer with timestamp & copy button
-                Row(
-                    modifier = Modifier.align(Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (formattedTime.isNotBlank()) {
-                        Text(
-                            text = formattedTime,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = (if (isSteering) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = 0.65f)
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
-                                clipboardManager.setText(AnnotatedString(displayContent))
-                                copied = true
-                            }
-                            .padding(2.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
-                            contentDescription = "Copy text",
-                            modifier = Modifier.size(12.dp),
-                            tint = (if (isSteering) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = 0.7f)
-                        )
-                    }
-                }
             }
         }
     }
 }
 
+/**
+ * Modern assistant message stream representation matching the reference design:
+ * Flows directly in the stream without bounding boxes or robot avatars.
+ * - Collapsible "Worked for Xm ⌄" timeline for background steps
+ * - "N file(s) changed +X -Y [Review]" diff pill
+ * - Direct markdown text
+ * - Clean footer with relative time and action buttons
+ */
 @Composable
 fun AssistantMessageBubble(
     message: Message,
@@ -222,7 +203,11 @@ fun AssistantMessageBubble(
 ) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
-    val formattedTime = remember(message.timestamp) { formatTimestamp(message.timestamp) }
+    var userRating by remember { mutableStateOf<Boolean?>(null) } // true: liked, false: disliked, null: none
+
+    val relativeTime = remember(message.timestamp) {
+        formatRelativeTime(message.timestamp)
+    }
 
     LaunchedEffect(copied) {
         if (copied) {
@@ -232,118 +217,108 @@ fun AssistantMessageBubble(
     }
 
     Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.Start
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Surface(
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = 4.dp,
-                bottomEnd = 16.dp
-            ),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-            ),
-            tonalElevation = 1.dp,
+        // 1. Collapsible Activity Timeline ("Worked for 1m ⌄")
+        if (message.toolCalls.isNotEmpty()) {
+            AgentTimelineView(
+                toolCalls = message.toolCalls,
+                isLive = isLive,
+                messageId = message.id
+            )
+        }
+
+        // 2. Diff Review Pill ("1 file changed +103 -22  ›   [ Review ]")
+        if (pendingChanges.isNotEmpty()) {
+            FileChangesPill(
+                pendingChanges = pendingChanges,
+                onOpenFullReview = { onOpenFullReview?.invoke(null) }
+            )
+        }
+
+        // 3. Assistant Output Markdown Text
+        if (message.content.isNotBlank()) {
+            MarkdownText(content = message.content)
+        }
+
+        // 4. Clean Turn Footer: Relative timestamp + Copy + Feedback actions
+        Row(
             modifier = Modifier
-                .widthIn(max = 680.dp)
-                .fillMaxWidth(0.96f)
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 2.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                // Header
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SmartToy,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Text(
-                        text = "Koda Dev",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    if (formattedTime.isNotBlank()) {
-                        Text(
-                            text = "· $formattedTime",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
+            if (relativeTime.isNotBlank()) {
+                Text(
+                    text = relativeTime,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.5.sp
+                    ),
+                    color = Color(0xFF8B949E)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+            }
 
-                    // Copy action button in header
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable {
-                                clipboardManager.setText(AnnotatedString(message.content))
-                                copied = true
-                            }
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
-                            contentDescription = "Copy message",
-                            modifier = Modifier.size(12.dp),
-                            tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = if (copied) "Copied" else "Copy",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            // Copy action button
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable {
+                        clipboardManager.setText(AnnotatedString(message.content))
+                        copied = true
                     }
-                }
+                    .padding(4.dp)
+            ) {
+                Icon(
+                    imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
+                    contentDescription = "Copy message",
+                    modifier = Modifier.size(15.dp),
+                    tint = if (copied) Color(0xFF3FB950) else Color(0xFF8B949E)
+                )
+            }
 
-                // Tool calls accordion section (collapses on completion to keep chat clean)
-                if (message.toolCalls.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    ToolCallsAccordion(
-                        toolCalls = message.toolCalls,
-                        isLive = isLive,
-                        messageId = message.id,
-                        pendingChanges = pendingChanges,
-                        onApproveChange = onApproveChange,
-                        onRejectChange = onRejectChange,
-                        onOpenFullReview = onOpenFullReview
-                    )
-                }
+            Spacer(modifier = Modifier.width(6.dp))
 
-                if (message.content.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    MarkdownText(content = message.content)
-                }
+            // Thumbs Up button
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable {
+                        userRating = if (userRating == true) null else true
+                    }
+                    .padding(4.dp)
+            ) {
+                Icon(
+                    imageVector = if (userRating == true) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                    contentDescription = "Helpful",
+                    modifier = Modifier.size(15.dp),
+                    tint = if (userRating == true) Color(0xFF2F81F7) else Color(0xFF8B949E)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Thumbs Down button
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable {
+                        userRating = if (userRating == false) null else false
+                    }
+                    .padding(4.dp)
+            ) {
+                Icon(
+                    imageVector = if (userRating == false) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                    contentDescription = "Not helpful",
+                    modifier = Modifier.size(15.dp),
+                    tint = if (userRating == false) Color(0xFFF85149) else Color(0xFF8B949E)
+                )
             }
         }
-    }
-}
-
-private fun formatTimestamp(timestamp: Long): String {
-    if (timestamp <= 0) return ""
-    return try {
-        val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
-        sdf.format(Date(timestamp))
-    } catch (_: Exception) {
-        ""
     }
 }

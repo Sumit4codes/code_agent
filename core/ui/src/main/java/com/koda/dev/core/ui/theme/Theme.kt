@@ -16,15 +16,15 @@ import androidx.compose.ui.text.font.FontFamily
 
 val KodaDarkColorScheme = darkColorScheme(
     primary = CyberCyan,
-    onPrimary = Color(0xFF00363D),
+    onPrimary = Color.White,
     primaryContainer = CyberCyanContainer,
     onPrimaryContainer = OnCyberCyanContainer,
     secondary = ElectricVioletLight,
-    onSecondary = Color(0xFF28005A),
+    onSecondary = Color(0xFF031633),
     secondaryContainer = ElectricVioletContainer,
     onSecondaryContainer = OnElectricVioletContainer,
     tertiary = HyperIndigo,
-    onTertiary = Color(0xFF1E1B4B),
+    onTertiary = Color.White,
     tertiaryContainer = HyperIndigoContainer,
     onTertiaryContainer = OnHyperIndigoContainer,
     background = VoidObsidian,
@@ -34,12 +34,17 @@ val KodaDarkColorScheme = darkColorScheme(
     surfaceVariant = ObsidianSurfaceVariant,
     onSurfaceVariant = ContentSecondary,
     surfaceTint = CyberCyan,
+    surfaceContainerLowest = Color(0xFF090C10),
+    surfaceContainerLow = Color(0xFF12151B),
+    surfaceContainer = ObsidianSurface,
+    surfaceContainerHigh = ObsidianSurfaceVariant,
+    surfaceContainerHighest = ObsidianBorder,
     outline = ContentTertiary,
-    outlineVariant = ObsidianBorder,
+    outlineVariant = ObsidianBorderSubtle,
     error = TerminalError,
-    onError = Color(0xFF450A0A),
+    onError = Color.White,
     errorContainer = TerminalErrorContainer,
-    onErrorContainer = Color(0xFFFCA5A5)
+    onErrorContainer = Color(0xFFFF7B72)
 )
 
 val KodaLightColorScheme = lightColorScheme(

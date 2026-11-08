@@ -232,15 +232,16 @@ fun ChatScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
+                                color = androidx.compose.ui.graphics.Color(0xFF21262D),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF30363D)),
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.SmartToy,
                                         contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
-                                        tint = MaterialTheme.colorScheme.primary
+                                        modifier = Modifier.size(18.dp),
+                                        tint = androidx.compose.ui.graphics.Color(0xFF8B949E)
                                     )
                                 }
                             }
@@ -391,6 +392,9 @@ fun ChatScreen(
                     hasProject = state.projectUri != null,
                     projectName = state.projectName,
                     modelName = state.model,
+                    availableProviders = state.availableProviders,
+                    activeProvider = state.activeProvider,
+                    onSelectProvider = { providerId -> viewModel.selectProvider(providerId) },
                     contextUsage = state.contextUsage,
                     onCompact = { viewModel.compactHistory() },
                     onOpenDetails = { showContextDialog = true },
@@ -457,7 +461,11 @@ fun ChatScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(displayMessages, key = { it.id }) { message ->
+                        items(
+                            items = displayMessages,
+                            key = { it.id },
+                            contentType = { it.role.name }
+                        ) { message ->
                             val isLastItem = message.id == displayMessages.lastOrNull()?.id
                             val isLive = state.isStreaming && isLastItem
 
@@ -487,16 +495,16 @@ fun ChatScreen(
                 }
             }
 
-            // Scroll to bottom floating button
+            // Scroll to bottom floating button (centered above input bar)
             AnimatedVisibility(
                 visible = isScrolledUp,
                 enter = fadeIn() + scaleIn(),
                 exit = fadeOut() + scaleOut(),
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp)
             ) {
-                FloatingActionButton(
+                Surface(
                     onClick = {
                         userScrolledUp = false
                         coroutineScope.launch {
@@ -505,17 +513,23 @@ fun ChatScreen(
                             }
                         }
                     },
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(36.dp),
                     shape = CircleShape,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 2.dp)
+                    color = androidx.compose.ui.graphics.Color(0xFF21262D),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF30363D)),
+                    shadowElevation = 4.dp
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Scroll to bottom",
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Scroll to bottom",
+                            modifier = Modifier.size(20.dp),
+                            tint = androidx.compose.ui.graphics.Color(0xFFF0F6FC)
+                        )
+                    }
                 }
             }
         }

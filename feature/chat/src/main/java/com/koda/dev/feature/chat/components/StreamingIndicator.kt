@@ -78,84 +78,34 @@ fun StreamingBubble(
     modelName: String = "",
     modifier: Modifier = Modifier
 ) {
-    val codeBg = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)
+    val codeBg = Color(0xFF21262D)
     val annotatedContent = remember(streamingText, codeBg) {
         buildStreamingAnnotatedString(streamingText, codeBg)
     }
 
-    Surface(
-        shape = RoundedCornerShape(
-            topStart = 16.dp,
-            topEnd = 16.dp,
-            bottomStart = 4.dp,
-            bottomEnd = 16.dp
-        ),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-        ),
-        tonalElevation = 1.dp,
+    Column(
         modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SmartToy,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Text(
-                    text = "Koda Dev",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                if (modelName.isNotBlank()) {
-                    Text(
-                        text = "· $modelName",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+        // Active runtime tool execution
+        if (activeTool != null) {
+            ActiveToolRuntimeCard(activeTool = activeTool)
+        }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Active runtime tool execution
-            if (activeTool != null) {
-                ActiveToolRuntimeCard(activeTool = activeTool)
-                if (streamingText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-            }
-
-            // Streamed text or thinking animation
-            if (streamingText.isNotBlank()) {
-                Text(
-                    text = annotatedContent,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        lineHeight = 22.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            } else if (activeTool == null) {
-                ThinkingAnimation()
-            }
+        // Streamed text or thinking animation
+        if (streamingText.isNotBlank()) {
+            Text(
+                text = annotatedContent,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 14.5.sp,
+                    lineHeight = 22.sp
+                ),
+                color = Color(0xFFF0F6FC)
+            )
+        } else if (activeTool == null) {
+            ThinkingAnimation()
         }
     }
 }
@@ -178,10 +128,10 @@ fun ActiveToolRuntimeCard(
 
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+        color = Color(0xFF161B22),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            Color(0xFF30363D)
         ),
         modifier = modifier.fillMaxWidth()
     ) {

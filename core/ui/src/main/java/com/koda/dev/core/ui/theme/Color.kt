@@ -5,58 +5,58 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 // -------------------------------------------------------------------------
-// Primitive Brand Palette: Koda Obsidian Design System
+// Primitive Brand Palette: Koda Neutral Charcoal & Developer Blue System
 // -------------------------------------------------------------------------
 
-// Canvas & Obsidian Surfaces
-val VoidObsidian = Color(0xFF0B0F19)           // Deep obsidian space background
-val ObsidianSurface = Color(0xFF111726)        // Elevated base surface
-val ObsidianSurfaceElevated = Color(0xFF161E31)// Sheets, popups, menus
-val ObsidianSurfaceVariant = Color(0xFF1D263B) // Cards, code blocks, input bar
-val ObsidianBorder = Color(0xFF26334D)          // Crisp 1dp border
-val ObsidianBorderSubtle = Color(0xFF1E283C)    // Hairline border
-val ObsidianBorderFocus = Color(0xFF00F0FF)     // Focused element border
+// Canvas & Surfaces: Developer Charcoal
+val VoidObsidian = Color(0xFF0D1117)           // Deep neutral charcoal background
+val ObsidianSurface = Color(0xFF161B22)        // Base surface
+val ObsidianSurfaceElevated = Color(0xFF1C2128)// Sheets, popups, menus
+val ObsidianSurfaceVariant = Color(0xFF21262D) // Cards, code blocks, input capsule
+val ObsidianBorder = Color(0xFF30363D)          // Crisp 1dp border
+val ObsidianBorderSubtle = Color(0xFF21262D)    // Hairline border
+val ObsidianBorderFocus = Color(0xFF1F6FEB)     // Focused element border
 
-// Brand Primary (Cyber Cyan)
-val CyberCyan = Color(0xFF00F0FF)               // Core brand accent, glowing cursor
-val CyberCyanDim = Color(0xFF00C8D6)            // Pressed / dimmed cyan
-val CyberCyanMuted = Color(0xFF0891B2)          // Low-emphasis cyan
-val CyberCyanContainer = Color(0xFF052E38)      // Chip / container fill
-val OnCyberCyanContainer = Color(0xFF80F8FF)    // Container text
+// Brand Primary (Developer Blue)
+val CyberCyan = Color(0xFF2F81F7)               // Modern developer blue accent
+val CyberCyanDim = Color(0xFF1F6FEB)            // Slightly deeper blue
+val CyberCyanMuted = Color(0xFF16325C)          // Low-emphasis blue
+val CyberCyanContainer = Color(0xFF11233F)      // Chip / container fill
+val OnCyberCyanContainer = Color(0xFF79C0FF)    // Container text
 
-// Brand Secondary (Electric Violet)
-val ElectricViolet = Color(0xFF7000FF)          // Agent / AI core
-val ElectricVioletLight = Color(0xFF8B5CF6)     // Accessible text on dark
-val ElectricVioletContainer = Color(0xFF260D4D) // AI bubble background
-val OnElectricVioletContainer = Color(0xFFDDD6FE)
+// Brand Secondary (Muted Indigo / Slate)
+val ElectricViolet = Color(0xFF58A6FF)          // Accent highlight
+val ElectricVioletLight = Color(0xFF79C0FF)     // Accessible text on dark
+val ElectricVioletContainer = Color(0xFF162032) // Container fill
+val OnElectricVioletContainer = Color(0xFFD0E2FF)
 
-// Brand Tertiary (Hyper Indigo)
-val HyperIndigo = Color(0xFF6366F1)             // Transition accent
-val HyperIndigoContainer = Color(0xFF1E1B4B)
-val OnHyperIndigoContainer = Color(0xFFC7D2FE)
+// Brand Tertiary (Accent Indigo)
+val HyperIndigo = Color(0xFF6E7681)             // Neutral transition accent
+val HyperIndigoContainer = Color(0xFF21262D)
+val OnHyperIndigoContainer = Color(0xFFC9D1D9)
 
 // Functional / Developer Status
-val TerminalEmerald = Color(0xFF10B981)         // Bash prompt, tests pass, git clean
-val TerminalEmeraldContainer = Color(0xFF064E3B)
-val TerminalError = Color(0xFFEF4444)           // Stderr, test fail, syntax error
-val TerminalErrorContainer = Color(0xFF450A0A)
-val TerminalWarning = Color(0xFFF59E0B)         // Pending changes, warnings
-val TerminalWarningContainer = Color(0xFF451A03)
-val TerminalInfo = Color(0xFF38BDF8)            // Tool calls, logs
+val TerminalEmerald = Color(0xFF3FB950)         // Clean green, tests pass, git clean
+val TerminalEmeraldContainer = Color(0xFF12341A)
+val TerminalError = Color(0xFFF85149)           // Stderr, test fail, syntax error
+val TerminalErrorContainer = Color(0xFF381313)
+val TerminalWarning = Color(0xFFD29922)         // Pending changes, warnings
+val TerminalWarningContainer = Color(0xFF382607)
+val TerminalInfo = Color(0xFF58A6FF)            // Tool calls, logs
 
-// Diff Visual Tokens
-val DiffAddedGreen = Color(0xFF10B981)
-val DiffAddedBg = Color(0x2610B981)             // 15% opacity green
-val DiffRemovedRed = Color(0xFFEF4444)
-val DiffRemovedBg = Color(0x26EF4444)           // 15% opacity red
-val DiffModifiedYellow = Color(0xFFF59E0B)
-val DiffModifiedBg = Color(0x26F59E0B)          // 15% opacity yellow
+// Diff Visual Tokens (GitHub style)
+val DiffAddedGreen = Color(0xFF3FB950)
+val DiffAddedBg = Color(0x263FB950)             // 15% opacity green
+val DiffRemovedRed = Color(0xFFF85149)
+val DiffRemovedBg = Color(0x26F85149)           // 15% opacity red
+val DiffModifiedYellow = Color(0xFFD29922)
+val DiffModifiedBg = Color(0x26D29922)          // 15% opacity yellow
 
 // High-Contrast Text Tokens
-val ContentPrimary = Color(0xFFF8FAFC)          // Slate 50
-val ContentSecondary = Color(0xFF94A3B8)        // Slate 400
-val ContentTertiary = Color(0xFF64748B)         // Slate 500
-val ContentDisabled = Color(0xFF475569)         // Slate 600
+val ContentPrimary = Color(0xFFF0F6FC)          // Off-white primary text
+val ContentSecondary = Color(0xFF8B949E)        // Neutral secondary text
+val ContentTertiary = Color(0xFF6E7681)         // Neutral muted text
+val ContentDisabled = Color(0xFF484F58)         // Disabled text
 
 // -------------------------------------------------------------------------
 // Semantic Developer Colors Contract
@@ -87,24 +87,24 @@ data class KodaSemanticColors(
 )
 
 val KodaDarkSemanticColors = KodaSemanticColors(
-    terminalBackground = Color(0xFF080C14),
+    terminalBackground = Color(0xFF141618),
     terminalPrompt = TerminalEmerald,
     terminalStderr = TerminalError,
     terminalCursor = CyberCyan,
-    editorBackground = Color(0xFF0B0F19),
-    editorGutter = Color(0xFF0F1523),
+    editorBackground = Color(0xFF0D1117),
+    editorGutter = Color(0xFF161B22),
     editorGutterText = ContentTertiary,
-    editorCurrentLine = Color(0xFF161E31),
+    editorCurrentLine = Color(0xFF21262D),
     diffAdded = DiffAddedGreen,
     diffAddedBackground = DiffAddedBg,
     diffRemoved = DiffRemovedRed,
     diffRemovedBackground = DiffRemovedBg,
     diffModified = DiffModifiedYellow,
     diffModifiedBackground = DiffModifiedBg,
-    codeBlockBackground = Color(0xFF111726),
-    codeInlineBackground = Color(0xFF1D263B),
-    agentBubbleBackground = Color(0xFF161B2E),
-    userBubbleBackground = Color(0xFF1E283E),
+    codeBlockBackground = Color(0xFF161B22),
+    codeInlineBackground = Color(0xFF21262D),
+    agentBubbleBackground = Color(0xFF161B22),
+    userBubbleBackground = Color(0xFF21262D),
     borderSubtle = ObsidianBorderSubtle,
     borderStrong = ObsidianBorder,
     glowColor = CyberCyan

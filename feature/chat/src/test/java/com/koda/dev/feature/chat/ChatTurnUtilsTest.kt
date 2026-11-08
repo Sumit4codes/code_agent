@@ -187,4 +187,57 @@ class ChatTurnUtilsTest {
         assertEquals("manage_task", deduplicated[1].name)
         assertTrue(deduplicated[1].arguments.contains("\"_check_count\":3"))
     }
+
+    @Test
+    fun formatRelativeTimeComputesCorrectUnits() {
+        val now = 1_700_000_000_000L
+        assertEquals("Just now", com.koda.dev.feature.chat.components.formatRelativeTime(now - 15_000L, now))
+        assertEquals("2m ago", com.koda.dev.feature.chat.components.formatRelativeTime(now - 120_000L, now))
+        assertEquals("3h ago", com.koda.dev.feature.chat.components.formatRelativeTime(now - 3 * 3600_000L, now))
+        assertEquals("2d ago", com.koda.dev.feature.chat.components.formatRelativeTime(now - 2 * 86400_000L, now))
+    }
+
+    @Test
+    fun calculateDiffStatsCountsFilesAndLines() {
+        val changes = listOf(
+            com.koda.dev.core.model.PendingChange(
+                id = "c1",
+                sessionId = "s1",
+                filePath = "FileA.kt",
+                changeType = com.koda.dev.core.model.ChangeType.CREATE,
+                originalContent = null,
+                proposedContent = "line 1\nline 2\nline 3",
+                createdAt = 1000L
+            ),
+            com.koda.dev.core.model.PendingChange(
+                id = "c2",
+                sessionId = "s1",
+                filePath = "FileB.kt",
+                changeType = com.koda.dev.core.model.ChangeType.EDIT,
+                originalContent = "line 1\nline 2",
+                proposedContent = "line 1\nline 2 modified\nline 3",
+                createdAt = 1001L
+            )
+        )
+
+        val stats = com.koda.dev.feature.chat.components.calculateDiffStats(changes)
+        assertEquals(2, stats.filesCount)
+        assertTrue(stats.additions > 0)
+    }
+
+    @Test
+    fun toHumanActionParsesToolSummary() {
+        val toolCall = ToolCallData(
+            id = "t1",
+            name = "run_command",
+            arguments = """{"CommandLine":"git status","toolSummary":"Check git status"}""",
+            result = "On branch main",
+            success = true
+        )
+
+        val action = com.koda.dev.feature.chat.components.toHumanAction(toolCall)
+        assertEquals("Ran check git status", action.title)
+        assertTrue(action.isTerminal)
+        assertEquals("git status", action.commandLine)
+    }
 }

@@ -32,6 +32,7 @@ import com.koda.dev.core.model.ChatSession
 import com.koda.dev.core.model.Message
 import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
+import com.koda.dev.core.model.ProviderConfig
 import com.koda.dev.core.model.ToolCallData
 import com.koda.dev.core.model.ToolExecutionStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -69,6 +70,8 @@ data class ChatState(
     val isGoalMode: Boolean = false,
     val activeStepCount: Int = 0,
     val activeBackgroundTasks: List<com.koda.dev.core.terminal.TaskSummary> = emptyList(),
+    val availableProviders: List<ProviderConfig> = emptyList(),
+    val activeProvider: ProviderConfig? = null,
     val contextUsage: ContextUsageState = ContextUsageState()
 )
 
@@ -104,9 +107,19 @@ class ChatViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsRepository.getAllProvidersFlow().collect { providers ->
+                _state.update { it.copy(availableProviders = providers) }
+            }
+        }
+        viewModelScope.launch {
             settingsRepository.getActiveProviderFlow().collect { config ->
-                if (config != null && config.model.isNotBlank()) {
-                    _state.value = _state.value.copy(model = config.model)
+                if (config != null) {
+                    _state.update {
+                        it.copy(
+                            activeProvider = config,
+                            model = config.model.ifBlank { it.model }
+                        )
+                    }
                 }
             }
         }
@@ -543,6 +556,16 @@ class ChatViewModel @Inject constructor(
         if (shouldAutoCompact) {
             lastAutoCompactAttemptTime = now
             compactHistory()
+        }
+    }
+
+    fun selectProvider(providerId: String) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.setActiveProvider(providerId)
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Failed to switch active provider", e)
+            }
         }
     }
 
