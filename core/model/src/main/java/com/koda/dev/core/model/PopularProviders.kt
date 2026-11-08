@@ -17,6 +17,27 @@ data class PopularProvider(
 )
 
 object PopularProviders {
+    val KILO_FREE = PopularProvider(
+        id = "kilo_free",
+        name = "Kilo (Free)",
+        providerType = ProviderType.OPENAI_COMPATIBLE,
+        defaultBaseUrl = "https://api.kilo.ai/api/gateway",
+        defaultModel = "kilo-auto/free",
+        fallbackModels = listOf(
+            "kilo-auto/free",
+            "nvidia/nemotron-3.5-super-vl:free",
+            "nvidia/nemotron-3.5-lightning:free",
+            "cohere/north-mini-code:free",
+            "openrouter/free"
+        ),
+        apiKeyPlaceholder = "Not required (Keyless Kilo Gateway)",
+        apiKeyHelpUrl = "https://kilo.ai",
+        description = "Free out-of-the-box coding models via Kilo open gateway (~200 req/hr per IP)"
+    )
+
+    // Backward-compatible alias for existing saved configurations
+    val COMMUNITY_FREE = KILO_FREE
+
     val ANTIROUTE = PopularProvider(
         id = "antiroute",
         name = "Antiroute Tunnel",
@@ -166,6 +187,7 @@ object PopularProviders {
     )
 
     val allPopular: List<PopularProvider> = listOf(
+        KILO_FREE,
         ANTIROUTE,
         OPENROUTER,
         OPENAI,
@@ -179,5 +201,6 @@ object PopularProviders {
     )
 
     fun findById(id: String): PopularProvider? =
-        allPopular.firstOrNull { it.id == id }
+        if (id == "community_free") KILO_FREE
+        else allPopular.firstOrNull { it.id == id }
 }

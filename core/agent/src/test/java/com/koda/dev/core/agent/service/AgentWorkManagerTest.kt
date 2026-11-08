@@ -327,4 +327,40 @@ class AgentWorkManagerTest {
 
         job.cancel()
     }
+
+    @Test
+    fun `sendSteeringMessage returns false when no task is running`() {
+        val result = workManager.sendSteeringMessage("any-session", "Don't do that")
+        assertFalse(result)
+    }
+
+    @Test
+    fun `sendSteeringMessage returns true when task is running for matching session`() = runTest(testDispatcher) {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Working..."),
+                ChatStreamEvent.Done
+            )
+        )
+
+        val taskId = workManager.startTask(
+            sessionId = "steer-sess",
+            projectId = "p-steer",
+            projectName = "SteerProj",
+            projectUri = rootUri,
+            prompt = "Initial prompt",
+            model = "gpt-4o"
+        )
+
+        // While task is active
+        val steered = workManager.sendSteeringMessage("steer-sess", "Use Kotlin instead of Java")
+        assertTrue(steered)
+        assertEquals("Applying user guidance...", workManager.activeTaskState.value?.currentAction)
+
+        // Different session returns false
+        val wrongSession = workManager.sendSteeringMessage("other-sess", "Should fail")
+        assertFalse(wrongSession)
+
+        advanceUntilIdle()
+    }
 }

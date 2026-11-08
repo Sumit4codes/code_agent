@@ -113,7 +113,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onSelectActive = { viewModel.setActiveProvider(it) },
                 onEdit = { viewModel.openEditProviderDialog(it) },
                 onDelete = { providerToDelete = it },
-                onAddProvider = { viewModel.openAddProviderDialog(PopularProviders.OPENAI) },
+                onAddProvider = { viewModel.openAddProviderDialog(PopularProviders.KILO_FREE) },
                 onAddSpecificPreset = { preset -> viewModel.openAddProviderDialog(preset) },
                 onScanQrCode = { showQrScanner = true }
             )
@@ -346,10 +346,11 @@ private fun ActiveProviderBanner(
                         )
                     }
 
+                    val isKiloFree = activeProvider.id.startsWith("kilo") || activeProvider.id.startsWith("community") || activeProvider.baseUrl.contains("kilo.ai")
                     // Key Status Chip
                     Surface(
                         shape = MaterialTheme.shapes.small,
-                        color = if (activeProvider.hasApiKey) {
+                        color = if (isKiloFree || activeProvider.hasApiKey) {
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                         } else {
                             MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
@@ -361,15 +362,15 @@ private fun ActiveProviderBanner(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Icon(
-                                imageVector = if (activeProvider.hasApiKey) Icons.Default.CheckCircle else Icons.Default.Key,
+                                imageVector = if (isKiloFree || activeProvider.hasApiKey) Icons.Default.CheckCircle else Icons.Default.Key,
                                 contentDescription = null,
-                                tint = if (activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                tint = if (isKiloFree || activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = if (activeProvider.hasApiKey) "Key configured" else "No key set",
+                                text = if (isKiloFree) "Keyless Free" else if (activeProvider.hasApiKey) "Key configured" else "No key set",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                color = if (isKiloFree || activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -610,6 +611,7 @@ private fun ProviderCard(
                 Spacer(Modifier.height(4.dp))
 
                 // Model, Type & Endpoint
+                val isKiloFree = provider.id.startsWith("kilo") || provider.id.startsWith("community") || provider.baseUrl.contains("kilo.ai")
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -621,6 +623,20 @@ private fun ProviderCard(
                         ) {
                             Text(
                                 text = "ANTIROUTE",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    } else if (isKiloFree) {
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.tertiaryContainer
+                        ) {
+                            Text(
+                                text = "FREE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
@@ -647,9 +663,9 @@ private fun ProviderCard(
                     }
 
                     Text(
-                        text = if (provider.hasApiKey) "• Key set" else "• No key",
+                        text = if (isKiloFree) "• Keyless Free" else if (provider.hasApiKey) "• Key set" else "• No key",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (provider.hasApiKey) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        color = if (isKiloFree) MaterialTheme.colorScheme.primary else if (provider.hasApiKey) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                         maxLines = 1,
                         softWrap = false
                     )
@@ -1283,7 +1299,14 @@ private fun ProviderEditorDialog(
                         )
 
                         val helpUrl = currentTemplate?.apiKeyHelpUrl
-                        if (!helpUrl.isNullOrBlank()) {
+                        val isKiloFree = editorState.selectedTemplateId == "kilo_free" || editorState.selectedTemplateId == "community_free" || editorState.baseUrl.contains("kilo.ai")
+                        if (isKiloFree) {
+                            Text(
+                                text = "No API key required. Connects directly to Kilo free models (~200 req/hr per IP).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else if (!helpUrl.isNullOrBlank()) {
                             TextButton(
                                 onClick = {
                                     try {

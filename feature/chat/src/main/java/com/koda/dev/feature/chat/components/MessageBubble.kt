@@ -1,5 +1,6 @@
 package com.koda.dev.feature.chat.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
@@ -35,7 +37,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.koda.dev.core.model.Message
 import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
@@ -49,6 +53,7 @@ import java.util.Locale
 fun MessageItem(
     message: Message,
     modifier: Modifier = Modifier,
+    isLive: Boolean = false,
     pendingChanges: List<PendingChange> = emptyList(),
     onApproveChange: ((PendingChange) -> Unit)? = null,
     onRejectChange: ((PendingChange) -> Unit)? = null,
@@ -59,6 +64,7 @@ fun MessageItem(
         MessageRole.ASSISTANT -> AssistantMessageBubble(
             message = message,
             modifier = modifier,
+            isLive = isLive,
             pendingChanges = pendingChanges,
             onApproveChange = onApproveChange,
             onRejectChange = onRejectChange,
@@ -100,6 +106,20 @@ fun UserMessageBubble(
     var copied by remember { mutableStateOf(false) }
     val formattedTime = remember(message.timestamp) { formatTimestamp(message.timestamp) }
 
+    val isSteering = remember(message.content) {
+        message.content.contains("<user_steering_guidance>")
+    }
+    val displayContent = remember(message.content, isSteering) {
+        if (isSteering) {
+            message.content
+                .replace("<user_steering_guidance>", "")
+                .replace("</user_steering_guidance>", "")
+                .trim()
+        } else {
+            message.content
+        }
+    }
+
     LaunchedEffect(copied) {
         if (copied) {
             delay(1500)
@@ -118,15 +138,39 @@ fun UserMessageBubble(
                 bottomStart = 16.dp,
                 bottomEnd = 4.dp
             ),
-            color = MaterialTheme.colorScheme.primaryContainer,
+            color = if (isSteering) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
+            border = if (isSteering) BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)) else null,
             tonalElevation = 1.dp,
             modifier = Modifier.widthIn(max = 560.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                if (isSteering) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Navigation,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = "Mid-Run Steering",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+
                 Text(
-                    text = message.content,
+                    text = displayContent,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = if (isSteering) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
                 )
 
                 Spacer(modifier = Modifier.height(6.dp))
@@ -141,14 +185,14 @@ fun UserMessageBubble(
                         Text(
                             text = formattedTime,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.65f)
+                            color = (if (isSteering) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = 0.65f)
                         )
                     }
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
                             .clickable {
-                                clipboardManager.setText(AnnotatedString(message.content))
+                                clipboardManager.setText(AnnotatedString(displayContent))
                                 copied = true
                             }
                             .padding(2.dp)
@@ -157,7 +201,7 @@ fun UserMessageBubble(
                             imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
                             contentDescription = "Copy text",
                             modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            tint = (if (isSteering) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = 0.7f)
                         )
                     }
                 }
@@ -170,6 +214,7 @@ fun UserMessageBubble(
 fun AssistantMessageBubble(
     message: Message,
     modifier: Modifier = Modifier,
+    isLive: Boolean = false,
     pendingChanges: List<PendingChange> = emptyList(),
     onApproveChange: ((PendingChange) -> Unit)? = null,
     onRejectChange: ((PendingChange) -> Unit)? = null,
@@ -270,25 +315,23 @@ fun AssistantMessageBubble(
                     }
                 }
 
+                // Tool calls accordion section (collapses on completion to keep chat clean)
+                if (message.toolCalls.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ToolCallsAccordion(
+                        toolCalls = message.toolCalls,
+                        isLive = isLive,
+                        messageId = message.id,
+                        pendingChanges = pendingChanges,
+                        onApproveChange = onApproveChange,
+                        onRejectChange = onRejectChange,
+                        onOpenFullReview = onOpenFullReview
+                    )
+                }
+
                 if (message.content.isNotBlank()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     MarkdownText(content = message.content)
-                }
-
-                // Tool calls section
-                if (message.toolCalls.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (tc in message.toolCalls) {
-                            ToolCallCard(
-                                toolCall = tc,
-                                pendingChanges = pendingChanges,
-                                onApproveChange = onApproveChange,
-                                onRejectChange = onRejectChange,
-                                onOpenFullReview = onOpenFullReview
-                            )
-                        }
-                    }
                 }
             }
         }

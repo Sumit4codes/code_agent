@@ -25,6 +25,13 @@ class OpenAiCompatibleProvider(
     private val sseFactory: Factory
 ) : AiProvider {
 
+    private fun isKeyless(): Boolean =
+        apiKey.isBlank() ||
+        apiKey.equals("keyless", ignoreCase = true) ||
+        apiKey.equals("kilo-free", ignoreCase = true) ||
+        apiKey.equals("koda-community-free", ignoreCase = true) ||
+        baseUrl.contains("kilo.ai", ignoreCase = true)
+
     private fun buildUrl(path: String): String {
         val trimmed = baseUrl.trim().trimEnd('/')
         val cleanPath = if (path.startsWith("/")) path else "/$path"
@@ -32,8 +39,10 @@ class OpenAiCompatibleProvider(
             trimmed.endsWith("/v1") ||
             trimmed.endsWith("/openai") ||
             trimmed.endsWith("/v1beta/openai") ||
+            trimmed.endsWith("/gateway") ||
             trimmed.contains("/v1/") ||
-            trimmed.contains("/openai/")
+            trimmed.contains("/openai/") ||
+            trimmed.contains("/gateway/")
         ) {
             "$trimmed$cleanPath"
         } else {
@@ -44,9 +53,12 @@ class OpenAiCompatibleProvider(
     override suspend fun listModels(): List<ModelInfo> = withContext(Dispatchers.IO) {
         val reqBuilder = Request.Builder()
             .url(buildUrl("/models"))
+            .header("User-Agent", CLIENT_USER_AGENT)
+            .header("X-Title", CLIENT_TITLE)
+            .header("HTTP-Referer", CLIENT_REFERER)
             .get()
 
-        if (apiKey.isNotBlank()) {
+        if (!isKeyless()) {
             reqBuilder.header("Authorization", "Bearer $apiKey")
         }
 
@@ -54,11 +66,32 @@ class OpenAiCompatibleProvider(
             client.newCall(reqBuilder.build()).execute().use { response ->
                 val body = response.body?.string() ?: return@withContext emptyList()
                 val json = Json.parseToJsonElement(body).jsonObject
-                json["data"]?.jsonArray?.map { element ->
+                val isKilo = baseUrl.contains("kilo.ai", ignoreCase = true)
+                json["data"]?.jsonArray?.mapNotNull { element ->
                     val obj = element.jsonObject
+                    val isFree = obj["isFree"]?.jsonPrimitive?.booleanOrNull
+                    if (isKilo && isFree == false) {
+                        return@mapNotNull null
+                    }
+                    val id = obj["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                    val window = obj["context_window"]
+                    val ctx = sequenceOf(
+                        obj["context_length"],
+                        obj["max_context_tokens"],
+                        obj["max_tokens"],
+                        window,
+                        window?.let { (it as? JsonObject)?.get("tokens") }
+                    ).mapNotNull { it?.jsonPrimitive?.intOrNull }.firstOrNull()
+
+                    val resolvedContext = ModelCatalogResolver.resolveContextLimit(
+                        modelId = id,
+                        providerReportedWindow = ctx
+                    )
+
                     ModelInfo(
-                        id = obj["id"]?.jsonPrimitive?.content ?: "",
-                        name = obj["id"]?.jsonPrimitive?.content ?: ""
+                        id = id,
+                        name = id,
+                        contextWindow = resolvedContext
                     )
                 } ?: emptyList()
             }
@@ -72,9 +105,12 @@ class OpenAiCompatibleProvider(
         val reqBuilder = Request.Builder()
             .url(buildUrl("/chat/completions"))
             .header("Content-Type", "application/json")
+            .header("User-Agent", CLIENT_USER_AGENT)
+            .header("X-Title", CLIENT_TITLE)
+            .header("HTTP-Referer", CLIENT_REFERER)
             .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
 
-        if (apiKey.isNotBlank()) {
+        if (!isKeyless()) {
             reqBuilder.header("Authorization", "Bearer $apiKey")
         }
         val httpRequest = reqBuilder.build()
@@ -142,14 +178,34 @@ class OpenAiCompatibleProvider(
 
                             if (detail != null && detail.contains("Not found for account", ignoreCase = true)) {
                                 "NVIDIA NIM (404): $detail\n\nCause: Public API Endpoints are not active for your personal account on build.nvidia.com or this model is restricted. Please check your account on build.nvidia.com or try another model (e.g. meta/llama-3.3-70b-instruct)."
+                            } else if (response?.code == 429 || parsed.contains("limit reached", ignoreCase = true) || parsed.contains("rate limit", ignoreCase = true) || parsed.contains("PROMOTION_MODEL_LIMIT_REACHED", ignoreCase = true)) {
+                                if (baseUrl.contains("kilo.ai", ignoreCase = true) || isKeyless()) {
+                                    "Kilo Free Quota Reached (HTTP 429): $parsed\n\nHourly quota reached for your IP on Kilo gateway. Allowance automatically replenishes over an hourly window, or configure your own provider in Settings."
+                                } else {
+                                    "Rate Limit Reached (HTTP 429): $parsed"
+                                }
                             } else {
                                 parsed
                             }
                         } catch (_: Exception) {
-                            errorBody
+                            if (response?.code == 429) {
+                                if (baseUrl.contains("kilo.ai", ignoreCase = true) || isKeyless()) {
+                                    "Kilo Free Quota Reached (HTTP 429): $errorBody\n\nHourly quota reached for your IP on Kilo gateway. Allowance automatically replenishes over an hourly window, or configure your own provider in Settings."
+                                } else {
+                                    "Rate Limit Reached (HTTP 429): $errorBody"
+                                }
+                            } else {
+                                errorBody
+                            }
                         }
                     }
-                    response != null -> "HTTP error ${response.code}: ${response.message.ifBlank { "Request failed" }}"
+                    response != null -> {
+                        if (response.code == 429 && (baseUrl.contains("kilo.ai", ignoreCase = true) || isKeyless())) {
+                            "Kilo Free Quota Reached (HTTP 429): Hourly gateway allowance reached for your IP on Kilo. It automatically replenishes over an hourly window, or you can switch to your own API key in Settings."
+                        } else {
+                            "HTTP error ${response.code}: ${response.message.ifBlank { "Request failed" }}"
+                        }
+                    }
                     t != null -> t.message ?: "Connection error"
                     else -> "Unknown SSE stream error"
                 }
@@ -197,16 +253,31 @@ class OpenAiCompatibleProvider(
         }
 
         val toolsJson = if (request.tools.isNotEmpty()) {
-            Json.encodeToJsonElement(request.tools.map { tool ->
-                buildJsonObject {
-                    put("type", "function")
-                    put("function", buildJsonObject {
-                        put("name", tool.name)
-                        put("description", tool.description)
-                        put("parameters", Json.encodeToJsonElement(tool.parameters))
+            buildJsonArray {
+                request.tools.forEach { tool ->
+                    add(buildJsonObject {
+                        put("type", "function")
+                        put("function", buildJsonObject {
+                            put("name", tool.name)
+                            put("description", tool.description)
+                            put("parameters", buildJsonObject {
+                                put("type", tool.parameters.type.ifBlank { "object" })
+                                put("properties", buildJsonObject {
+                                    tool.parameters.properties.forEach { (propName, propDef) ->
+                                        put(propName, buildJsonObject {
+                                            put("type", propDef.type)
+                                            put("description", propDef.description)
+                                        })
+                                    }
+                                })
+                                put("required", buildJsonArray {
+                                    tool.parameters.required.forEach { add(JsonPrimitive(it)) }
+                                })
+                            })
+                        })
                     })
                 }
-            })
+            }
         } else null
 
         return buildJsonObject {
@@ -221,6 +292,9 @@ class OpenAiCompatibleProvider(
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        const val CLIENT_USER_AGENT = "KodaDev/1.0 (Android)"
+        const val CLIENT_TITLE = "Koda Dev"
+        const val CLIENT_REFERER = "https://github.com/Sumit4codes/code_agent"
 
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)

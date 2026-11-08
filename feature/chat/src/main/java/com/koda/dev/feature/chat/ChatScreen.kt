@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Terminal
+import com.koda.dev.feature.terminal.WorkspaceTerminalSheet
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -73,12 +75,15 @@ import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.feature.chat.components.ActiveTasksStrip
 import com.koda.dev.feature.chat.components.ChatInputBar
+import com.koda.dev.feature.chat.components.ContextUsageDialog
 import com.koda.dev.feature.chat.components.EmptyChatState
 import com.koda.dev.feature.chat.components.InChatDiffBottomSheet
 import com.koda.dev.feature.chat.components.MessageItem
 import com.koda.dev.feature.chat.components.PendingChangesBanner
 import com.koda.dev.feature.chat.components.SessionHistorySheet
 import com.koda.dev.feature.chat.components.StreamingBubble
+import com.koda.dev.feature.chat.components.groupMessagesIntoTurns
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,6 +115,8 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     var showHistorySheet by remember { mutableStateOf(false) }
     var showDiffBottomSheet by remember { mutableStateOf(false) }
+    var showTerminalSheet by remember { mutableStateOf(false) }
+    var showContextDialog by remember { mutableStateOf(false) }
     var selectedDiffChange by remember { mutableStateOf<PendingChange?>(null) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -122,7 +129,7 @@ fun ChatScreen(
     }
 
     val displayMessages = remember(state.messages) {
-        state.messages.filter { it.role != MessageRole.TOOL }
+        groupMessagesIntoTurns(state.messages)
     }
 
     // Total item count in LazyColumn
@@ -131,13 +138,17 @@ fun ChatScreen(
     // Track whether the user has manually scrolled up away from bottom
     var userScrolledUp by remember { mutableStateOf(false) }
 
-    // When manual scrolling finishes, check whether the user is positioned near the bottom
+    // When manual scrolling finishes, check whether the user is positioned away from bottom
     LaunchedEffect(listState.isScrollInProgress) {
         if (!listState.isScrollInProgress) {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
-            if (lastVisible != null) {
-                val isAtBottom = lastVisible.index == totalItemsCount - 1 && !listState.canScrollForward
-                userScrolledUp = !isAtBottom
+            if (lastVisible != null && totalItemsCount > 0) {
+                // If the last item is visible in the viewport, the user is looking at the latest message
+                if (lastVisible.index == totalItemsCount - 1) {
+                    userScrolledUp = false
+                } else if (lastVisible.index < totalItemsCount - 1) {
+                    userScrolledUp = true
+                }
             }
         }
     }
@@ -145,14 +156,37 @@ fun ChatScreen(
     // Determine if user has scrolled up away from bottom
     val isScrolledUp by remember {
         derivedStateOf {
-            userScrolledUp || listState.canScrollForward
+            userScrolledUp && listState.canScrollForward
         }
     }
 
-    // Smoothly scroll when a new message is added or streaming starts/stops
-    LaunchedEffect(displayMessages.size, state.isStreaming) {
+    // Smoothly scroll when a new message turn is added
+    LaunchedEffect(displayMessages.size) {
         if (totalItemsCount > 0 && !userScrolledUp) {
             listState.animateScrollToItem(totalItemsCount - 1)
+        }
+    }
+
+    // When streaming finishes (state.isStreaming transitions true -> false):
+    // Reset userScrolledUp since user was following the run, and keep the view anchored
+    // to the latest completed message through the accordion collapse animation.
+    LaunchedEffect(state.isStreaming) {
+        if (!state.isStreaming && totalItemsCount > 0) {
+            userScrolledUp = false
+            listState.animateScrollToItem(totalItemsCount - 1)
+            // Wait for tool accordion collapse animation (150ms) to settle
+            delay(180)
+            if (totalItemsCount > 0 && !userScrolledUp) {
+                val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+                if (lastVisible != null && lastVisible.index == totalItemsCount - 1) {
+                    val overflow = (lastVisible.offset + lastVisible.size + listState.layoutInfo.afterContentPadding) - listState.layoutInfo.viewportEndOffset
+                    if (overflow > 0) {
+                        listState.scrollBy(overflow.toFloat())
+                    }
+                } else if (lastVisible != null && lastVisible.index < totalItemsCount - 1) {
+                    listState.scrollToItem(totalItemsCount - 1)
+                }
+            }
         }
     }
 
@@ -171,7 +205,8 @@ fun ChatScreen(
         }
     }
 
-    Scaffold(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
@@ -287,6 +322,15 @@ fun ChatScreen(
                 actions = {
                     if (state.projectUri != null) {
                         IconButton(
+                            onClick = { showTerminalSheet = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = "Project Terminal",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
                             onClick = { viewModel.startNewSession() },
                             enabled = !state.isStreaming
                         ) {
@@ -328,16 +372,28 @@ fun ChatScreen(
                     onInputChange = { inputText = it },
                     onSend = {
                         if (inputText.isNotBlank()) {
-                            userScrolledUp = false
-                            viewModel.sendMessage(inputText)
+                            val textToSend = inputText
                             inputText = ""
+                            userScrolledUp = false
+                            viewModel.sendMessage(textToSend)
                         }
                     },
                     onCancel = { viewModel.cancelGeneration() },
+                    onSteer = {
+                        if (inputText.isNotBlank()) {
+                            val steerText = inputText
+                            inputText = ""
+                            userScrolledUp = false
+                            viewModel.steerCurrentTask(steerText)
+                        }
+                    },
                     isStreaming = state.isStreaming,
                     hasProject = state.projectUri != null,
                     projectName = state.projectName,
                     modelName = state.model,
+                    contextUsage = state.contextUsage,
+                    onCompact = { viewModel.compactHistory() },
+                    onOpenDetails = { showContextDialog = true },
                     onSelectGoal = {
                         val current = inputText.trim()
                         val newText = if (current.startsWith("/goal", ignoreCase = true)) {
@@ -402,8 +458,12 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(displayMessages, key = { it.id }) { message ->
+                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
+                            val isLive = state.isStreaming && isLastItem
+
                             MessageItem(
                                 message = message,
+                                isLive = isLive,
                                 pendingChanges = state.pendingChanges,
                                 onApproveChange = { viewModel.approveChange(it) },
                                 onRejectChange = { viewModel.rejectChange(it) },
@@ -495,6 +555,28 @@ fun ChatScreen(
                 selectedDiffChange = null
             }
         )
+    }
+
+    if (showTerminalSheet) {
+        val effectiveProjectId = if (state.projectId.isNotBlank()) state.projectId else projectId
+        WorkspaceTerminalSheet(
+            projectId = effectiveProjectId.ifBlank { null },
+            projectName = state.projectName.ifBlank { null },
+            onDismiss = { showTerminalSheet = false }
+        )
+    }
+
+    if (showContextDialog) {
+        ContextUsageDialog(
+            contextUsage = state.contextUsage,
+            modelName = state.model,
+            onDismiss = { showContextDialog = false },
+            onCompact = {
+                showContextDialog = false
+                viewModel.compactHistory()
+            }
+        )
+    }
     }
 }
 

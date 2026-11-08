@@ -428,7 +428,12 @@ private fun extractArgSummary(arguments: String): String {
     return try {
         val json = Json.parseToJsonElement(arguments).jsonObject
         when {
-            json.containsKey("action") -> "⚙️ ${json["action"]?.jsonPrimitive?.content ?: ""}${json["task_id"]?.jsonPrimitive?.content?.let { " ($it)" } ?: ""}"
+            json.containsKey("action") -> {
+                val action = json["action"]?.jsonPrimitive?.content ?: ""
+                val taskId = json["task_id"]?.jsonPrimitive?.content?.let { " ($it)" } ?: ""
+                val checkCount = json["_check_count"]?.jsonPrimitive?.content?.let { " · $it checks" } ?: ""
+                "⚙️ $action$taskId$checkCount"
+            }
             json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
             json.containsKey("query") -> "🔍 \"${json["query"]?.jsonPrimitive?.content ?: ""}\""
             json.containsKey("url") -> "🌐 ${json["url"]?.jsonPrimitive?.content ?: ""}"

@@ -202,6 +202,10 @@ class TerminalViewModel @Inject constructor(
 
     fun openProject(projectId: String) {
         viewModelScope.launch(ioDispatcher) {
+            val current = _uiState.value
+            if (current.projectId == projectId && sessionHolders.isNotEmpty()) {
+                return@launch
+            }
             val project = projectDao.getById(projectId) ?: return@launch
             val rawUri = project.treeUri
             val treeUri = try { Uri.parse(rawUri) } catch (_: Exception) { null }
@@ -725,6 +729,18 @@ class TerminalViewModel @Inject constructor(
                 val separator = if (input.isNotEmpty() && !input.endsWith(" ")) " " else ""
                 _uiState.update { it.copy(commandInput = "$input$separator$token") }
             }
+        }
+    }
+
+    fun sendCommandToSession(command: String) {
+        val trimmed = command.trim()
+        if (trimmed.isBlank()) return
+        val session = terminalSession
+        if (session != null && session.isRunning) {
+            val bytes = "$trimmed\r".toByteArray(Charsets.UTF_8)
+            session.write(bytes, 0, bytes.size)
+        } else {
+            executeCommand(trimmed)
         }
     }
 

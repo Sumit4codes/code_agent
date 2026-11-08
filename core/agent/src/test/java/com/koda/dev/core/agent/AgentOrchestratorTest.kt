@@ -192,4 +192,278 @@ class AgentOrchestratorTest {
 
         assertTrue(messageAddeds.isNotEmpty())
     }
+
+    @Test
+    fun `mid-run steering guidance is drained and injected into messages between tool calls`() = runTest {
+        fs.putFile("fileA.txt", "Content A")
+        val steeringInbox = SteeringInbox()
+
+        // Turn 1: AI calls read_file
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.ToolCallComplete(
+                    ToolCall("c-read", "read_file", """{"path":"fileA.txt"}""")
+                ),
+                ChatStreamEvent.Done
+            )
+        )
+        // Turn 2: AI completes following steering
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Acknowledged steering. Finishing up."),
+                ChatStreamEvent.Done
+            )
+        )
+
+        // User steers mid-run
+        steeringInbox.send("Wait, make sure you don't edit fileA, just inspect it.")
+
+        val events = mutableListOf<AgentEvent>()
+        val context = AgentContext(sessionId = "s-steer", projectId = "p1")
+
+        val result = orchestrator.run(
+            userMessage = "Process files",
+            context = context,
+            model = "test-model",
+            steeringInbox = steeringInbox,
+            onEvent = { events.add(it) }
+        )
+
+        // Verify steering guidance was injected as a USER message
+        val userMessages = result.messages.filter { it.role == ChatMessage.Role.USER }
+        assertTrue("Expected steering guidance in messages", userMessages.any { it.content.contains("<user_steering_guidance>") })
+        assertTrue(userMessages.any { it.content.contains("Wait, make sure you don't edit fileA") })
+
+        val messageAddeds = events.filterIsInstance<AgentEvent.MessageAdded>()
+        assertTrue(messageAddeds.any { it.message.content.contains("<user_steering_guidance>") })
+    }
+
+    @Test
+    fun `mid-run steering guidance sent when agent produces no tools continues execution for another turn`() = runTest {
+        val steeringInbox = SteeringInbox()
+
+        // Turn 1: AI is about to finish without tools
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Here is the initial response."),
+                ChatStreamEvent.Done
+            )
+        )
+        // Turn 2: User steered, AI answers steering
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Understood your guidance. Here is the updated answer."),
+                ChatStreamEvent.Done
+            )
+        )
+
+        // Send steering before execution reaches completion
+        steeringInbox.send("Also add documentation comments to all functions.")
+
+        val context = AgentContext(sessionId = "s-steer-continue", projectId = "p1")
+        val result = orchestrator.run(
+            userMessage = "Write code",
+            context = context,
+            model = "test-model",
+            steeringInbox = steeringInbox
+        )
+
+        // Result should contain messages from both turns
+        val assistantMessages = result.messages.filter { it.role == ChatMessage.Role.ASSISTANT }
+        assertEquals(2, assistantMessages.size)
+        assertTrue(assistantMessages[0].content.contains("initial response"))
+        assertTrue(assistantMessages[1].content.contains("updated answer"))
+
+        val userMessages = result.messages.filter { it.role == ChatMessage.Role.USER }
+        assertTrue(userMessages.any { it.content.contains("Also add documentation comments") })
+    }
+
+    @Test
+    fun `system prompt instructs agent not to pipe build commands to tail or head`() = runTest {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Done"),
+                ChatStreamEvent.Done
+            )
+        )
+        val context = AgentContext(sessionId = "s-prompt-check", projectId = "p1")
+        val result = orchestrator.run(
+            userMessage = "test",
+            context = context,
+            model = "test-model"
+        )
+        val systemMessage = result.messages.first { it.role == ChatMessage.Role.SYSTEM }
+        assertTrue(systemMessage.content.contains("NEVER PIPE BUILDS/TESTS TO TAIL OR HEAD"))
+        assertTrue(systemMessage.content.contains("tail"))
+    }
+
+    @Test
+    fun `system prompt instructs agent against busy-wait polling`() = runTest {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Done"),
+                ChatStreamEvent.Done
+            )
+        )
+        val context = AgentContext(sessionId = "s-no-poll-check", projectId = "p1")
+        val result = orchestrator.run(
+            userMessage = "test",
+            context = context,
+            model = "test-model"
+        )
+        val systemMessage = result.messages.first { it.role == ChatMessage.Role.SYSTEM }
+        assertTrue(systemMessage.content.contains("NO BUSY-WAIT POLLING"))
+    }
+
+    @Test
+    fun `extractManageTaskArgs extracts action and task_id correctly`() {
+        val (action, taskId) = extractManageTaskArgs("""{"action":"status","task_id":"task_42"}""")
+        assertEquals("status", action)
+        assertEquals("task_42", taskId)
+
+        val (invalidAction, invalidTaskId) = extractManageTaskArgs("malformed json")
+        assertEquals(null, invalidAction)
+        assertEquals(null, invalidTaskId)
+    }
+
+    @Test
+    fun `pruneStatusHistory replaces earlier status checks with tombstone but keeps latest`() {
+        val history = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "start build"),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_1\nCommand: ./build.sh\nStatus: RUNNING\nRecent Output:\nline 1"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Still building..."),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_1\nCommand: ./build.sh\nStatus: RUNNING\nRecent Output:\nline 1\nline 2"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Still building 2..."),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_1\nCommand: ./build.sh\nStatus: EXITED (code: 0)\nRecent Output:\nBUILD SUCCESSFUL")
+        )
+
+        val pruned = pruneStatusHistory(history)
+        assertEquals(6, pruned.size)
+        assertEquals("(Task task_1 status output superseded by newer check)", pruned[1].content)
+        assertEquals("(Task task_1 status output superseded by newer check)", pruned[3].content)
+        assertTrue(pruned[5].content.contains("BUILD SUCCESSFUL"))
+    }
+
+    @Test
+    fun `pruneSupersededStatusChecks replaces older status outputs in list`() {
+        val msgs = mutableListOf(
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_99\nStatus: RUNNING\nLine A"),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_99\nStatus: RUNNING\nLine B")
+        )
+        pruneSupersededStatusChecks(msgs, "task_99")
+        assertEquals("(Task task_99 status output superseded by newer check)", msgs[0].content)
+        assertEquals("(Task task_99 status output superseded by newer check)", msgs[1].content)
+    }
+
+    @Test
+    fun `canAutoCompact validates minimum candidate messages and character content`() {
+        // Too few messages
+        val shortList = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "hello"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "world")
+        )
+        org.junit.Assert.assertFalse(canAutoCompact(shortList))
+
+        // Enough messages but sparse content (< 500 chars)
+        val sparseList = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "m1"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "m2"),
+            ChatMessage(role = ChatMessage.Role.USER, content = "m3"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "m4")
+        )
+        org.junit.Assert.assertFalse(canAutoCompact(sparseList))
+
+        // Enough messages with substantial content (>= 500 chars in candidate slice)
+        val substantialList = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "x".repeat(300)),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "y".repeat(300)),
+            ChatMessage(role = ChatMessage.Role.USER, content = "tail1"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "tail2")
+        )
+        assertTrue(canAutoCompact(substantialList))
+    }
+
+    @Test
+    fun `auto compaction triggers when context exceeds 80 percent threshold`() = runTest {
+        // Enqueue response 1: HistoryCompactor summarization call
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("### Current Objectives\n- Fixed authentication bug"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        // Enqueue response 2: Agent response after compaction
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Continuing with next task step..."),
+                ChatStreamEvent.Done
+            )
+        )
+
+        val longText = "a".repeat(1500)
+        val initialHistory = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "Task 1: $longText"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Result 1: $longText"),
+            ChatMessage(role = ChatMessage.Role.USER, content = "Task 2: do something"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Result 2: done")
+        )
+
+        val events = mutableListOf<AgentEvent>()
+        val context = AgentContext(sessionId = "s1", projectId = "p1", history = initialHistory)
+
+        val result = orchestrator.run(
+            userMessage = "Next task step",
+            context = context,
+            model = "test-1k",
+            onEvent = { events.add(it) }
+        )
+
+        // Verify ContextCompacted event was emitted
+        val compactEvents = events.filterIsInstance<AgentEvent.ContextCompacted>()
+        assertEquals(1, compactEvents.size)
+        assertTrue(compactEvents[0].summary.contains("Fixed authentication bug"))
+
+        // Verify result.messages contains the compaction prefix
+        val systemCompactedMsg = result.messages.firstOrNull {
+            it.role == ChatMessage.Role.SYSTEM && it.content.startsWith(HistoryCompactor.COMPACTION_PREFIX)
+        }
+        assertNotNull(systemCompactedMsg)
+        assertTrue(systemCompactedMsg!!.content.contains("Fixed authentication bug"))
+
+        // Verify recent tail was retained
+        assertTrue(result.messages.any { it.role == ChatMessage.Role.USER && it.content == "Next task step" })
+        assertTrue(result.newMessages.any { it.role == ChatMessage.Role.ASSISTANT && it.content.contains("Continuing with next task step...") })
+    }
+
+    @Test
+    fun `auto compaction does not trigger when raw tools are large but hygiene context is below 80 percent`() = runTest {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Normal response without compaction"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        val initialHistory = mutableListOf<ChatMessage>()
+        for (i in 1..10) {
+            initialHistory.add(ChatMessage(role = ChatMessage.Role.USER, content = "Command $i"))
+            initialHistory.add(ChatMessage(role = ChatMessage.Role.TOOL, content = "Z".repeat(10_000)))
+            initialHistory.add(ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Done $i"))
+        }
+
+        val events = mutableListOf<AgentEvent>()
+        val context = AgentContext(sessionId = "s2", projectId = "p1", history = initialHistory)
+
+        val result = orchestrator.run(
+            userMessage = "Continue work",
+            context = context,
+            model = "gpt-4o",
+            onEvent = { events.add(it) }
+        )
+
+        val compactEvents = events.filterIsInstance<AgentEvent.ContextCompacted>()
+        assertEquals(0, compactEvents.size)
+        assertTrue(result.newMessages.any { it.content.contains("Normal response without compaction") })
+    }
 }

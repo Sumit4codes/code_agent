@@ -26,6 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -83,6 +84,7 @@ class AgentWorkManager @Inject constructor(
     )
     val liveEvents: SharedFlow<AgentEvent> = _liveEvents.asSharedFlow()
 
+    private val steeringInbox = com.koda.dev.core.agent.SteeringInbox()
     private var activeJob: Job? = null
     val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -100,6 +102,7 @@ class AgentWorkManager @Inject constructor(
         // Cancel in-flight job if any, but do not send stop intent to service since we are starting a new task
         activeJob?.cancel()
         activeJob = null
+        steeringInbox.clear()
 
         val taskId = UUID.randomUUID().toString()
         val initialTask = AgentTaskState(
@@ -137,6 +140,7 @@ class AgentWorkManager @Inject constructor(
     fun cancelCurrentTask() {
         activeJob?.cancel()
         activeJob = null
+        steeringInbox.clear()
         val current = _activeTaskState.value
         if (current != null && current.isRunning) {
             val duration = System.currentTimeMillis() - current.startTimeMs
@@ -150,6 +154,22 @@ class AgentWorkManager @Inject constructor(
         try {
             KodaWorkService.stopWork(context)
         } catch (_: Throwable) {}
+    }
+
+    /**
+     * Enqueue a live mid-run steering message to the active running task.
+     * Returns true if a running task matches the session and accepted the guidance.
+     */
+    fun sendSteeringMessage(sessionId: String, message: String, messageId: String = UUID.randomUUID().toString()): Boolean {
+        val activeTask = _activeTaskState.value
+        if (activeTask != null && activeTask.isRunning && activeTask.sessionId == sessionId) {
+            steeringInbox.send(message, messageId)
+            _activeTaskState.update { current ->
+                current?.copy(currentAction = "Applying user guidance...")
+            }
+            return true
+        }
+        return false
     }
 
     private suspend fun executeTask(
@@ -172,7 +192,7 @@ class AgentWorkManager @Inject constructor(
 
             val historyEntities = if (isUserMsgAlreadyPersisted) existingEntities.dropLast(1) else existingEntities
 
-            val history = historyEntities.map { entity ->
+            val rawHistory = historyEntities.map { entity ->
                 val toolCalls = parseToolCalls(entity.toolCallsJson)
                 ChatMessage(
                     role = when (entity.role) {
@@ -187,6 +207,7 @@ class AgentWorkManager @Inject constructor(
                     toolCallId = entity.toolCallId
                 )
             }
+            val history = com.koda.dev.core.agent.ContextHygiene.sliceAfterCompaction(rawHistory)
 
             // Ensure session exists in DB to prevent foreign key violations
             try {
@@ -230,6 +251,7 @@ class AgentWorkManager @Inject constructor(
             )
 
             var stepCounter = 0
+            val insertJobs = java.util.Collections.synchronizedList(mutableListOf<Job>())
 
             val result = agentOrchestrator.run(
                 userMessage = task.userPrompt,
@@ -238,6 +260,7 @@ class AgentWorkManager @Inject constructor(
                 temperature = temperature,
                 systemPrompt = systemPrompt,
                 isGoalMode = task.isGoalMode,
+                steeringInbox = steeringInbox,
                 onDelta = { delta ->
                     streamBuffer.append(delta)
                     val currentText = streamBuffer.toString()
@@ -270,7 +293,7 @@ class AgentWorkManager @Inject constructor(
                             }
                             val msg = event.message
                             val entity = MessageEntity(
-                                id = UUID.randomUUID().toString(),
+                                id = event.messageId,
                                 sessionId = task.sessionId,
                                 role = when (msg.role) {
                                     ChatMessage.Role.USER -> "USER"
@@ -283,31 +306,63 @@ class AgentWorkManager @Inject constructor(
                                 toolCallId = msg.toolCallId,
                                 timestamp = System.currentTimeMillis()
                             )
-                            coroutineScope.launch(ioDispatcher) {
+                            val job = coroutineScope.launch(ioDispatcher) {
                                 try {
                                     messageDao.insert(entity)
                                 } catch (e: Exception) {
                                     Log.w("AgentWorkManager", "Failed to insert message entity", e)
                                 }
                             }
+                            insertJobs.add(job)
+                        }
+                        is AgentEvent.ContextCompacted -> {
+                            streamBuffer.clear()
+                            _activeTaskState.update { current ->
+                                current?.copy(streamingDelta = "")
+                            }
+                            val msg = event.noticeMessage
+                            val entity = MessageEntity(
+                                id = event.noticeMessageId,
+                                sessionId = task.sessionId,
+                                role = "ASSISTANT",
+                                content = msg.content,
+                                toolCallsJson = null,
+                                toolCallId = null,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            val job = coroutineScope.launch(ioDispatcher) {
+                                try {
+                                    messageDao.insert(entity)
+                                } catch (e: Exception) {
+                                    Log.w("AgentWorkManager", "Failed to insert auto-compaction notice entity", e)
+                                }
+                            }
+                            insertJobs.add(job)
                         }
                         else -> {}
                     }
                 }
             )
 
-            // Persist pending changes
+            // Ensure all asynchronous message inserts have settled before marking task complete
+            try {
+                insertJobs.joinAll()
+            } catch (_: Exception) {}
+
+            // Persist and register pending changes
             for (pc in result.pendingChanges) {
                 try {
+                    val boundChange = pc.copy(sessionId = task.sessionId)
+                    pendingChangeManager.addChange(boundChange)
                     val pcEntity = PendingChangeEntity(
-                        id = pc.id,
+                        id = boundChange.id,
                         sessionId = task.sessionId,
-                        filePath = pc.filePath,
-                        changeType = pc.changeType.name,
-                        originalContent = pc.originalContent,
-                        proposedContent = pc.proposedContent,
-                        createdAt = pc.createdAt,
-                        status = pc.status.name
+                        filePath = boundChange.filePath,
+                        changeType = boundChange.changeType.name,
+                        originalContent = boundChange.originalContent,
+                        proposedContent = boundChange.proposedContent,
+                        createdAt = boundChange.createdAt,
+                        status = boundChange.status.name
                     )
                     pendingChangeDao.upsert(pcEntity)
                 } catch (e: Exception) {

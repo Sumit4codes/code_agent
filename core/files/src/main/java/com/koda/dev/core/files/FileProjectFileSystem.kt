@@ -105,6 +105,28 @@ class FileProjectFileSystem(
         }
     }
 
+    override suspend fun rename(uri: Uri, newName: String): Uri? = withContext(dispatchers.io) {
+        try {
+            val cleanName = newName.trim()
+            if (cleanName.isBlank() || cleanName.contains("/") || cleanName.contains("\\")) {
+                return@withContext null
+            }
+            val file = uriToFile(uri)
+            if (!file.exists()) return@withContext null
+            val parent = file.parentFile ?: return@withContext null
+            val target = File(parent, cleanName)
+            if (target.exists()) return@withContext null
+            if (file.renameTo(target)) {
+                fileToUri(target)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FileProjectFileSystem", "Failed to rename $uri to $newName", e)
+            null
+        }
+    }
+
     override suspend fun exists(uri: Uri): Boolean = withContext(dispatchers.io) {
         try {
             uriToFile(uri).exists()

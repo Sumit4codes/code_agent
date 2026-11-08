@@ -3,8 +3,10 @@ package com.koda.dev.feature.chat.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +62,10 @@ fun ChatInputBar(
     projectName: String,
     modelName: String,
     onSelectGoal: () -> Unit = {},
+    onSteer: (() -> Unit)? = null,
+    contextUsage: com.koda.dev.core.agent.ContextUsageState = com.koda.dev.core.agent.ContextUsageState(),
+    onCompact: () -> Unit = {},
+    onOpenDetails: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showOptionsSheet by remember { mutableStateOf(false) }
@@ -119,11 +125,22 @@ fun ChatInputBar(
                         )
                     }
 
-                    if (modelName.isNotBlank()) {
-                        Text(
-                            text = modelName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (modelName.isNotBlank()) {
+                            Text(
+                                text = modelName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        ContextWindowButton(
+                            contextUsage = contextUsage,
+                            onCompact = onCompact,
+                            onOpenDetails = onOpenDetails
                         )
                     }
                 }
@@ -202,7 +219,11 @@ fun ChatInputBar(
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
-                            text = if (hasProject) "Ask Koda Dev or propose an edit…" else "Open a project to chat…",
+                            text = when {
+                                isStreaming -> "Steer agent or guide run…"
+                                hasProject -> "Ask Koda Dev or propose an edit…"
+                                else -> "Open a project to chat…"
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             maxLines = 1,
@@ -239,20 +260,49 @@ fun ChatInputBar(
                     textStyle = MaterialTheme.typography.bodyMedium
                 )
 
-                // Action button: Stop when streaming, Send when idle
+                // Action button: Stop/Steer when streaming, Send when idle
                 if (isStreaming) {
-                    FilledIconButton(
-                        onClick = onCancel,
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        ),
-                        modifier = Modifier.size(48.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Stop,
-                            contentDescription = "Stop generation"
-                        )
+                        // Stop button
+                        FilledIconButton(
+                            onClick = onCancel,
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ),
+                            modifier = Modifier.size(if (inputText.isNotBlank()) 42.dp else 48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "Stop generation",
+                                modifier = Modifier.size(if (inputText.isNotBlank()) 20.dp else 24.dp)
+                            )
+                        }
+
+                        // Steer button (animated appearance when user types guidance)
+                        AnimatedVisibility(
+                            visible = inputText.isNotBlank(),
+                            enter = fadeIn() + expandHorizontally(),
+                            exit = fadeOut() + shrinkHorizontally()
+                        ) {
+                            FilledIconButton(
+                                onClick = { onSteer?.invoke() ?: onSend() },
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiary,
+                                    contentColor = MaterialTheme.colorScheme.onTertiary
+                                ),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Steer agent",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
                 } else {
                     val isSendEnabled = inputText.isNotBlank() && hasProject

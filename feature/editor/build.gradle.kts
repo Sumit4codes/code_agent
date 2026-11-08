@@ -16,6 +16,9 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 kotlin {
@@ -30,6 +33,7 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:files"))
     implementation(project(":core:data"))
+    implementation(project(":feature:terminal"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -43,4 +47,7 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
     ksp(libs.hilt.android.compiler)
+    testImplementation(project(":core:testing"))
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

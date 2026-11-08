@@ -13,6 +13,7 @@ interface ProjectFileSystem {
     suspend fun fileSize(uri: Uri): Long?
     suspend fun lastModified(uri: Uri): Long?
     suspend fun resolveRelativeUri(rootUri: Uri, relPath: String): Uri?
+    suspend fun rename(uri: Uri, newName: String): Uri?
 }
 
 data class FileNode(
