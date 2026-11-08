@@ -3,6 +3,7 @@ package com.koda.dev.feature.chat
 import com.koda.dev.core.model.Message
 import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.ToolCallData
+import com.koda.dev.feature.chat.components.deduplicateToolCallsForDisplay
 import com.koda.dev.feature.chat.components.groupMessagesIntoTurns
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -138,5 +139,52 @@ class ChatTurnUtilsTest {
         assertEquals("Turn 2 answer", result[3].content)
         assertEquals(1, result[3].toolCalls.size)
         assertEquals("run_command", result[3].toolCalls[0].name)
+    }
+
+    @Test
+    fun consecutiveIdenticalThoughtsAreDeduplicated() {
+        val messages = listOf(
+            Message(id = "u1", sessionId = "s1", role = MessageRole.USER, content = "Build project", timestamp = 1000L),
+            Message(id = "a1", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Checking status...", timestamp = 1001L),
+            Message(id = "a2", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Checking status...", timestamp = 1002L),
+            Message(id = "a3", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Build complete!", timestamp = 1003L)
+        )
+
+        val result = groupMessagesIntoTurns(messages)
+        assertEquals(2, result.size)
+        assertEquals("Checking status...\n\nBuild complete!", result[1].content)
+    }
+
+    @Test
+    fun intermediateThoughtsCompactedWhenMoreThan3Updates() {
+        val messages = listOf(
+            Message(id = "u1", sessionId = "s1", role = MessageRole.USER, content = "Run long task", timestamp = 1000L),
+            Message(id = "a1", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Step 1: Starting", timestamp = 1001L),
+            Message(id = "a2", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Step 2: Compiling", timestamp = 1002L),
+            Message(id = "a3", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Step 3: Linking", timestamp = 1003L),
+            Message(id = "a4", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Step 4: Packaging", timestamp = 1004L),
+            Message(id = "a5", sessionId = "s1", role = MessageRole.ASSISTANT, content = "Step 5: Done", timestamp = 1005L)
+        )
+
+        val result = groupMessagesIntoTurns(messages)
+        assertEquals(2, result.size)
+        val expected = "Step 1: Starting\n\n... (3 intermediate progress updates) ...\n\nStep 5: Done"
+        assertEquals(expected, result[1].content)
+    }
+
+    @Test
+    fun deduplicateToolCallsForDisplayCollapsesRepeatedManageTaskStatus() {
+        val toolCalls = listOf(
+            ToolCallData(id = "tc1", name = "run_command", arguments = """{"command":"./build.sh"}"""),
+            ToolCallData(id = "tc2", name = "manage_task", arguments = """{"action":"status","task_id":"task_1"}"""),
+            ToolCallData(id = "tc3", name = "manage_task", arguments = """{"action":"status","task_id":"task_1"}"""),
+            ToolCallData(id = "tc4", name = "manage_task", arguments = """{"action":"status","task_id":"task_1"}""")
+        )
+
+        val deduplicated = deduplicateToolCallsForDisplay(toolCalls)
+        assertEquals(2, deduplicated.size)
+        assertEquals("run_command", deduplicated[0].name)
+        assertEquals("manage_task", deduplicated[1].name)
+        assertTrue(deduplicated[1].arguments.contains("\"_check_count\":3"))
     }
 }

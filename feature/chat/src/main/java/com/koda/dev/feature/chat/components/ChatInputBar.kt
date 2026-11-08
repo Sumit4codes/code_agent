@@ -63,6 +63,9 @@ fun ChatInputBar(
     modelName: String,
     onSelectGoal: () -> Unit = {},
     onSteer: (() -> Unit)? = null,
+    contextUsage: com.koda.dev.core.agent.ContextUsageState = com.koda.dev.core.agent.ContextUsageState(),
+    onCompact: () -> Unit = {},
+    onOpenDetails: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showOptionsSheet by remember { mutableStateOf(false) }
@@ -122,11 +125,22 @@ fun ChatInputBar(
                         )
                     }
 
-                    if (modelName.isNotBlank()) {
-                        Text(
-                            text = modelName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (modelName.isNotBlank()) {
+                            Text(
+                                text = modelName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        ContextWindowButton(
+                            contextUsage = contextUsage,
+                            onCompact = onCompact,
+                            onOpenDetails = onOpenDetails
                         )
                     }
                 }

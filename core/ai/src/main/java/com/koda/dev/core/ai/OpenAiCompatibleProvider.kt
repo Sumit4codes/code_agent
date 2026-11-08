@@ -56,9 +56,25 @@ class OpenAiCompatibleProvider(
                 val json = Json.parseToJsonElement(body).jsonObject
                 json["data"]?.jsonArray?.map { element ->
                     val obj = element.jsonObject
+                    val id = obj["id"]?.jsonPrimitive?.content ?: ""
+                    val window = obj["context_window"]
+                    val ctx = sequenceOf(
+                        obj["context_length"],
+                        obj["max_context_tokens"],
+                        obj["max_tokens"],
+                        window,
+                        window?.let { (it as? JsonObject)?.get("tokens") }
+                    ).mapNotNull { it?.jsonPrimitive?.intOrNull }.firstOrNull()
+
+                    val resolvedContext = ModelCatalogResolver.resolveContextLimit(
+                        modelId = id,
+                        providerReportedWindow = ctx
+                    )
+
                     ModelInfo(
-                        id = obj["id"]?.jsonPrimitive?.content ?: "",
-                        name = obj["id"]?.jsonPrimitive?.content ?: ""
+                        id = id,
+                        name = id,
+                        contextWindow = resolvedContext
                     )
                 } ?: emptyList()
             }

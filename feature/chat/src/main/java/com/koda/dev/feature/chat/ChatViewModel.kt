@@ -7,10 +7,15 @@ import androidx.lifecycle.viewModelScope
 import com.koda.dev.core.agent.AgentContext
 import com.koda.dev.core.agent.AgentEvent
 import com.koda.dev.core.agent.AgentOrchestrator
+import com.koda.dev.core.agent.ContextEstimator
+import com.koda.dev.core.agent.ContextUsageState
+import com.koda.dev.core.agent.HistoryCompactor
 import com.koda.dev.core.agent.PendingChangeManager
 import com.koda.dev.core.agent.ToolExecutor
 import com.koda.dev.core.agent.service.AgentWorkManager
+import com.koda.dev.core.ai.AiProvider
 import com.koda.dev.core.ai.ChatMessage
+import com.koda.dev.core.ai.ModelCatalogResolver
 import com.koda.dev.core.data.MessageDao
 import com.koda.dev.core.data.MessageEntity
 import com.koda.dev.core.data.PendingChangeDao
@@ -61,13 +66,15 @@ data class ChatState(
     val projectId: String = "",
     val isGoalMode: Boolean = false,
     val activeStepCount: Int = 0,
-    val activeBackgroundTasks: List<com.koda.dev.core.terminal.TaskSummary> = emptyList()
+    val activeBackgroundTasks: List<com.koda.dev.core.terminal.TaskSummary> = emptyList(),
+    val contextUsage: ContextUsageState = ContextUsageState()
 )
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val agentOrchestrator: AgentOrchestrator,
     private val agentWorkManager: AgentWorkManager,
+    private val aiProvider: AiProvider,
     private val toolExecutor: ToolExecutor,
     private val taskManager: com.koda.dev.core.terminal.TaskManager,
     private val pendingChangeManager: PendingChangeManager,
@@ -271,6 +278,9 @@ class ChatViewModel @Inject constructor(
                             } else s
                         }
                     }
+                    is AgentEvent.ContextEstimated -> {
+                        _state.update { it.copy(contextUsage = event.usage) }
+                    }
                     is AgentEvent.MessageAdded -> {
                         flushStreamBuffer()
                         streamBuffer.clear()
@@ -328,6 +338,7 @@ class ChatViewModel @Inject constructor(
 
                         // Keep in-memory chatHistory in sync for ViewModel
                         chatHistory = chatHistory + msg
+                        recalculateContextUsage()
                     }
                 }
             }
@@ -465,11 +476,84 @@ class ChatViewModel @Inject constructor(
                     toolCallId = msg.toolCallId
                 )
             }
+            recalculateContextUsage()
 
             return linkedMessages.filter { it.role != MessageRole.TOOL }
         } catch (e: Exception) {
             Log.w("ChatViewModel", "Failed to load messages from DB", e)
             return emptyList()
+        }
+    }
+
+    fun recalculateContextUsage() {
+        val currentModel = _state.value.model
+        val maxTokens = ModelCatalogResolver.resolveContextLimit(currentModel)
+        val estimate = ContextEstimator.estimate(
+            messages = chatHistory,
+            systemPrompt = buildSystemPrompt(_state.value.projectName, null),
+            maxTokens = maxTokens,
+            lastInputTokens = _state.value.contextUsage.lastInputTokens,
+            lastOutputTokens = _state.value.contextUsage.lastOutputTokens
+        )
+        _state.update { it.copy(contextUsage = estimate) }
+    }
+
+    fun compactHistory() {
+        if (chatHistory.isEmpty() || _state.value.isStreaming) return
+        val currentSessionId = _state.value.sessionId ?: return
+        val currentModel = _state.value.model
+
+        viewModelScope.launch {
+            _state.update { it.copy(isStreaming = true, streamingText = "Compacting conversation history...") }
+            try {
+                val summary = HistoryCompactor.summarizeHistory(aiProvider, chatHistory, currentModel)
+                if (summary.isNotBlank()) {
+                    val formattedNotice = buildString {
+                        append("### 📦 Context Compacted\n\n")
+                        append("Earlier conversation turns have been summarized to free up working context:\n\n")
+                        append(summary)
+                    }
+                    val summaryMsg = Message(
+                        id = UUID.randomUUID().toString(),
+                        sessionId = currentSessionId,
+                        role = MessageRole.ASSISTANT,
+                        content = formattedNotice,
+                        timestamp = System.currentTimeMillis()
+                    )
+
+                    // Retain the last 2 messages in working history + the new summary
+                    val tail = chatHistory.takeLast(2)
+                    chatHistory = listOf(
+                        ChatMessage(role = ChatMessage.Role.SYSTEM, content = "${HistoryCompactor.COMPACTION_PREFIX}\n$summary")
+                    ) + tail
+
+                    messageDao.insert(
+                        MessageEntity(
+                            id = summaryMsg.id,
+                            sessionId = currentSessionId,
+                            role = summaryMsg.role.name,
+                            content = summaryMsg.content,
+                            toolCallsJson = null,
+                            toolCallId = null,
+                            timestamp = summaryMsg.timestamp
+                        )
+                    )
+
+                    _state.update { state ->
+                        state.copy(
+                            messages = state.messages + summaryMsg,
+                            isStreaming = false,
+                            streamingText = ""
+                        )
+                    }
+                    recalculateContextUsage()
+                } else {
+                    _state.update { it.copy(isStreaming = false, streamingText = "") }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Compaction failed", e)
+                _state.update { it.copy(isStreaming = false, streamingText = "", error = "Compaction failed: ${e.message}") }
+            }
         }
     }
 
@@ -553,6 +637,12 @@ class ChatViewModel @Inject constructor(
         if (text.isBlank()) return
         if (_state.value.isStreaming) {
             steerCurrentTask(text)
+            return
+        }
+
+        val isCompact = text.trim().equals("/compact", ignoreCase = true)
+        if (isCompact) {
+            compactHistory()
             return
         }
 
@@ -733,7 +823,7 @@ class ChatViewModel @Inject constructor(
             append("  * `send_input`: Send input (e.g. 'y', answers, or commands) to interactive processes waiting on stdin.\n")
             append("  * `kill`: Terminate a task immediately if it is frozen, looping, stalled, or no longer needed.\n")
             append("  * `list`: View all currently active background tasks.\n")
-            append("- AUTONOMOUS EVALUATION: If a command is taking long or backgrounded, you MUST check its status. Evaluate whether it is genuinely making progress or stuck. If stalled, kill it and retry or explain why to the user. Do not leave stray tasks running unnecessarily.\n")
+            append("- NO BUSY-WAIT POLLING: Do NOT poll `manage_task(action=\"status\")` in a loop while waiting for a background task to complete. Background tasks are already monitored live in the Background Tasks strip in the UI. When a long task (build, test, daemon) is running: check status once to confirm it started cleanly, then provide a concise update to the user and END YOUR TURN (do not execute any more tools). The user can steer you or let you know when to proceed. Never loop calling manage_task(status).\n")
             append("- Concurrency cap: At most 5 background tasks can run simultaneously to avoid Low Memory Killer (LMK).\n")
             if (custom != null) {
                 append("\nUser Instructions:\n$custom\n")

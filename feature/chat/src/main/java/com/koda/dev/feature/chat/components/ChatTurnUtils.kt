@@ -23,11 +23,30 @@ fun groupMessagesIntoTurns(rawMessages: List<Message>): List<Message> {
             // Combine all tool calls in chronological order
             val allToolCalls = currentAssistantBatch.flatMap { it.toolCalls }
 
-            // Join non-blank content in chronological order
+            // Join non-blank content in chronological order, deduplicating consecutive identical thoughts
             val nonBlankContents = currentAssistantBatch
                 .map { it.content.trim() }
                 .filter { it.isNotBlank() }
-            val combinedContent = nonBlankContents.joinToString("\n\n")
+
+            val distinctContents = mutableListOf<String>()
+            for (c in nonBlankContents) {
+                if (distinctContents.isEmpty() || distinctContents.last() != c) {
+                    distinctContents.add(c)
+                }
+            }
+
+            // If there are many intermediate progress updates, keep the initial intent and latest progress/answer
+            val compactedContents = if (distinctContents.size > 3) {
+                listOf(
+                    distinctContents.first(),
+                    "... (${distinctContents.size - 2} intermediate progress updates) ...",
+                    distinctContents.last()
+                )
+            } else {
+                distinctContents
+            }
+
+            val combinedContent = compactedContents.joinToString("\n\n")
 
             val firstMsg = currentAssistantBatch.first()
             val lastMsg = currentAssistantBatch.last()

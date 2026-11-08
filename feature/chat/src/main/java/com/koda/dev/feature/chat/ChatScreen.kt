@@ -75,6 +75,7 @@ import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.feature.chat.components.ActiveTasksStrip
 import com.koda.dev.feature.chat.components.ChatInputBar
+import com.koda.dev.feature.chat.components.ContextUsageDialog
 import com.koda.dev.feature.chat.components.EmptyChatState
 import com.koda.dev.feature.chat.components.InChatDiffBottomSheet
 import com.koda.dev.feature.chat.components.MessageItem
@@ -115,6 +116,7 @@ fun ChatScreen(
     var showHistorySheet by remember { mutableStateOf(false) }
     var showDiffBottomSheet by remember { mutableStateOf(false) }
     var showTerminalSheet by remember { mutableStateOf(false) }
+    var showContextDialog by remember { mutableStateOf(false) }
     var selectedDiffChange by remember { mutableStateOf<PendingChange?>(null) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -389,6 +391,9 @@ fun ChatScreen(
                     hasProject = state.projectUri != null,
                     projectName = state.projectName,
                     modelName = state.model,
+                    contextUsage = state.contextUsage,
+                    onCompact = { viewModel.compactHistory() },
+                    onOpenDetails = { showContextDialog = true },
                     onSelectGoal = {
                         val current = inputText.trim()
                         val newText = if (current.startsWith("/goal", ignoreCase = true)) {
@@ -558,6 +563,18 @@ fun ChatScreen(
             projectId = effectiveProjectId.ifBlank { null },
             projectName = state.projectName.ifBlank { null },
             onDismiss = { showTerminalSheet = false }
+        )
+    }
+
+    if (showContextDialog) {
+        ContextUsageDialog(
+            contextUsage = state.contextUsage,
+            modelName = state.model,
+            onDismiss = { showContextDialog = false },
+            onCompact = {
+                showContextDialog = false
+                viewModel.compactHistory()
+            }
         )
     }
     }

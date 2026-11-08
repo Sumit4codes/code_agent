@@ -296,4 +296,62 @@ class AgentOrchestratorTest {
         assertTrue(systemMessage.content.contains("NEVER PIPE BUILDS/TESTS TO TAIL OR HEAD"))
         assertTrue(systemMessage.content.contains("tail"))
     }
+
+    @Test
+    fun `system prompt instructs agent against busy-wait polling`() = runTest {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Done"),
+                ChatStreamEvent.Done
+            )
+        )
+        val context = AgentContext(sessionId = "s-no-poll-check", projectId = "p1")
+        val result = orchestrator.run(
+            userMessage = "test",
+            context = context,
+            model = "test-model"
+        )
+        val systemMessage = result.messages.first { it.role == ChatMessage.Role.SYSTEM }
+        assertTrue(systemMessage.content.contains("NO BUSY-WAIT POLLING"))
+    }
+
+    @Test
+    fun `extractManageTaskArgs extracts action and task_id correctly`() {
+        val (action, taskId) = extractManageTaskArgs("""{"action":"status","task_id":"task_42"}""")
+        assertEquals("status", action)
+        assertEquals("task_42", taskId)
+
+        val (invalidAction, invalidTaskId) = extractManageTaskArgs("malformed json")
+        assertEquals(null, invalidAction)
+        assertEquals(null, invalidTaskId)
+    }
+
+    @Test
+    fun `pruneStatusHistory replaces earlier status checks with tombstone but keeps latest`() {
+        val history = listOf(
+            ChatMessage(role = ChatMessage.Role.USER, content = "start build"),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_1\nCommand: ./build.sh\nStatus: RUNNING\nRecent Output:\nline 1"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Still building..."),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_1\nCommand: ./build.sh\nStatus: RUNNING\nRecent Output:\nline 1\nline 2"),
+            ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Still building 2..."),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_1\nCommand: ./build.sh\nStatus: EXITED (code: 0)\nRecent Output:\nBUILD SUCCESSFUL")
+        )
+
+        val pruned = pruneStatusHistory(history)
+        assertEquals(6, pruned.size)
+        assertEquals("(Task task_1 status output superseded by newer check)", pruned[1].content)
+        assertEquals("(Task task_1 status output superseded by newer check)", pruned[3].content)
+        assertTrue(pruned[5].content.contains("BUILD SUCCESSFUL"))
+    }
+
+    @Test
+    fun `pruneSupersededStatusChecks replaces older status outputs in list`() {
+        val msgs = mutableListOf(
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_99\nStatus: RUNNING\nLine A"),
+            ChatMessage(role = ChatMessage.Role.TOOL, content = "Task ID: task_99\nStatus: RUNNING\nLine B")
+        )
+        pruneSupersededStatusChecks(msgs, "task_99")
+        assertEquals("(Task task_99 status output superseded by newer check)", msgs[0].content)
+        assertEquals("(Task task_99 status output superseded by newer check)", msgs[1].content)
+    }
 }

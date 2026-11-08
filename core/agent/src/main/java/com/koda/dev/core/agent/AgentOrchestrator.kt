@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -46,6 +49,7 @@ sealed class AgentEvent {
         val message: ChatMessage,
         val messageId: String = UUID.randomUUID().toString()
     ) : AgentEvent()
+    data class ContextEstimated(val usage: ContextUsageState) : AgentEvent()
 }
 
 @Singleton
@@ -101,6 +105,7 @@ class AgentOrchestrator @Inject constructor(
                 2. KILL: If you see a [STALL WARNING], an infinite loop, or a prompt waiting on stdin that cannot be satisfied, call `manage_task(action="kill", task_id="...")` immediately.
                 3. Maximum 5 background tasks can run at once. Clean up tasks with `kill` when finished or no longer needed.
                 4. NEVER PIPE BUILDS/TESTS TO TAIL OR HEAD: Do NOT pipe long-running, test, or build commands to `tail` or `head` (e.g. `bash build.sh 2>&1 | tail -60` or `./gradlew ... | tail -n 50`). In Unix, `tail` buffers and blocks ALL output until the process exits (EOF), which prevents real-time streaming to the user chat UI and triggers false stall warnings. The task runner and circular buffer already automatically capture and truncate output. Run commands directly (e.g. `bash build.sh` or `./test.sh`).
+                5. NO BUSY-WAIT POLLING: Do NOT poll `manage_task(action="status")` repeatedly in a loop while waiting for a background task to finish. Active background tasks are already monitored live in the user interface. When a long task (build, test, daemon) is running: check status once to confirm it started cleanly, then provide a concise update to the user and END YOUR TURN (do not execute any more tools). The user can steer you or let you know when to proceed. Never loop calling manage_task(status).
             """.trimIndent())
             append("\n\n")
             append("""
@@ -141,17 +146,40 @@ class AgentOrchestrator @Inject constructor(
         } else {
             history
         }
-        messages.addAll(sanitizedHistory)
+        val prunedHistory = pruneStatusHistory(sanitizedHistory)
+        messages.addAll(prunedHistory)
         messages.add(ChatMessage(role = ChatMessage.Role.USER, content = userMessage))
 
         var iteration = 0
         var lastAssistantContent = ""
+        var consecutiveRunningStatusChecks = 0
+        var lastRunningStatusTaskId: String? = null
 
         while (currentCoroutineContext().isActive) {
             iteration++
 
+            if (consecutiveRunningStatusChecks >= 5 && lastRunningStatusTaskId != null) {
+                val yieldMsg = ChatMessage(
+                    role = ChatMessage.Role.ASSISTANT,
+                    content = "Task '$lastRunningStatusTaskId' is currently running in the background. I have yielded control so you can monitor progress or steer further tasks."
+                )
+                messages.add(yieldMsg)
+                newMessages.add(yieldMsg)
+                onEvent?.invoke(AgentEvent.MessageAdded(yieldMsg))
+                break
+            }
+
+            val hygieneMessages = ContextHygiene.shrinkToolResults(messages)
+            val currentEstimate = ContextEstimator.estimate(
+                messages = hygieneMessages,
+                systemPrompt = effectiveSystemPrompt,
+                tools = toolRegistry.allSpecs(),
+                maxTokens = com.koda.dev.core.ai.ModelCatalogResolver.resolveContextLimit(model)
+            )
+            onEvent?.invoke(AgentEvent.ContextEstimated(currentEstimate))
+
             val request = ChatRequest(
-                messages = messages,
+                messages = hygieneMessages,
                 model = model,
                 temperature = temperature,
                 maxTokens = maxTokens,
@@ -199,6 +227,12 @@ class AgentOrchestrator @Inject constructor(
                         }
                         is ChatStreamEvent.Usage -> {
                             totalTokens += event.promptTokens + event.completionTokens
+                            val updatedEstimate = currentEstimate.copy(
+                                usedTokens = event.promptTokens + event.completionTokens,
+                                lastInputTokens = event.promptTokens,
+                                lastOutputTokens = event.completionTokens
+                            )
+                            onEvent?.invoke(AgentEvent.ContextEstimated(updatedEstimate))
                         }
                         is ChatStreamEvent.Error -> {
                             throw AgentException(event.message, event.cause)
@@ -292,6 +326,34 @@ class AgentOrchestrator @Inject constructor(
                 }
 
                 val cleanName = ToolNames.normalize(tc.name)
+                val (manageAction, manageTaskId) = extractManageTaskArgs(tc.arguments)
+                val isStatusCheck = cleanName == ToolNames.MANAGE_TASK && manageAction == "status" && manageTaskId != null
+
+                // Anti-spin guard: suppress repetitive status polling for the same running background task
+                if (isStatusCheck && manageTaskId == lastRunningStatusTaskId && consecutiveRunningStatusChecks >= 4) {
+                    val suppressedOutput = "Task '$manageTaskId' is actively running in the background. [Anti-polling guard active]: Repetitive polling has been blocked. DO NOT call manage_task(status) again. Provide a concise update to the user and END YOUR TURN now."
+                    onEvent?.invoke(
+                        AgentEvent.ToolCallComplete(
+                            toolCallId = tc.id,
+                            toolName = cleanName,
+                            arguments = tc.arguments,
+                            output = suppressedOutput,
+                            success = false,
+                            durationMs = 0
+                        )
+                    )
+                    pruneSupersededStatusChecks(messages, manageTaskId)
+                    val toolMsg = ChatMessage(
+                        role = ChatMessage.Role.TOOL,
+                        content = suppressedOutput,
+                        toolCallId = tc.id
+                    )
+                    messages.add(toolMsg)
+                    newMessages.add(toolMsg)
+                    onEvent?.invoke(AgentEvent.MessageAdded(toolMsg))
+                    continue
+                }
+
                 val startTime = System.currentTimeMillis()
                 onEvent?.invoke(AgentEvent.ToolCallStart(tc.id, cleanName, tc.arguments))
 
@@ -304,7 +366,29 @@ class AgentOrchestrator @Inject constructor(
                     yieldEarlyIf = { steeringInbox?.hasPending == true }
                 )
                 val duration = System.currentTimeMillis() - startTime
-                val toolOutput = if (result.success) result.output else "Error: ${result.output}"
+                var toolOutput = if (result.success) result.output else "Error: ${result.output}"
+
+                if (isStatusCheck) {
+                    val isStillRunning = toolOutput.contains("Status: RUNNING") || toolOutput.contains("is running")
+                    if (isStillRunning) {
+                        if (manageTaskId == lastRunningStatusTaskId) {
+                            consecutiveRunningStatusChecks++
+                        } else {
+                            lastRunningStatusTaskId = manageTaskId
+                            consecutiveRunningStatusChecks = 1
+                        }
+                        if (consecutiveRunningStatusChecks >= 3) {
+                            toolOutput += "\n\n[NOTICE: Task '$manageTaskId' is actively running in the background. Active tasks are displayed in real-time in the UI. DO NOT call manage_task(status) again in a loop. Provide a concise update to the user and END YOUR TURN now. Do not call any further tools.]"
+                        }
+                    } else {
+                        // Finished or failed
+                        consecutiveRunningStatusChecks = 0
+                        lastRunningStatusTaskId = null
+                    }
+                } else if (cleanName != ToolNames.MANAGE_TASK) {
+                    consecutiveRunningStatusChecks = 0
+                    lastRunningStatusTaskId = null
+                }
 
                 onEvent?.invoke(
                     AgentEvent.ToolCallComplete(
@@ -319,6 +403,10 @@ class AgentOrchestrator @Inject constructor(
 
                 if (result.pendingChange != null) {
                     allPendingChanges.add(result.pendingChange.copy(sessionId = context.sessionId))
+                }
+
+                if (isStatusCheck) {
+                    pruneSupersededStatusChecks(messages, manageTaskId)
                 }
 
                 val toolMsg = ChatMessage(
@@ -367,3 +455,62 @@ data class AgentContext(
     val projectId: String,
     val history: List<ChatMessage> = emptyList()
 )
+
+internal fun extractManageTaskArgs(argumentsJson: String): Pair<String?, String?> {
+    return try {
+        val json = Json.parseToJsonElement(argumentsJson).jsonObject
+        val action = json["action"]?.jsonPrimitive?.content
+        val taskId = json["task_id"]?.jsonPrimitive?.content
+        Pair(action, taskId)
+    } catch (_: Exception) {
+        Pair(null, null)
+    }
+}
+
+internal fun pruneStatusHistory(history: List<ChatMessage>): List<ChatMessage> {
+    if (history.isEmpty()) return history
+
+    val lastIndexByTaskId = mutableMapOf<String, Int>()
+    val taskIdRegex = Regex("""^Task ID:\s*([^\s\n]+)""")
+
+    for ((index, msg) in history.withIndex()) {
+        if (msg.role == ChatMessage.Role.TOOL) {
+            val match = taskIdRegex.find(msg.content)
+            if (match != null) {
+                val taskId = match.groupValues[1]
+                lastIndexByTaskId[taskId] = index
+            }
+        }
+    }
+
+    if (lastIndexByTaskId.isEmpty()) return history
+
+    return history.mapIndexed { index, msg ->
+        if (msg.role == ChatMessage.Role.TOOL) {
+            val match = taskIdRegex.find(msg.content)
+            if (match != null) {
+                val taskId = match.groupValues[1]
+                val lastIdx = lastIndexByTaskId[taskId]
+                if (lastIdx != null && index < lastIdx) {
+                    msg.copy(content = "(Task $taskId status output superseded by newer check)")
+                } else {
+                    msg
+                }
+            } else {
+                msg
+            }
+        } else {
+            msg
+        }
+    }
+}
+
+internal fun pruneSupersededStatusChecks(messages: MutableList<ChatMessage>, taskId: String) {
+    val prefix = "Task ID: $taskId\n"
+    for (i in 0 until messages.size) {
+        val msg = messages[i]
+        if (msg.role == ChatMessage.Role.TOOL && msg.content.startsWith(prefix)) {
+            messages[i] = msg.copy(content = "(Task $taskId status output superseded by newer check)")
+        }
+    }
+}

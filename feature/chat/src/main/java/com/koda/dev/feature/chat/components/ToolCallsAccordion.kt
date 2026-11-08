@@ -49,6 +49,11 @@ import com.koda.dev.core.model.ChangeStatus
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.model.ToolCallData
 import com.koda.dev.core.model.ToolNames
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * A collapsible accordion container for tool calls executed within an assistant turn.
@@ -80,13 +85,22 @@ fun ToolCallsAccordion(
         }
     }
 
-    val toolCount = toolCalls.size
-    val toolLabel = remember(toolCount) {
-        if (toolCount == 1) "1 tool executed" else "$toolCount tools executed"
+    val displayToolCalls = remember(toolCalls) {
+        deduplicateToolCallsForDisplay(toolCalls)
     }
 
-    val distinctToolNames = remember(toolCalls) {
-        toolCalls.map { ToolNames.normalize(it.name) }.distinct()
+    val toolCount = displayToolCalls.size
+    val rawCount = toolCalls.size
+    val toolLabel = remember(toolCount, rawCount) {
+        when {
+            rawCount == 1 -> "1 tool executed"
+            toolCount == rawCount -> "$toolCount tools executed"
+            else -> "$toolCount tools executed ($rawCount steps)"
+        }
+    }
+
+    val distinctToolNames = remember(displayToolCalls) {
+        displayToolCalls.map { ToolNames.normalize(it.name) }.distinct()
     }
     val namesSummary = remember(distinctToolNames) {
         distinctToolNames.joinToString(", ")
@@ -217,7 +231,7 @@ fun ToolCallsAccordion(
                     .padding(top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                for (tc in toolCalls) {
+                for (tc in displayToolCalls) {
                     ToolCallCard(
                         toolCall = tc,
                         initiallyExpanded = false,
@@ -230,4 +244,49 @@ fun ToolCallsAccordion(
             }
         }
     }
+}
+
+/**
+ * Deduplicates repetitive manage_task status checks for the same task in an accordion,
+ * retaining only the latest status check per task while badging the number of checks made.
+ */
+fun deduplicateToolCallsForDisplay(toolCalls: List<ToolCallData>): List<ToolCallData> {
+    if (toolCalls.size <= 1) return toolCalls
+
+    val result = mutableListOf<ToolCallData>()
+    val statusIndices = mutableMapOf<String, Int>()
+    val statusCounts = mutableMapOf<String, Int>()
+
+    for (tc in toolCalls) {
+        val normName = ToolNames.normalize(tc.name)
+        val isStatus = normName == ToolNames.MANAGE_TASK && tc.arguments.contains("\"status\"")
+        val taskId = if (isStatus) {
+            try {
+                Json.parseToJsonElement(tc.arguments).jsonObject["task_id"]?.jsonPrimitive?.content
+            } catch (_: Exception) { null }
+        } else null
+
+        if (isStatus && taskId != null) {
+            val count = (statusCounts[taskId] ?: 0) + 1
+            statusCounts[taskId] = count
+            val existingIndex = statusIndices[taskId]
+            if (existingIndex != null) {
+                // Update the existing entry in place with the latest result and arguments
+                val updatedArgs = try {
+                    val obj = Json.parseToJsonElement(tc.arguments).jsonObject.toMutableMap()
+                    obj["_check_count"] = JsonPrimitive(count)
+                    JsonObject(obj).toString()
+                } catch (_: Exception) {
+                    tc.arguments
+                }
+                result[existingIndex] = tc.copy(arguments = updatedArgs)
+            } else {
+                statusIndices[taskId] = result.size
+                result.add(tc)
+            }
+        } else {
+            result.add(tc)
+        }
+    }
+    return result
 }
