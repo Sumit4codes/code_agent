@@ -117,6 +117,36 @@ class FakeProjectFileSystem(
 
     override suspend fun lastModified(uri: Uri): Long? = System.currentTimeMillis()
 
+    override suspend fun rename(uri: Uri, newName: String): Uri? {
+        val oldPath = normalize(uri.toString())
+        val parentPath = oldPath.substringBeforeLast('/', "")
+        val targetPath = if (parentPath.isNotEmpty()) "$parentPath/$newName" else newName
+        if (files.containsKey(targetPath) || directories.contains(targetPath)) return null
+        if (files.containsKey(oldPath)) {
+            val content = files.remove(oldPath) ?: ""
+            files[targetPath] = content
+            return FakeUri(targetPath)
+        }
+        if (directories.contains(oldPath)) {
+            directories.remove(oldPath)
+            directories.add(targetPath)
+            val filesToMove = files.filterKeys { it.startsWith("$oldPath/") }
+            for ((childPath, content) in filesToMove) {
+                files.remove(childPath)
+                val newChildPath = childPath.replaceFirst(oldPath, targetPath)
+                files[newChildPath] = content
+            }
+            val dirsToMove = directories.filter { it.startsWith("$oldPath/") }
+            for (childDir in dirsToMove) {
+                directories.remove(childDir)
+                val newChildDir = childDir.replaceFirst(oldPath, targetPath)
+                directories.add(newChildDir)
+            }
+            return FakeUri(targetPath)
+        }
+        return null
+    }
+
     override suspend fun resolveRelativeUri(rootUri: Uri, relPath: String): Uri? {
         val cleanRel = relPath.trim().removePrefix("/").removeSuffix("/")
         if (cleanRel.isEmpty()) return rootUri

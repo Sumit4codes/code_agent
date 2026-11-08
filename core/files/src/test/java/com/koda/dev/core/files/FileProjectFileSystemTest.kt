@@ -124,4 +124,33 @@ class FileProjectFileSystemTest {
         assertNull(content)
         assertFalse(fileSystem.exists(nonExistent))
     }
+
+    @Test
+    fun `renames file and directory successfully and prevents overwriting existing`() = runBlocking {
+        val fileUri = fileSystem.createFile(rootUri, "old_name.txt", "text/plain")
+        assertNotNull(fileUri)
+        fileSystem.writeTextFile(fileUri!!, "Content inside old file")
+
+        // Rename file
+        val renamedUri = fileSystem.rename(fileUri, "new_name.txt")
+        assertNotNull(renamedUri)
+        assertTrue(fileSystem.exists(renamedUri!!))
+        assertFalse(fileSystem.exists(fileUri))
+        assertEquals("Content inside old file", fileSystem.readTextFile(renamedUri))
+
+        // Rename directory
+        val dirUri = fileSystem.createDirectory(rootUri, "old_dir")
+        assertNotNull(dirUri)
+        fileSystem.createFile(dirUri!!, "child.txt", "text/plain")
+
+        val renamedDirUri = fileSystem.rename(dirUri, "new_dir")
+        assertNotNull(renamedDirUri)
+        assertTrue(fileSystem.exists(renamedDirUri!!))
+        assertFalse(fileSystem.exists(dirUri))
+
+        // Collision: try renaming to an already existing file
+        val collision = fileSystem.rename(renamedUri, "new_dir")
+        assertNull(collision)
+        assertTrue(fileSystem.exists(renamedUri))
+    }
 }

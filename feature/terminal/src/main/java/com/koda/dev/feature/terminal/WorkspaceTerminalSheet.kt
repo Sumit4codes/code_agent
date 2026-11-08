@@ -83,6 +83,7 @@ import com.termux.view.TerminalView
 fun WorkspaceTerminalSheet(
     projectId: String? = null,
     projectName: String? = null,
+    initialCommand: String? = null,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: TerminalViewModel = hiltViewModel()
@@ -108,6 +109,14 @@ fun WorkspaceTerminalSheet(
     LaunchedEffect(projectId) {
         if (!projectId.isNullOrBlank()) {
             viewModel.openProject(projectId)
+        }
+    }
+
+    LaunchedEffect(initialCommand) {
+        if (!initialCommand.isNullOrBlank()) {
+            // Give session brief moment to bind if just opening, then execute
+            kotlinx.coroutines.delay(200)
+            viewModel.sendCommandToSession(initialCommand)
         }
     }
 

@@ -732,6 +732,18 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    fun sendCommandToSession(command: String) {
+        val trimmed = command.trim()
+        if (trimmed.isBlank()) return
+        val session = terminalSession
+        if (session != null && session.isRunning) {
+            val bytes = "$trimmed\r".toByteArray(Charsets.UTF_8)
+            session.write(bytes, 0, bytes.size)
+        } else {
+            executeCommand(trimmed)
+        }
+    }
+
     fun sendAccessoryKey(key: String) {
         val session = terminalSession
         if (session != null && session.isRunning) {
