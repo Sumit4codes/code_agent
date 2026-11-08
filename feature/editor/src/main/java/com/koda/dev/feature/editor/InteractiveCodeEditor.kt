@@ -1,6 +1,7 @@
 package com.koda.dev.feature.editor
 
 import android.view.KeyEvent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -15,17 +16,30 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+
+data class GutterLine(
+    val lineNumber: Int,
+    val baselinePx: Float,
+    val isCurrent: Boolean
+)
 
 @Composable
 fun InteractiveCodeEditor(
@@ -80,10 +94,104 @@ fun InteractiveCodeEditor(
     val language = remember(tab.name) { getEditorLanguage(tab.name) }
     val visualTransformation = remember(tab.name) { SyntaxVisualTransformation(language) }
 
-    val lines = remember(textFieldValue.text) { textFieldValue.text.lines() }
-    val lineCount = maxOf(1, lines.size)
-    val gutterDigits = maxOf(2, lineCount.toString().length)
-    val gutterWidth = (gutterDigits * 10 + 16).dp
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    @Suppress("DEPRECATION")
+    val normalGutterStyle = remember {
+        TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            color = Color(0xFF484F58),
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+            lineHeightStyle = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.None
+            )
+        )
+    }
+    @Suppress("DEPRECATION")
+    val activeGutterStyle = remember {
+        TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            color = Color(0xFF58A6FF),
+            fontWeight = FontWeight.Bold,
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+            lineHeightStyle = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.None
+            )
+        )
+    }
+    @Suppress("DEPRECATION")
+    val editorTextStyle = remember {
+        TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            color = Color(0xFFF0F6FC),
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+            lineHeightStyle = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.None
+            )
+        )
+    }
+
+    val currentCursorOffset = textFieldValue.selection.start
+    val gutterLines = remember(textLayoutResult, textFieldValue.text, currentCursorOffset) {
+        val layout = textLayoutResult
+        val text = textFieldValue.text
+        if (layout == null) {
+            val lines = text.lines()
+            val count = maxOf(1, lines.size)
+            val approxLineHeightPx = with(density) { 20.sp.toPx() }
+            val approxBaselinePx = with(density) { 15.sp.toPx() }
+            return@remember (1..count).map { num ->
+                GutterLine(
+                    lineNumber = num,
+                    baselinePx = (num - 1) * approxLineHeightPx + approxBaselinePx,
+                    isCurrent = (num == 1)
+                )
+            }
+        }
+
+        val cursorLogicalLine = 1 + text.take(currentCursorOffset.coerceIn(0, text.length)).count { it == '\n' }
+        val count = layout.lineCount
+        val result = ArrayList<GutterLine>(count)
+        var logicalLine = 1
+
+        for (v in 0 until count) {
+            val start = layout.getLineStart(v)
+            val isLogicalStart = (v == 0) || (start > 0 && text.getOrNull(start - 1) == '\n')
+            if (isLogicalStart) {
+                val num = logicalLine++
+                result.add(
+                    GutterLine(
+                        lineNumber = num,
+                        baselinePx = layout.getLineBaseline(v),
+                        isCurrent = (num == cursorLogicalLine)
+                    )
+                )
+            }
+        }
+        result
+    }
+
+    val totalLogicalLines = maxOf(1, gutterLines.lastOrNull()?.lineNumber ?: 1)
+    val gutterDigits = maxOf(2, totalLogicalLines.toString().length)
+    val charWidthPx = remember(textMeasurer, normalGutterStyle) {
+        textMeasurer.measure("0", normalGutterStyle).size.width.toFloat()
+    }
+    val gutterWidth = with(density) { (gutterDigits * charWidthPx + 24.dp.toPx()).toDp() }
+
+    val contentHeightPx = textLayoutResult?.size?.height?.toFloat()
+        ?: (totalLogicalLines * with(density) { 20.sp.toPx() })
+    val contentHeightDp = with(density) { contentHeightPx.toDp() } + 16.dp
 
     val verticalScroll = rememberScrollState()
     val horizontalScroll = rememberScrollState()
@@ -120,7 +228,7 @@ fun InteractiveCodeEditor(
 
                     // Line count badge
                     Text(
-                        text = "$lineCount lines",
+                        text = "$totalLogicalLines lines",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF8B949E)
                     )
@@ -169,25 +277,31 @@ fun InteractiveCodeEditor(
                 .weight(1f)
                 .verticalScroll(verticalScroll)
         ) {
-            // Line numbers Gutter
-            Column(
+            val verticalPaddingPx = with(density) { 8.dp.toPx() }
+            val rightMarginPx = with(density) { 6.dp.toPx() }
+
+            // Line numbers Gutter (drawn via Canvas with 100% exact baseline alignment to BasicTextField)
+            Box(
                 modifier = Modifier
                     .width(gutterWidth)
+                    .height(contentHeightDp)
                     .background(Color(0xFF161B22))
-                    .padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.End
             ) {
-                for (i in 1..lineCount) {
-                    Text(
-                        text = "$i",
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                            color = Color(0xFF484F58)
-                        ),
-                        modifier = Modifier.padding(end = 6.dp)
-                    )
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    for (entry in gutterLines) {
+                        val style = if (entry.isCurrent) activeGutterStyle else normalGutterStyle
+                        val measured = textMeasurer.measure(
+                            text = "${entry.lineNumber}",
+                            style = style
+                        )
+                        val x = size.width - measured.size.width - rightMarginPx
+                        // Align mathematically on the exact baseline of the text line
+                        val y = verticalPaddingPx + entry.baselinePx - measured.firstBaseline
+                        drawText(
+                            textLayoutResult = measured,
+                            topLeft = Offset(x, y)
+                        )
+                    }
                 }
             }
 
@@ -195,7 +309,7 @@ fun InteractiveCodeEditor(
             Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .fillMaxHeight()
+                    .height(contentHeightDp)
                     .background(Color(0xFF30363D))
             )
 
@@ -203,6 +317,7 @@ fun InteractiveCodeEditor(
             Box(
                 modifier = Modifier
                     .weight(1f)
+                    .height(contentHeightDp)
                     .then(if (wrapLines) Modifier.fillMaxWidth() else Modifier.horizontalScroll(horizontalScroll))
                     .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
@@ -212,12 +327,10 @@ fun InteractiveCodeEditor(
                         textFieldValue = newValue
                         onContentChange(newValue.text)
                     },
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        color = Color(0xFFF0F6FC)
-                    ),
+                    onTextLayout = { layout ->
+                        textLayoutResult = layout
+                    },
+                    textStyle = editorTextStyle,
                     cursorBrush = SolidColor(Color(0xFF58A6FF)),
                     visualTransformation = visualTransformation,
                     modifier = Modifier
