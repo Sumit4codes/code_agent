@@ -435,4 +435,35 @@ class AgentOrchestratorTest {
         assertTrue(result.messages.any { it.role == ChatMessage.Role.USER && it.content == "Next task step" })
         assertTrue(result.newMessages.any { it.role == ChatMessage.Role.ASSISTANT && it.content.contains("Continuing with next task step...") })
     }
+
+    @Test
+    fun `auto compaction does not trigger when raw tools are large but hygiene context is below 80 percent`() = runTest {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Normal response without compaction"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        val initialHistory = mutableListOf<ChatMessage>()
+        for (i in 1..10) {
+            initialHistory.add(ChatMessage(role = ChatMessage.Role.USER, content = "Command $i"))
+            initialHistory.add(ChatMessage(role = ChatMessage.Role.TOOL, content = "Z".repeat(10_000)))
+            initialHistory.add(ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "Done $i"))
+        }
+
+        val events = mutableListOf<AgentEvent>()
+        val context = AgentContext(sessionId = "s2", projectId = "p1", history = initialHistory)
+
+        val result = orchestrator.run(
+            userMessage = "Continue work",
+            context = context,
+            model = "gpt-4o",
+            onEvent = { events.add(it) }
+        )
+
+        val compactEvents = events.filterIsInstance<AgentEvent.ContextCompacted>()
+        assertEquals(0, compactEvents.size)
+        assertTrue(result.newMessages.any { it.content.contains("Normal response without compaction") })
+    }
 }

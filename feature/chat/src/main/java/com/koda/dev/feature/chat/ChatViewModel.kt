@@ -531,18 +531,11 @@ class ChatViewModel @Inject constructor(
             lastInputTokens = _state.value.contextUsage.lastInputTokens,
             lastOutputTokens = _state.value.contextUsage.lastOutputTokens
         )
-        val rawEstimate = ContextEstimator.estimate(
-            messages = activeWorkingHistory,
-            systemPrompt = buildSystemPrompt(_state.value.projectName, null),
-            tools = ToolRegistry.allSpecs(),
-            maxTokens = maxTokens
-        )
         _state.update { it.copy(contextUsage = estimate) }
 
-        // Automatically compact when conversation approaches or exceeds 80% threshold and agent is idle
+        // Automatically compact when working context approaches or exceeds 80% threshold and agent is idle
         val now = System.currentTimeMillis()
-        val shouldAutoCompact = (estimate.fraction >= AgentOrchestrator.AUTO_COMPACT_THRESHOLD ||
-                rawEstimate.fraction >= AgentOrchestrator.AUTO_COMPACT_THRESHOLD) &&
+        val shouldAutoCompact = estimate.fraction >= AgentOrchestrator.AUTO_COMPACT_THRESHOLD &&
                 !_state.value.isStreaming &&
                 activeWorkingHistory.size >= 4 &&
                 (now - lastAutoCompactAttemptTime > 30_000L)

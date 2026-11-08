@@ -185,16 +185,10 @@ class AgentOrchestrator @Inject constructor(
                 tools = toolRegistry.allSpecs(),
                 maxTokens = com.koda.dev.core.ai.ModelCatalogResolver.resolveContextLimit(model)
             )
-            val rawEstimate = ContextEstimator.estimate(
-                messages = messages,
-                systemPrompt = effectiveSystemPrompt,
-                tools = toolRegistry.allSpecs(),
-                maxTokens = com.koda.dev.core.ai.ModelCatalogResolver.resolveContextLimit(model)
-            )
             onEvent?.invoke(AgentEvent.ContextEstimated(currentEstimate))
 
-            // Autonomous 80% context threshold compaction guard (triggers if either working or raw history reaches 80%)
-            if ((currentEstimate.fraction >= AUTO_COMPACT_THRESHOLD || rawEstimate.fraction >= AUTO_COMPACT_THRESHOLD) &&
+            // Autonomous 80% context threshold compaction guard on active working context sent to model
+            if (currentEstimate.fraction >= AUTO_COMPACT_THRESHOLD &&
                 autoCompactionAttempts < 2 &&
                 canAutoCompact(messages)
             ) {
