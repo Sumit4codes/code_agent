@@ -12,6 +12,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +68,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -209,154 +214,205 @@ fun ChatScreen(
         Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    if (onNavigateBack != null) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xF5181D26), // 96% frosted slate top
+                                Color(0xEB141822), // 92% optical glass
+                                Color(0xD90F131A)  // 85% translucent bottom
                             )
+                        )
+                    )
+            ) {
+                TopAppBar(
+                    navigationIcon = {
+                        if (onNavigateBack != null) {
+                            IconButton(onClick = onNavigateBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color(0xFFF0F6FC)
+                                )
+                            }
                         }
-                    }
-                },
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp),
-                            contentAlignment = Alignment.Center
+                    },
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = androidx.compose.ui.graphics.Color(0xFF21262D),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF30363D)),
-                                modifier = Modifier.fillMaxSize()
+                            // Frosted Robot Avatar Disc
+                            Box(
+                                modifier = Modifier.size(36.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(
+                                                    Color(0x2EFFFFFF),
+                                                    Color(0x12FFFFFF)
+                                                )
+                                            )
+                                        )
+                                        .border(
+                                            width = 0.75.dp,
+                                            brush = Brush.verticalGradient(
+                                                listOf(
+                                                    Color(0x66FFFFFF),
+                                                    Color(0x1AFFFFFF)
+                                                )
+                                            ),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.SmartToy,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp),
-                                        tint = androidx.compose.ui.graphics.Color(0xFF8B949E)
+                                        tint = Color(0xFFC9D1D9)
+                                    )
+                                }
+                                if (state.isStreaming) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(36.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFF2F81F7)
                                     )
                                 }
                             }
-                            if (state.isStreaming) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(36.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
 
-                        Column(modifier = Modifier.weight(1f, fill = false)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = state.sessionTitle.ifBlank { "Koda Dev" },
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                if (state.isGoalMode) {
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = MaterialTheme.colorScheme.tertiaryContainer
-                                    ) {
-                                        Text(
-                                            text = if (state.activeStepCount > 0) "GOAL · Step ${state.activeStepCount}" else "GOAL MODE",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = state.sessionTitle.ifBlank { "Koda Dev" },
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = Color(0xFFF0F6FC),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (state.isGoalMode) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.tertiaryContainer
+                                        ) {
+                                            Text(
+                                                text = if (state.activeStepCount > 0) "GOAL · Step ${state.activeStepCount}" else "GOAL MODE",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                if (state.projectName.isNotBlank()) {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (state.projectName.isNotBlank()) {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color(0xFF58A6FF)
+                                        )
+                                        Text(
+                                            text = state.projectName,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF8B949E),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "·",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF8B949E)
+                                        )
+                                    }
                                     Text(
-                                        text = state.projectName,
+                                        text = when {
+                                            state.isStreaming && state.isGoalMode -> "Autonomous Goal running…"
+                                            state.isStreaming -> "Working…"
+                                            else -> state.model
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (state.isStreaming) Color(0xFF58A6FF) else Color(0xFF8B949E),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(
-                                        text = "·",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                 }
-                                Text(
-                                    text = when {
-                                        state.isStreaming && state.isGoalMode -> "Autonomous Goal running…"
-                                        state.isStreaming -> "Working…"
-                                        else -> state.model
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (state.isStreaming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                            }
+                        }
+                    },
+                    actions = {
+                        if (state.projectUri != null) {
+                            IconButton(
+                                onClick = { showTerminalSheet = true }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Terminal,
+                                    contentDescription = "Project Terminal",
+                                    tint = Color(0xFFF0F6FC)
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.startNewSession() },
+                                enabled = !state.isStreaming
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "New Chat",
+                                    tint = Color(0xFFF0F6FC)
+                                )
+                            }
+                            IconButton(
+                                onClick = { showHistorySheet = true }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = "Chat History",
+                                    tint = Color(0xFFF0F6FC)
                                 )
                             }
                         }
-                    }
-                },
-                actions = {
-                    if (state.projectUri != null) {
-                        IconButton(
-                            onClick = { showTerminalSheet = true }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Terminal,
-                                contentDescription = "Project Terminal",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.startNewSession() },
-                            enabled = !state.isStreaming
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "New Chat",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        IconButton(
-                            onClick = { showHistorySheet = true }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = "Chat History",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                },
-                scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(scaffoldState),
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    },
+                    scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(scaffoldState),
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
                 )
-            )
+
+                // Specular Refraction Bottom Hairline (Liquid Glass edge)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color(0x33FFFFFF),
+                                    Color(0x66FFFFFF),
+                                    Color(0x2679C0FF),
+                                    Color(0x33FFFFFF),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
         },
         bottomBar = {
             Column {
@@ -414,9 +470,7 @@ fun ChatScreen(
         }
     ) { padding ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+            modifier = Modifier.fillMaxSize()
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Pending changes banner
@@ -430,7 +484,8 @@ fun ChatScreen(
                         onReviewDiffs = {
                             selectedDiffChange = state.pendingChanges.firstOrNull()
                             showDiffBottomSheet = true
-                        }
+                        },
+                        modifier = Modifier.padding(top = padding.calculateTopPadding())
                     )
                 }
 
@@ -438,27 +493,39 @@ fun ChatScreen(
                 if (state.error != null) {
                     ErrorBanner(
                         error = state.error ?: "",
-                        onDismiss = { viewModel.clearError() }
+                        onDismiss = { viewModel.clearError() },
+                        modifier = Modifier.padding(top = if (state.pendingChanges.isEmpty()) padding.calculateTopPadding() else 0.dp)
                     )
                 }
 
                 // Messages area or Empty State
                 if (displayMessages.isEmpty() && !state.isStreaming) {
-                    EmptyChatState(
-                        hasProject = state.projectUri != null,
-                        projectName = state.projectName,
-                        modelName = state.model,
-                        onSuggestionClick = { suggestionPrompt ->
-                            viewModel.sendMessage(suggestionPrompt)
-                        }
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
+                    ) {
+                        EmptyChatState(
+                            hasProject = state.projectUri != null,
+                            projectName = state.projectName,
+                            modelName = state.model,
+                            onSuggestionClick = { suggestionPrompt ->
+                                viewModel.sendMessage(suggestionPrompt)
+                            }
+                        )
+                    }
                 } else {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = padding.calculateTopPadding() + 8.dp,
+                            bottom = padding.calculateBottomPadding() + 8.dp
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(
@@ -502,7 +569,7 @@ fun ChatScreen(
                 exit = fadeOut() + scaleOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 12.dp)
+                    .padding(bottom = padding.calculateBottomPadding() + 10.dp)
             ) {
                 Surface(
                     onClick = {
