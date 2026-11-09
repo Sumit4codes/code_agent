@@ -319,7 +319,13 @@ private fun formatRuntimeArguments(arguments: String): String {
         val json = Json.parseToJsonElement(arguments).jsonObject
         when {
             json.containsKey("action") -> "⚙️ ${json["action"]?.jsonPrimitive?.content ?: ""}${json["task_id"]?.jsonPrimitive?.content?.let { " ($it)" } ?: ""}"
-            json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
+            json.containsKey("command") || json.containsKey("CommandLine") || json.containsKey("cmd") -> {
+                val cmd = json["command"]?.jsonPrimitive?.content
+                    ?: json["CommandLine"]?.jsonPrimitive?.content
+                    ?: json["cmd"]?.jsonPrimitive?.content
+                    ?: ""
+                "$ $cmd"
+            }
             json.containsKey("path") -> json["path"]?.jsonPrimitive?.content ?: ""
             json.containsKey("query") -> "\"${json["query"]?.jsonPrimitive?.content ?: ""}\""
             else -> json.entries.take(1).joinToString { "${it.key}: ${it.value.jsonPrimitive.content}" }

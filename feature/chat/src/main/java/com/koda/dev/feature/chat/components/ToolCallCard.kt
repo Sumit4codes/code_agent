@@ -302,12 +302,16 @@ fun ToolCallCard(
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
 
-                    val isCommand = ToolNames.normalize(toolCall.name) == ToolNames.EXECUTE_COMMAND
+                    val isCommand = ToolNames.normalize(toolCall.name) == ToolNames.EXECUTE_COMMAND ||
+                        toolCall.name in listOf("run_command", "bash", "exec_command", "execute_command")
 
                     if (isCommand) {
                         val cmd = try {
                             val json = Json.parseToJsonElement(toolCall.arguments).jsonObject
-                            json["command"]?.jsonPrimitive?.content ?: toolCall.arguments
+                            json["command"]?.jsonPrimitive?.content
+                                ?: json["CommandLine"]?.jsonPrimitive?.content
+                                ?: json["cmd"]?.jsonPrimitive?.content
+                                ?: toolCall.arguments
                         } catch (_: Exception) {
                             toolCall.arguments
                         }
@@ -344,6 +348,20 @@ private fun CodeBlockSection(
 ) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
+    var showFullContent by remember(content) { mutableStateOf(false) }
+
+    val rawContent = content.trim()
+    val lines = remember(rawContent) { rawContent.lines() }
+    val isTruncatedNeeded = remember(lines, rawContent) {
+        lines.size > 10 || rawContent.length > 600
+    }
+    val displayContent = remember(rawContent, lines, isTruncatedNeeded, showFullContent) {
+        if (!isTruncatedNeeded || showFullContent) {
+            rawContent
+        } else {
+            if (lines.size > 10) lines.take(10).joinToString("\n") else rawContent.take(600)
+        }
+    }
 
     LaunchedEffect(copied) {
         if (copied) {
@@ -393,7 +411,10 @@ private fun CodeBlockSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 240.dp)
+                .then(
+                    if (showFullContent) Modifier.heightIn(max = 400.dp)
+                    else Modifier.heightIn(max = 240.dp)
+                )
                 .background(
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     shape = RoundedCornerShape(8.dp)
@@ -402,7 +423,7 @@ private fun CodeBlockSection(
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = content,
+                text = displayContent,
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
@@ -410,6 +431,39 @@ private fun CodeBlockSection(
                 ),
                 color = MaterialTheme.colorScheme.onSurface
             )
+        }
+
+        if (isTruncatedNeeded) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { showFullContent = !showFullContent }
+                    .padding(top = 4.dp, bottom = 2.dp, start = 2.dp, end = 2.dp)
+            ) {
+                Text(
+                    text = if (showFullContent) "Show less" else "Show more",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.5.sp
+                    ),
+                    color = Color(0xFF58A6FF)
+                )
+                Icon(
+                    imageVector = if (showFullContent) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (showFullContent) "Show less" else "Show more",
+                    modifier = Modifier.size(13.dp),
+                    tint = Color(0xFF58A6FF)
+                )
+                if (!showFullContent && lines.size > 10) {
+                    Text(
+                        text = "(${lines.size - 10} more lines)",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -443,7 +497,13 @@ private fun extractArgSummary(arguments: String): String {
                 val checkCount = json["_check_count"]?.jsonPrimitive?.content?.let { " · $it checks" } ?: ""
                 "⚙️ $action$taskId$checkCount"
             }
-            json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
+            json.containsKey("command") || json.containsKey("CommandLine") || json.containsKey("cmd") -> {
+                val cmd = json["command"]?.jsonPrimitive?.content
+                    ?: json["CommandLine"]?.jsonPrimitive?.content
+                    ?: json["cmd"]?.jsonPrimitive?.content
+                    ?: ""
+                "$ $cmd"
+            }
             json.containsKey("query") -> "🔍 \"${json["query"]?.jsonPrimitive?.content ?: ""}\""
             json.containsKey("url") -> "🌐 ${json["url"]?.jsonPrimitive?.content ?: ""}"
             json.containsKey("path") -> json["path"]?.jsonPrimitive?.content ?: ""

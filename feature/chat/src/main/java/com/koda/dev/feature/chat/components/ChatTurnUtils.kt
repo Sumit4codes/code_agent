@@ -200,22 +200,38 @@ fun toHumanAction(toolCall: ToolCallData, workingDirectory: String = "~/code_age
     val rawResult = toolCall.result ?: ""
 
     return when (normName) {
-        "run_command", "bash", "exec_command" -> {
+        "execute_command", "run_command", "bash", "exec_command", ToolNames.EXECUTE_COMMAND -> {
             val toolSummary = argsJson?.get("toolSummary")?.jsonPrimitive?.content
-            val cmd = argsJson?.get("CommandLine")?.jsonPrimitive?.content
-                ?: argsJson?.get("command")?.jsonPrimitive?.content
-                ?: ""
+                ?: argsJson?.get("summary")?.jsonPrimitive?.content
+                ?: argsJson?.get("description")?.jsonPrimitive?.content
+            val cmd = argsJson?.get("command")?.jsonPrimitive?.content
+                ?: argsJson?.get("CommandLine")?.jsonPrimitive?.content
+                ?: argsJson?.get("cmd")?.jsonPrimitive?.content
+                ?: argsJson?.get("commandLine")?.jsonPrimitive?.content
+                ?: if (toolCall.arguments.isNotBlank() && !toolCall.arguments.trim().startsWith("{")) toolCall.arguments.trim() else ""
+
+            val isGenericSummary = toolSummary.isNullOrBlank() ||
+                toolSummary.equals("execute command", ignoreCase = true) ||
+                toolSummary.equals("execute_command", ignoreCase = true) ||
+                toolSummary.equals("run command", ignoreCase = true) ||
+                toolSummary.equals("run_command", ignoreCase = true) ||
+                toolSummary.equals("execute command finished", ignoreCase = true) ||
+                toolSummary.equals("run command finished", ignoreCase = true)
 
             val title = when {
-                !toolSummary.isNullOrBlank() -> {
+                !isGenericSummary && !toolSummary.isNullOrBlank() -> {
                     val cleaned = toolSummary.trim()
-                    if (cleaned.endsWith("finished") || cleaned.endsWith("completed")) {
+                    if (cleaned.endsWith("finished", ignoreCase = true) || cleaned.endsWith("completed", ignoreCase = true)) {
                         cleaned
                     } else {
                         "Ran ${cleaned.replaceFirstChar { it.lowercase() }}"
                     }
                 }
-                cmd.isNotBlank() -> "Ran ${cmd.take(40).trim()}"
+                cmd.isNotBlank() -> {
+                    val cleanCmd = cmd.lines().firstOrNull { it.isNotBlank() }?.trim() ?: cmd.trim()
+                    val displayCmd = if (cleanCmd.length > 45) cleanCmd.take(42).trim() + "..." else cleanCmd
+                    "Ran $displayCmd"
+                }
                 else -> "Ran terminal command"
             }
 
@@ -223,7 +239,7 @@ fun toHumanAction(toolCall: ToolCallData, workingDirectory: String = "~/code_age
                 id = toolCall.id,
                 category = "Ran commands",
                 title = title,
-                commandLine = cmd,
+                commandLine = cmd.ifBlank { null },
                 output = rawResult,
                 isTerminal = true,
                 isError = isErr,
@@ -248,12 +264,12 @@ fun toHumanAction(toolCall: ToolCallData, workingDirectory: String = "~/code_age
                 durationMs = toolCall.durationMs
             )
         }
-        "edit_file", "write_file" -> {
+        "edit_file", "write_file", ToolNames.PROPOSE_FILE_EDIT, ToolNames.CREATE_FILE -> {
             val path = argsJson?.get("Path")?.jsonPrimitive?.content
                 ?: argsJson?.get("path")?.jsonPrimitive?.content
                 ?: ""
             val fileName = path.substringAfterLast('/')
-            val actionVerb = if (normName == "edit_file") "Updated" else "Created"
+            val actionVerb = if (normName == "edit_file" || normName == ToolNames.PROPOSE_FILE_EDIT) "Updated" else "Created"
             val title = if (fileName.isNotBlank()) "$actionVerb $fileName" else "$actionVerb file"
 
             HumanAction(
@@ -267,7 +283,44 @@ fun toHumanAction(toolCall: ToolCallData, workingDirectory: String = "~/code_age
                 durationMs = toolCall.durationMs
             )
         }
-        "search_code", "find_files" -> {
+        "rename_file", ToolNames.RENAME_FILE -> {
+            val oldPath = argsJson?.get("oldPath")?.jsonPrimitive?.content
+                ?: argsJson?.get("old_path")?.jsonPrimitive?.content ?: ""
+            val newPath = argsJson?.get("newPath")?.jsonPrimitive?.content
+                ?: argsJson?.get("new_path")?.jsonPrimitive?.content ?: ""
+            val oldName = oldPath.substringAfterLast('/')
+            val newName = newPath.substringAfterLast('/')
+            val title = if (oldName.isNotBlank() && newName.isNotBlank()) "Renamed $oldName → $newName" else "Renamed file"
+
+            HumanAction(
+                id = toolCall.id,
+                category = "Modified files",
+                title = title,
+                commandLine = null,
+                output = rawResult,
+                isTerminal = false,
+                isError = isErr,
+                durationMs = toolCall.durationMs
+            )
+        }
+        "delete_file", ToolNames.DELETE_FILE -> {
+            val path = argsJson?.get("path")?.jsonPrimitive?.content
+                ?: argsJson?.get("Path")?.jsonPrimitive?.content ?: ""
+            val fileName = path.substringAfterLast('/')
+            val title = if (fileName.isNotBlank()) "Deleted $fileName" else "Deleted file"
+
+            HumanAction(
+                id = toolCall.id,
+                category = "Modified files",
+                title = title,
+                commandLine = null,
+                output = rawResult,
+                isTerminal = false,
+                isError = isErr,
+                durationMs = toolCall.durationMs
+            )
+        }
+        "search_code", "find_files", ToolNames.SEARCH_CODE -> {
             val query = argsJson?.get("query")?.jsonPrimitive?.content
                 ?: argsJson?.get("pattern")?.jsonPrimitive?.content
                 ?: ""
@@ -276,6 +329,89 @@ fun toHumanAction(toolCall: ToolCallData, workingDirectory: String = "~/code_age
             HumanAction(
                 id = toolCall.id,
                 category = "Explored codebase",
+                title = title,
+                commandLine = null,
+                output = rawResult,
+                isTerminal = false,
+                isError = isErr,
+                durationMs = toolCall.durationMs
+            )
+        }
+        "list_files", ToolNames.LIST_FILES -> {
+            val path = argsJson?.get("path")?.jsonPrimitive?.content
+                ?: argsJson?.get("dirPath")?.jsonPrimitive?.content
+                ?: ""
+            val title = if (path.isNotBlank()) "Listed files in $path" else "Listed files"
+
+            HumanAction(
+                id = toolCall.id,
+                category = "Explored codebase",
+                title = title,
+                commandLine = null,
+                output = rawResult,
+                isTerminal = false,
+                isError = isErr,
+                durationMs = toolCall.durationMs
+            )
+        }
+        "get_file_summary", ToolNames.GET_FILE_SUMMARY -> {
+            val path = argsJson?.get("path")?.jsonPrimitive?.content ?: ""
+            val fileName = path.substringAfterLast('/')
+            val title = if (fileName.isNotBlank()) "Summarized $fileName" else "Summarized file"
+
+            HumanAction(
+                id = toolCall.id,
+                category = "Explored codebase",
+                title = title,
+                commandLine = null,
+                output = rawResult,
+                isTerminal = false,
+                isError = isErr,
+                durationMs = toolCall.durationMs
+            )
+        }
+        "manage_task", ToolNames.MANAGE_TASK -> {
+            val action = argsJson?.get("action")?.jsonPrimitive?.content ?: ""
+            val taskId = argsJson?.get("task_id")?.jsonPrimitive?.content ?: ""
+            val title = when {
+                action.isNotBlank() && taskId.isNotBlank() -> "Task $taskId: $action"
+                action.isNotBlank() -> "Task action: $action"
+                else -> "Managed background task"
+            }
+
+            HumanAction(
+                id = toolCall.id,
+                category = "Managed tasks",
+                title = title,
+                commandLine = null,
+                output = rawResult,
+                isTerminal = false,
+                isError = isErr,
+                durationMs = toolCall.durationMs
+            )
+        }
+        "web_search", ToolNames.WEB_SEARCH -> {
+            val query = argsJson?.get("query")?.jsonPrimitive?.content ?: ""
+            val title = if (query.isNotBlank()) "Web search: \"${query.take(30)}\"" else "Searched web"
+
+            HumanAction(
+                id = toolCall.id,
+                category = "Web research",
+                title = title,
+                commandLine = null,
+                output = rawResult,
+                isTerminal = false,
+                isError = isErr,
+                durationMs = toolCall.durationMs
+            )
+        }
+        "fetch_web_page", ToolNames.FETCH_WEB_PAGE -> {
+            val url = argsJson?.get("url")?.jsonPrimitive?.content ?: ""
+            val title = if (url.isNotBlank()) "Fetched ${url.take(35)}" else "Fetched web page"
+
+            HumanAction(
+                id = toolCall.id,
+                category = "Web research",
                 title = title,
                 commandLine = null,
                 output = rawResult,
@@ -299,14 +435,26 @@ fun toHumanAction(toolCall: ToolCallData, workingDirectory: String = "~/code_age
             )
         }
         else -> {
+            val cmd = argsJson?.get("command")?.jsonPrimitive?.content
+                ?: argsJson?.get("CommandLine")?.jsonPrimitive?.content
+                ?: argsJson?.get("cmd")?.jsonPrimitive?.content
+                ?: argsJson?.get("commandLine")?.jsonPrimitive?.content
             val cleanName = normName.replace('_', ' ').replaceFirstChar { it.uppercase() }
+            val title = if (!cmd.isNullOrBlank()) {
+                val cleanCmd = cmd.lines().firstOrNull { it.isNotBlank() }?.trim() ?: cmd.trim()
+                val displayCmd = if (cleanCmd.length > 45) cleanCmd.take(42).trim() + "..." else cleanCmd
+                "Ran $displayCmd"
+            } else {
+                "$cleanName finished"
+            }
+
             HumanAction(
                 id = toolCall.id,
-                category = "Agent actions",
-                title = "$cleanName finished",
-                commandLine = null,
+                category = if (!cmd.isNullOrBlank()) "Ran commands" else "Agent actions",
+                title = title,
+                commandLine = cmd,
                 output = rawResult,
-                isTerminal = false,
+                isTerminal = !cmd.isNullOrBlank(),
                 isError = isErr,
                 durationMs = toolCall.durationMs
             )

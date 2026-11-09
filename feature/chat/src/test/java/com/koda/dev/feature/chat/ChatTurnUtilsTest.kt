@@ -240,4 +240,38 @@ class ChatTurnUtilsTest {
         assertTrue(action.isTerminal)
         assertEquals("git status", action.commandLine)
     }
+
+    @Test
+    fun toHumanActionParsesExecuteCommandWithoutSummary() {
+        val toolCall = ToolCallData(
+            id = "t2",
+            name = "execute_command",
+            arguments = """{"command":"git status"}""",
+            result = "On branch main\nnothing to commit",
+            success = true
+        )
+
+        val action = com.koda.dev.feature.chat.components.toHumanAction(toolCall)
+        assertEquals("Ran git status", action.title)
+        assertTrue(action.isTerminal)
+        assertEquals("git status", action.commandLine)
+        assertEquals("Ran commands", action.category)
+    }
+
+    @Test
+    fun toHumanActionIgnoresGenericExecuteCommandFinishedSummary() {
+        val toolCall = ToolCallData(
+            id = "t3",
+            name = "execute_command",
+            arguments = """{"command":"./gradlew assembleDebug","toolSummary":"execute command finished"}""",
+            result = "BUILD SUCCESSFUL",
+            success = true
+        )
+
+        val action = com.koda.dev.feature.chat.components.toHumanAction(toolCall)
+        assertEquals("Ran ./gradlew assembleDebug", action.title)
+        assertTrue(action.isTerminal)
+        assertEquals("./gradlew assembleDebug", action.commandLine)
+        assertEquals("Ran commands", action.category)
+    }
 }
