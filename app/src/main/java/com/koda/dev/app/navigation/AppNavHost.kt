@@ -1,9 +1,16 @@
 package com.koda.dev.app.navigation
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -59,6 +66,10 @@ object Routes {
     const val DIFF_REVIEW = "diff_review"
 }
 
+private fun isTopLevel(route: String?): Boolean {
+    return route == Routes.PROJECTS || route == Routes.TERMINAL || route == Routes.SETTINGS
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AppNavHost(
@@ -79,12 +90,73 @@ fun AppNavHost(
             .background(Color(0xFF0B0E14))
     ) {
         // Main Screen NavHost with backdrop capture for real-time glass refraction
+        // and fluid physical page & screen transitions
         NavHost(
             navController = navController,
             startDestination = startDestination,
             modifier = Modifier
                 .fillMaxSize()
-                .captureBackdrop(navBackdropState)
+                .captureBackdrop(navBackdropState),
+            enterTransition = {
+                val fromRoute = initialState.destination.route
+                val toRoute = targetState.destination.route
+                if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
+                    fadeIn(animationSpec = tween(200, easing = LinearOutSlowInEasing)) +
+                        scaleIn(initialScale = 0.985f, animationSpec = tween(200, easing = LinearOutSlowInEasing))
+                } else {
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(320, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(240, easing = LinearOutSlowInEasing))
+                }
+            },
+            exitTransition = {
+                val fromRoute = initialState.destination.route
+                val toRoute = targetState.destination.route
+                if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
+                    fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
+                        scaleOut(targetScale = 0.985f, animationSpec = tween(150, easing = FastOutLinearInEasing))
+                } else {
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        targetOffset = { it / 4 },
+                        animationSpec = tween(320, easing = FastOutSlowInEasing)
+                    ) + scaleOut(
+                        targetScale = 0.94f,
+                        animationSpec = tween(320, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
+                }
+            },
+            popEnterTransition = {
+                val fromRoute = initialState.destination.route
+                val toRoute = targetState.destination.route
+                if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
+                    fadeIn(animationSpec = tween(200, easing = LinearOutSlowInEasing)) +
+                        scaleIn(initialScale = 0.985f, animationSpec = tween(200, easing = LinearOutSlowInEasing))
+                } else {
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        initialOffset = { it / 4 },
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) + scaleIn(
+                        initialScale = 0.94f,
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(220, easing = LinearOutSlowInEasing))
+                }
+            },
+            popExitTransition = {
+                val fromRoute = initialState.destination.route
+                val toRoute = targetState.destination.route
+                if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
+                    fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
+                        scaleOut(targetScale = 0.985f, animationSpec = tween(150, easing = FastOutLinearInEasing))
+                } else {
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
+                }
+            }
         ) {
             composable(Routes.PROJECTS) {
                 ProjectsScreen(
