@@ -101,6 +101,7 @@ fun ProjectsScreen(
 
     var hasPermission by remember { mutableStateOf(hasFullStoragePermission(context)) }
     var showFolderDialog by remember { mutableStateOf(false) }
+    var projectToDelete by remember { mutableStateOf<Project?>(null) }
 
     // Dynamic heights of floating liquid glass capsules
     var topBarHeightPx by remember { mutableFloatStateOf(0f) }
@@ -219,7 +220,7 @@ fun ProjectsScreen(
                         project = project,
                         onBrowse = { onProjectSelected?.invoke(project) },
                         onChat = { onChatWithProject?.invoke(project) ?: onProjectSelected?.invoke(project) },
-                        onDelete = { viewModel.removeProject(project) }
+                        onDelete = { projectToDelete = project }
                     )
                 }
             }
@@ -356,6 +357,243 @@ fun ProjectsScreen(
                 viewModel.addProject(selectedDir.absolutePath, selectedDir.name)
             }
         )
+    }
+
+    projectToDelete?.let { project ->
+        DeleteProjectConfirmationDialog(
+            project = project,
+            onDismiss = { projectToDelete = null },
+            onConfirm = {
+                viewModel.removeProject(project)
+                projectToDelete = null
+            }
+        )
+    }
+}
+
+/**
+ * Liquid Glass Delete Project Confirmation Dialog.
+ * Prompts user to confirm deletion before removing the workspace from the app.
+ */
+@Composable
+private fun DeleteProjectConfirmationDialog(
+    project: Project,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val dialogShape = RoundedCornerShape(26.dp)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.90f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
+        ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header with Crimson Disc and Close Disc
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x26F85149))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.liquidGlassBorder(
+                                        topSpecularAlpha = 0.60f,
+                                        dispersionAlpha = 0.25f
+                                    ),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFFFF7B72),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "Delete Project?",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFFF7B72)
+                            )
+                            Text(
+                                text = "Remove from workspaces",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable { onDismiss() },
+                            contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Project Details / Warning Box
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x1AF85149))
+                        .border(
+                            width = 0.75.dp,
+                            brush = Brush.verticalGradient(
+                                listOf(Color(0x40F85149), Color(0x20F85149))
+                            ),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        .padding(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Are you sure you want to remove \"${project.name}\" from Koda Dev?",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFF0F6FC),
+                            lineHeight = 20.sp
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = Color(0xFF8B949E),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = project.treeUri.removePrefix("file://"),
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = Color(0xFF8B949E),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Your files on disk will not be deleted.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF8B949E)
+                        )
+                    }
+                }
+
+                // Action Buttons (Cancel + Delete)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val cancelShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(cancelShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.10f),
+                                shape = cancelShape
+                            )
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFC9D1D9)
+                        )
+                    }
+
+                    val deleteShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(deleteShape)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFFDA3633), Color(0xFFF85149))
+                                )
+                            )
+                            .border(
+                                width = 1.dp,
+                                brush = GlassDesign.liquidGlassBorder(0.70f, 0.35f),
+                                shape = deleteShape
+                            )
+                            .springPressClickable(onClick = onConfirm),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Delete",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
