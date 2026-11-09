@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/PRoot-Ubuntu%2024.04%20Noble-E95420?logo=ubuntu&logoColor=white&style=flat-square" alt="Ubuntu in PRoot" />
   <img src="https://img.shields.io/badge/Unit%20Tests-176%20Passed-10B981?style=flat-square" alt="Tests Passed" />
   <img src="https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?logo=kotlin&logoColor=white&style=flat-square" alt="Kotlin" />
-  <img src="https://img.shields.io/badge/Theme-Koda%20Obsidian-161B22?style=flat-square" alt="Koda Obsidian" />
+  <img src="https://img.shields.io/badge/Theme-Liquid%20Glass%20%26%20Obsidian-161B22?style=flat-square" alt="Liquid Glass & Obsidian" />
 </p>
 
 <p align="center">
@@ -37,20 +37,30 @@
 
 <table align="center" width="100%">
   <tr>
-    <td width="33%" align="center" valign="top">
-      <b>Autonomous Agent Chat</b><br>
-      <sub>Multi-turn tool calling, git control, and real-time execution cards</sub><br><br>
-      <img src="docs/images/screenshot_chat.png" alt="Autonomous AI Chat" width="100%" />
+    <td width="20%" align="center" valign="top">
+      <b>Agent Chat Ready</b><br>
+      <sub>Liquid Glass floating capsule, model selector, & prompt starters</sub><br><br>
+      <img src="docs/images/screenshot_chat_ready.png" alt="Agent Chat Ready" width="100%" />
     </td>
-    <td width="33%" align="center" valign="top">
-      <b>Native Ubuntu 24.04 Terminal</b><br>
-      <sub>Full glibc Linux in PRoot, 24-bit truecolor, multi-session tabs, and programmer keyboard</sub><br><br>
-      <img src="docs/images/screenshot_terminal.png" alt="Ubuntu Terminal in PRoot" width="100%" />
+    <td width="20%" align="center" valign="top">
+      <b>Autonomous Agent</b><br>
+      <sub>Multi-turn execution, streaming deltas, & context usage gauge</sub><br><br>
+      <img src="docs/images/screenshot_chat_execution.png" alt="Autonomous AI Chat Execution" width="100%" />
     </td>
-    <td width="33%" align="center" valign="top">
-      <b>Antiroute Tunnel & QR Scanner</b><br>
-      <sub>Zero-config local model pairing via camera scanning, and E2EE cloud sync</sub><br><br>
-      <img src="docs/images/screenshot_settings.png" alt="Settings & Antiroute Tunnel" width="100%" />
+    <td width="20%" align="center" valign="top">
+      <b>Workspace Terminal</b><br>
+      <sub>Integrated slide-up Linux terminal sheet over active workspace</sub><br><br>
+      <img src="docs/images/screenshot_terminal_sheet.png" alt="Workspace Terminal Sheet" width="100%" />
+    </td>
+    <td width="20%" align="center" valign="top">
+      <b>On-Device Self-Build</b><br>
+      <sub>Full-screen Ubuntu 24.04 PRoot compiling on ARM64 hardware</sub><br><br>
+      <img src="docs/images/screenshot_terminal_build.png" alt="Ubuntu Terminal On-Device Build" width="100%" />
+    </td>
+    <td width="20%" align="center" valign="top">
+      <b>Settings & Providers</b><br>
+      <sub>Multi-provider routing, CameraX QR scanner, & E2EE cloud sync</sub><br><br>
+      <img src="docs/images/screenshot_settings.png" alt="Settings & AI Providers Hub" width="100%" />
     </td>
   </tr>
 </table>
@@ -95,8 +105,10 @@
 - **Multi-Provider & Live Model Discovery**: Switch between OpenAI, Anthropic, OpenRouter, DeepSeek, Ollama, and custom proxies with dynamic `/models` queries.
 - **Agent Web Intelligence**: Jsoup-powered `web_search` and `fetch_web_page` tools allow the agent to look up real-time documentation and debugging solutions.
 
-### 🎨 Koda Obsidian Theme & Typography
-- **Obsidian Dark Palette**: High-contrast dark IDE interface (`#0B0F19`, `#111726`, `#161E31`, `#238636` accent) engineered for low eye strain.
+### 💎 Liquid Glass Design System & Typography
+- **Liquid Glass Optics**: Hardware-accelerated RenderEffect backdrop blur, AGSL signed distance field (SDF) lens refraction, and internal specular highlight sheens.
+- **Floating Capsule UI**: Floating TopAppBar, unified input capsule with circular context usage gauge, and bottom navigation dock with responsive micro-glass cards.
+- **Obsidian Dark Palette & Physics**: High-contrast dark IDE palette (`#0B0F19`, `#111726`, `#161E31`) with tactile Apple-inspired spring-press animations.
 - **JetBrains Mono Typography**: First-class monospace developer typography across all editor, terminal, chat, and status surfaces.
 
 ### 🔐 Zero-Knowledge Cloud Sync ($0 Infrastructure)
@@ -223,7 +235,7 @@ Koda Dev can build itself inside its own Ubuntu terminal on an ARM64 Android dev
 - [x] **Antiroute Tunnel Provider & CameraX QR Code Scanner**
 - [x] **Agent Web Intelligence (Jsoup Search & Web Scraping)**
 - [x] **Zero-Knowledge E2EE Cloud Sync via Secret GitHub Gists**
-- [x] **Koda Obsidian Design System & JetBrains Mono Typography**
+- [x] **Liquid Glass Design System & JetBrains Mono Typography**
 - [ ] **Integrated Dev Server & In-App Web Preview**
 - [ ] **Visual Git Studio & 3-Way Merge Conflict Resolver**
 - [ ] **Adaptive Multi-Pane IDE for Foldables, Tablets & Samsung DeX**
