@@ -27,18 +27,25 @@ class EditorViewModel @Inject constructor(
     val state: StateFlow<EditorState> = _state.asStateFlow()
 
     fun openProjectById(projectId: String) {
+        if (_state.value.projectUri != null && _state.value.fileTree.isNotEmpty()) {
+            return
+        }
+        _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val entity = projectDao.getById(projectId)
             if (entity != null) {
                 val treeUri = uriParser(entity.treeUri)
                 openProject(treeUri, entity.name)
             } else {
-                _state.update { it.copy(error = "Project not found") }
+                _state.update { it.copy(isLoading = false, error = "Project not found") }
             }
         }
     }
 
     fun openProject(treeUri: Uri, name: String) {
+        if (_state.value.projectUri == treeUri && _state.value.fileTree.isNotEmpty()) {
+            return
+        }
         _state.update {
             it.copy(
                 projectUri = treeUri,
@@ -46,11 +53,12 @@ class EditorViewModel @Inject constructor(
                 breadcrumbs = listOf(Breadcrumb(name, treeUri)),
                 openTabs = emptyList(),
                 activeTabUri = null,
+                isLoading = true,
                 error = null,
                 userMessage = null
             )
         }
-        loadDirectory(treeUri)
+        loadDirectory(treeUri, isAlreadyLoading = true)
     }
 
     fun navigateInto(node: FileNode) {
@@ -564,10 +572,12 @@ class EditorViewModel @Inject constructor(
         closeActiveTab(force = false)
     }
 
-    private fun loadDirectory(uri: Uri) {
+    private fun loadDirectory(uri: Uri, isAlreadyLoading: Boolean = false) {
         viewModelScope.launch {
             try {
-                _state.update { it.copy(isLoading = true, error = null) }
+                if (!isAlreadyLoading) {
+                    _state.update { it.copy(isLoading = true, error = null) }
+                }
                 val children = fileSystem.listChildren(uri)
                 val filtered = children.filter { node ->
                     !PathSafety.shouldIgnore(node.name, node.isDirectory)

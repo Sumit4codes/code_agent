@@ -1,7 +1,7 @@
 package com.koda.dev.feature.editor
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,12 +15,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.springPressClickable
 
 @Composable
 fun ProgrammingAccessoryBar(
@@ -40,43 +45,74 @@ fun ProgrammingAccessoryBar(
         ".", ",", "!", "?", "&", "|", "$", "_", "->", "=>"
     )
 
-    Surface(
-        color = Color(0xFF161B22),
+    Box(
         modifier = modifier
             .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .background(GlassDesign.liquidGlassBackground(topAlpha = 0.92f, midAlpha = 0.88f, bottomAlpha = 0.82f))
+            .border(
+                width = 0.5.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.35f, dispersionAlpha = 0.15f),
+                shape = RectangleShape
+            )
             .focusProperties { canFocus = false }
     ) {
+        // Internal top refractive sheen
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .background(GlassDesign.internalGlassSheen())
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Save Button with Unsaved Indicator
-            FilledTonalButton(
-                onClick = onSave,
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = if (isDirty) Color(0xFF238636) else Color(0xFF21262D),
-                    contentColor = if (isDirty) Color.White else Color(0xFF8B949E)
-                ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+            val saveShape = RoundedCornerShape(8.dp)
+            val saveBackground = if (isDirty) {
+                Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043)))
+            } else {
+                GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.05f)
+            }
+            val saveBorder = if (isDirty) {
+                GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.30f)
+            } else {
+                GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f)
+            }
+
+            Box(
                 modifier = Modifier
                     .height(32.dp)
+                    .clip(saveShape)
+                    .background(saveBackground)
+                    .border(1.dp, saveBorder, saveShape)
+                    .springPressClickable(onClick = onSave)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
                     .focusProperties { canFocus = false },
-                shape = RoundedCornerShape(4.dp)
+                contentAlignment = Alignment.Center
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Save,
                         contentDescription = "Save File",
+                        tint = if (isDirty) Color.White else Color(0xFF8B949E),
                         modifier = Modifier.size(15.dp)
                     )
-                    Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Save",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDirty) Color.White else Color(0xFF8B949E)
+                    )
                     if (isDirty) {
                         Box(
                             modifier = Modifier
@@ -87,13 +123,16 @@ fun ProgrammingAccessoryBar(
                 }
             }
 
-            // Undo / Redo
-            IconButton(
-                onClick = onUndo,
-                enabled = canUndo,
+            // Undo
+            Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .focusProperties { canFocus = false }
+                    .clip(CircleShape)
+                    .background(GlassDesign.microGlassBackground(topAlpha = if (canUndo) 0.16f else 0.06f, bottomAlpha = 0.04f))
+                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (canUndo) 0.35f else 0.15f, bottomAlpha = 0.06f), CircleShape)
+                    .springPressClickable(enabled = canUndo, onClick = onUndo)
+                    .focusProperties { canFocus = false },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Undo,
@@ -103,12 +142,16 @@ fun ProgrammingAccessoryBar(
                 )
             }
 
-            IconButton(
-                onClick = onRedo,
-                enabled = canRedo,
+            // Redo
+            Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .focusProperties { canFocus = false }
+                    .clip(CircleShape)
+                    .background(GlassDesign.microGlassBackground(topAlpha = if (canRedo) 0.16f else 0.06f, bottomAlpha = 0.04f))
+                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (canRedo) 0.35f else 0.15f, bottomAlpha = 0.06f), CircleShape)
+                    .springPressClickable(enabled = canRedo, onClick = onRedo)
+                    .focusProperties { canFocus = false },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Redo,
@@ -119,50 +162,47 @@ fun ProgrammingAccessoryBar(
             }
 
             // Tab (Indent)
-            Surface(
-                shape = RoundedCornerShape(4.dp),
-                color = Color(0xFF21262D),
+            val keyShape = RoundedCornerShape(8.dp)
+            Box(
                 modifier = Modifier
                     .height(32.dp)
-                    .focusProperties { canFocus = false }
-                    .clickable { onIndent() }
+                    .clip(keyShape)
+                    .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), keyShape)
+                    .springPressClickable(onClick = onIndent)
+                    .padding(horizontal = 10.dp)
+                    .focusProperties { canFocus = false },
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier.padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "TAB",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF58A6FF)
-                    )
-                }
+                Text(
+                    "TAB",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF58A6FF)
+                )
             }
 
             // Quick Programming Symbols
             symbols.forEach { sym ->
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = Color(0xFF21262D),
+                Box(
                     modifier = Modifier
                         .height(32.dp)
-                        .focusProperties { canFocus = false }
-                        .clickable { onInsertSymbol(sym) }
+                        .clip(keyShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), keyShape)
+                        .springPressClickable { onInsertSymbol(sym) }
+                        .padding(horizontal = 11.dp)
+                        .focusProperties { canFocus = false },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier.padding(horizontal = 11.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            sym,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFF0F6FC)
-                        )
-                    }
+                    Text(
+                        sym,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFF0F6FC)
+                    )
                 }
             }
         }

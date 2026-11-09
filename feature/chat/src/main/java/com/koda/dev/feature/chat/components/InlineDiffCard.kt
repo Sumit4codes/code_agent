@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +47,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +60,7 @@ import com.koda.dev.core.model.ChangeType
 import com.koda.dev.core.model.DiffHunk
 import com.koda.dev.core.model.DiffLineType
 import com.koda.dev.core.model.PendingChange
+import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.core.ui.theme.JetBrainsMono
 
 /**
@@ -118,11 +122,17 @@ fun InlineDiffCard(
         ChangeType.DELETE -> "DELETE" to Color(0xFFF85149)  // Red
     }
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF161B22),
-        border = BorderStroke(1.dp, Color(0xFF30363D)),
-        modifier = modifier.fillMaxWidth()
+    val cardShape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f),
+                shape = cardShape
+            )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Header Row
@@ -323,46 +333,58 @@ fun InlineDiffCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (onReject != null) {
-                                OutlinedButton(
-                                    onClick = { onReject(pendingChange) },
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFF85149)
-                                    ),
-                                    border = BorderStroke(1.dp, Color(0xFFF85149).copy(alpha = 0.5f)),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(30.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                                val rejectShape = RoundedCornerShape(8.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .height(30.dp)
+                                        .clip(rejectShape)
+                                        .background(Color(0x22F85149))
+                                        .border(0.75.dp, Color(0x44F85149), rejectShape)
+                                        .springPressClickable { onReject(pendingChange) }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Reject", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color(0xFFFF7B72)
+                                        )
+                                        Text("Reject", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFF7B72))
+                                    }
                                 }
                             }
 
                             Spacer(Modifier.width(8.dp))
 
                             if (onApprove != null) {
-                                FilledTonalButton(
-                                    onClick = { onApprove(pendingChange) },
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = Color(0xFF238636),
-                                        contentColor = Color.White
-                                    ),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(30.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                                val applyShape = RoundedCornerShape(8.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .height(30.dp)
+                                        .clip(applyShape)
+                                        .background(Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043))))
+                                        .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), applyShape)
+                                        .springPressClickable { onApprove(pendingChange) }
+                                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Apply", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color.White
+                                        )
+                                        Text("Apply", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
                                 }
                             }
                         }

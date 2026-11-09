@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koda.dev.core.model.ToolCallData
@@ -232,8 +234,22 @@ fun AgentTimelineView(
                                                     fontSize = 12.sp,
                                                     fontWeight = if (isActionExpanded) FontWeight.Medium else FontWeight.Normal
                                                 ),
-                                                color = if (action.isError) Color(0xFFF85149) else Color(0xFF8B949E)
+                                                color = if (action.isError) Color(0xFFF85149) else Color(0xFF8B949E),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
+                                            if (action.isTerminal && !action.commandLine.isNullOrBlank() && !action.title.contains(action.commandLine.take(15))) {
+                                                Text(
+                                                    text = "(${action.commandLine.take(30)}${if (action.commandLine.length > 30) "..." else ""})",
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontSize = 11.sp
+                                                    ),
+                                                    color = Color(0xFF6E7681),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                             Icon(
                                                 imageVector = if (isActionExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                                 contentDescription = null,
@@ -248,7 +264,7 @@ fun AgentTimelineView(
                                             enter = fadeIn() + expandVertically(),
                                             exit = fadeOut() + shrinkVertically()
                                         ) {
-                                            TerminalOutputCard(action = action)
+                                            TerminalOutputCard(action = action, projectName = projectName)
                                         }
                                     }
                                 }
@@ -267,69 +283,134 @@ fun AgentTimelineView(
 @Composable
 private fun TerminalOutputCard(
     action: HumanAction,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    projectName: String = "code_agent"
 ) {
     val horizontalScroll = rememberScrollState()
+    val cardShape = RoundedCornerShape(10.dp)
+    var showFullOutput by remember(action.id) { mutableStateOf(false) }
+
+    val rawOutput = action.output?.trim() ?: ""
+    val lines = remember(rawOutput) { rawOutput.lines() }
+    val isTruncatedNeeded = remember(lines, rawOutput) {
+        lines.size > 8 || rawOutput.length > 500
+    }
+
+    val displayOutput = remember(rawOutput, lines, isTruncatedNeeded, showFullOutput) {
+        if (!isTruncatedNeeded || showFullOutput) {
+            rawOutput
+        } else {
+            if (lines.size > 8) {
+                lines.take(8).joinToString("\n")
+            } else {
+                rawOutput.take(500)
+            }
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF141618))
-            .border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
+            .clip(cardShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+            .border(
+                width = 0.75.dp,
+                brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                shape = cardShape
+            )
             .padding(10.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(horizontalScroll),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Prompt line: ~/.../code_agent $ git status
-            if (action.isTerminal && !action.commandLine.isNullOrBlank()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            // Scrollable code & output block
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(horizontalScroll),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Prompt line: ~/.../$projectName $ git status
+                if (!action.commandLine.isNullOrBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "~/.../$projectName $ ",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color(0xFF8B949E)
+                        )
+                        Text(
+                            text = action.commandLine,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color(0xFFF0F6FC)
+                        )
+                    }
+                }
+
+                // Command output
+                if (rawOutput.isNotBlank()) {
                     Text(
-                        text = "~/.../code_agent $ ",
+                        text = displayOutput,
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
                         ),
-                        color = Color(0xFF8B949E)
+                        color = if (action.isError) Color(0xFFF85149) else Color(0xFFC9D1D9)
                     )
+                } else {
                     Text(
-                        text = action.commandLine,
+                        text = "(No output or completed silently)",
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 11.sp
                         ),
-                        color = Color(0xFFF0F6FC)
+                        color = Color(0xFF6E7681)
                     )
                 }
             }
 
-            // Command output
-            if (!action.output.isNullOrBlank()) {
-                Text(
-                    text = action.output.trim(),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    ),
-                    color = if (action.isError) Color(0xFFF85149) else Color(0xFFC9D1D9)
-                )
-            } else {
-                Text(
-                    text = "(No output or completed silently)",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp
-                    ),
-                    color = Color(0xFF6E7681)
-                )
+            // Truncation toggle: "Show more" / "Show less"
+            if (isTruncatedNeeded) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { showFullOutput = !showFullOutput }
+                        .padding(vertical = 4.dp, horizontal = 2.dp)
+                ) {
+                    Text(
+                        text = if (showFullOutput) "Show less" else "Show more",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp
+                        ),
+                        color = Color(0xFF58A6FF)
+                    )
+                    Icon(
+                        imageVector = if (showFullOutput) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (showFullOutput) "Show less" else "Show more",
+                        modifier = Modifier.size(13.dp),
+                        tint = Color(0xFF58A6FF)
+                    )
+                    if (!showFullOutput && lines.size > 8) {
+                        Text(
+                            text = "(${lines.size - 8} more lines)",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            color = Color(0xFF8B949E)
+                        )
+                    }
+                }
             }
         }
     }

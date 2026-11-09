@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -41,6 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,6 +55,7 @@ import com.koda.dev.core.files.DiffEngine
 import com.koda.dev.core.model.ChangeType
 import com.koda.dev.core.model.DiffLineType
 import com.koda.dev.core.model.PendingChange
+import com.koda.dev.core.ui.glass.springPressClickable
 
 @Composable
 fun PendingChangesBanner(
@@ -62,18 +69,34 @@ fun PendingChangesBanner(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(12.dp),
+    val bannerShape = RoundedCornerShape(16.dp)
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .shadow(
+                elevation = 12.dp,
+                shape = bannerShape,
+                ambientColor = Color(0x30000000),
+                spotColor = Color(0x600F172A)
+            )
+            .clip(bannerShape)
+            .background(GlassDesign.liquidGlassBackground())
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
+                shape = bannerShape
+            )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        // Internal Top Refraction Sheen
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .background(GlassDesign.internalGlassSheen())
+        )
+
+        Column(modifier = Modifier.padding(14.dp)) {
             // Header row
             Row(
                 modifier = Modifier
@@ -84,22 +107,21 @@ fun PendingChangesBanner(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f),
-                                shape = RoundedCornerShape(6.dp)
-                            ),
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Difference,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.tertiary
+                            modifier = Modifier.size(17.dp),
+                            tint = Color(0xFFD29922)
                         )
                     }
 
@@ -107,33 +129,42 @@ fun PendingChangesBanner(
                         Text(
                             text = "${changes.size} Pending Change${if (changes.size != 1) "s" else ""}",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = Color(0xFFF0F6FC)
                         )
                         Text(
                             text = if (expanded) "Tap to collapse" else "Tap to inspect files",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color(0xFF8B949E)
                         )
                     }
                 }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (onReviewDiffs != null) {
-                        FilledTonalButton(
-                            onClick = onReviewDiffs,
-                            contentPadding = ButtonDefaults.TextButtonContentPadding,
-                            modifier = Modifier.height(32.dp)
+                        val reviewBtnShape = RoundedCornerShape(8.dp)
+                        Box(
+                            modifier = Modifier
+                                .clip(reviewBtnShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), reviewBtnShape)
+                                .springPressClickable(onClick = onReviewDiffs)
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("Review", style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                text = "Review",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFF58A6FF)
+                            )
                         }
                     }
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = Color(0xFF8B949E)
                     )
                 }
             }
@@ -142,24 +173,34 @@ fun PendingChangesBanner(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                FilledTonalButton(
-                    onClick = onApproveAll,
+                val btnShape = RoundedCornerShape(10.dp)
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(34.dp)
+                        .height(36.dp)
+                        .clip(btnShape)
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043))))
+                        .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), btnShape)
+                        .springPressClickable(onClick = onApproveAll),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Apply All", style = MaterialTheme.typography.labelMedium)
+                    Text("Apply All", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
                 }
-                OutlinedButton(
-                    onClick = onRejectAll,
+
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(34.dp)
+                        .height(36.dp)
+                        .clip(btnShape)
+                        .background(Color(0x22F85149))
+                        .border(0.75.dp, Color(0x44F85149), btnShape)
+                        .springPressClickable(onClick = onRejectAll),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Reject All", style = MaterialTheme.typography.labelMedium)
+                    Text("Reject All", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = Color(0xFFFF7B72))
                 }
             }
 

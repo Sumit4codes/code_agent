@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -65,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -77,6 +79,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.springPressClickable
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -218,22 +222,42 @@ fun QrScannerDialog(
         }
     }
 
+    val dialogShape = RoundedCornerShape(26.dp)
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.88f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(20.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -245,13 +269,16 @@ fun QrScannerDialog(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f),
                                     shape = CircleShape
                                 ),
                             contentAlignment = Alignment.Center
@@ -259,26 +286,44 @@ fun QrScannerDialog(
                             Icon(
                                 imageVector = Icons.Default.QrCodeScanner,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = Color(0xFF58A6FF),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
                         Column {
                             Text(
                                 text = title,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
                             )
                             Text(
                                 text = "Auto-configures Tunnel URL & Key",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                                color = Color(0xFF58A6FF)
                             )
                         }
                     }
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close scanner")
+                    // Close Button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close scanner",
+                            tint = Color(0xFFC9D1D9),
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
@@ -435,22 +480,45 @@ fun QrScannerDialog(
                 // Bottom Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = { galleryLauncher.launch("image/*") },
-                        modifier = Modifier.weight(1f)
+                    val pickImageShape = RoundedCornerShape(12.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(pickImageShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
+                                shape = pickImageShape
+                            )
+                            .springPressClickable { galleryLauncher.launch("image/*") }
+                            .padding(vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Pick Image")
+                        Text("Pick Image", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = Color(0xFFF0F6FC))
                     }
 
-                    FilledTonalButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                    val cancelShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(cancelShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                                shape = cancelShape
+                            )
+                            .springPressClickable(onClick = onDismiss)
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", style = MaterialTheme.typography.labelMedium, color = Color(0xFF8B949E))
                     }
                 }
             }

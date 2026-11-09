@@ -12,20 +12,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -60,12 +51,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,12 +75,17 @@ import com.koda.dev.feature.chat.components.ActiveTasksStrip
 import com.koda.dev.feature.chat.components.ChatInputBar
 import com.koda.dev.feature.chat.components.ContextUsageDialog
 import com.koda.dev.feature.chat.components.EmptyChatState
+import com.koda.dev.feature.chat.components.GlassDesign
 import com.koda.dev.feature.chat.components.InChatDiffBottomSheet
 import com.koda.dev.feature.chat.components.MessageItem
 import com.koda.dev.feature.chat.components.PendingChangesBanner
 import com.koda.dev.feature.chat.components.SessionHistorySheet
 import com.koda.dev.feature.chat.components.StreamingBubble
+import com.koda.dev.feature.chat.components.captureBackdrop
 import com.koda.dev.feature.chat.components.groupMessagesIntoTurns
+import com.koda.dev.feature.chat.components.liquidGlassBackdrop
+import com.koda.dev.feature.chat.components.rememberBackdropState
+import com.koda.dev.feature.chat.components.springPressClickable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -121,6 +124,9 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val scaffoldState = rememberTopAppBarState()
+    val backdropState = rememberBackdropState()
+    var inputBarHeightPx by remember { mutableFloatStateOf(0f) }
+    var topBarHeightPx by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank() && projectId != "none" && state.projectId != projectId) {
@@ -207,159 +213,320 @@ fun ChatScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    if (onNavigateBack != null) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {},
+            bottomBar = {}
+        ) { padding ->
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .captureBackdrop(backdropState)
+                ) {
+                    // Pending changes banner
+                    if (state.pendingChanges.isNotEmpty()) {
+                        PendingChangesBanner(
+                            changes = state.pendingChanges,
+                            onApproveAll = { viewModel.approveAllChanges() },
+                            onRejectAll = { viewModel.rejectAllChanges() },
+                            onApprove = { viewModel.approveChange(it) },
+                            onReject = { viewModel.rejectChange(it) },
+                            onReviewDiffs = {
+                                selectedDiffChange = state.pendingChanges.firstOrNull()
+                                showDiffBottomSheet = true
+                            },
+                            modifier = Modifier
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                .padding(top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp)
+                        )
                     }
-                },
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+
+                    // Error notification banner
+                    if (state.error != null) {
+                        ErrorBanner(
+                            error = state.error ?: "",
+                            onDismiss = { viewModel.clearError() },
+                            modifier = Modifier
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                .padding(top = if (state.pendingChanges.isEmpty()) (if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp) else 0.dp)
+                        )
+                    }
+
+                    // Messages area or Empty State
+                    if (displayMessages.isEmpty() && !state.isStreaming) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp),
-                            contentAlignment = Alignment.Center
+                                .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                .padding(
+                                    top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
+                                    bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
+                                )
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = androidx.compose.ui.graphics.Color(0xFF21262D),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF30363D)),
-                                modifier = Modifier.fillMaxSize()
+                            EmptyChatState(
+                                hasProject = state.projectUri != null,
+                                projectName = state.projectName,
+                                modelName = state.model,
+                                onSuggestionClick = { suggestionPrompt ->
+                                    viewModel.sendMessage(suggestionPrompt)
+                                }
+                            )
+                        }
+                    } else {
+                        val layoutDirection = LocalLayoutDirection.current
+                        val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentPadding = PaddingValues(
+                                start = 16.dp + safeInsets.calculateStartPadding(layoutDirection),
+                                end = 16.dp + safeInsets.calculateEndPadding(layoutDirection),
+                                top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
+                                bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                        items(
+                            items = displayMessages,
+                            key = { it.id },
+                            contentType = { it.role.name }
+                        ) { message ->
+                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
+                            val isLive = state.isStreaming && isLastItem
+
+                            MessageItem(
+                                message = message,
+                                isLive = isLive,
+                                pendingChanges = state.pendingChanges,
+                                onApproveChange = { viewModel.approveChange(it) },
+                                onRejectChange = { viewModel.rejectChange(it) },
+                                onOpenFullReview = { change ->
+                                    selectedDiffChange = change ?: state.pendingChanges.firstOrNull()
+                                    showDiffBottomSheet = true
+                                }
+                            )
+                        }
+
+                        if (state.isStreaming) {
+                            item(key = "streaming_bubble") {
+                                StreamingBubble(
+                                    streamingText = state.streamingText,
+                                    activeTool = state.activeTool,
+                                    modelName = state.model
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Floating Top Bar (Liquid Glass capsule floating over scrolling messages)
+            val topBarShape = RoundedCornerShape(24.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .onGloballyPositioned { coords ->
+                        topBarHeightPx = coords.size.height.toFloat()
+                    }
+                    .statusBarsPadding()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = topBarShape,
+                        ambientColor = Color(0x33000000),
+                        spotColor = Color(0x660F172A)
+                    )
+                    .liquidGlassBackdrop(
+                        backdropState = backdropState,
+                        shape = topBarShape,
+                        blurRadius = 24.dp,
+                        tintColor = Color(0xC410141E),
+                        specularBorder = GlassDesign.liquidGlassBorder(
+                            topSpecularAlpha = 0.65f,
+                            dispersionAlpha = 0.28f
+                        ),
+                        borderWidth = 1.dp
+                    )
+            ) {
+                // Internal Top Refraction Sheen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(30.dp)
+                        .background(GlassDesign.internalGlassSheen())
+                )
+
+                TopAppBar(
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                    navigationIcon = {
+                        if (onNavigateBack != null) {
+                            IconButton(onClick = onNavigateBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color(0xFFF0F6FC)
+                                )
+                            }
+                        }
+                    },
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Frosted Robot Avatar Disc
+                            Box(
+                                modifier = Modifier.size(36.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                        .border(
+                                            width = 0.75.dp,
+                                            brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.SmartToy,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp),
-                                        tint = androidx.compose.ui.graphics.Color(0xFF8B949E)
+                                        tint = Color(0xFFC9D1D9)
+                                    )
+                                }
+                                if (state.isStreaming) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(36.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFF2F81F7)
                                     )
                                 }
                             }
-                            if (state.isStreaming) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(36.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
 
-                        Column(modifier = Modifier.weight(1f, fill = false)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = state.sessionTitle.ifBlank { "Koda Dev" },
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                if (state.isGoalMode) {
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = MaterialTheme.colorScheme.tertiaryContainer
-                                    ) {
-                                        Text(
-                                            text = if (state.activeStepCount > 0) "GOAL · Step ${state.activeStepCount}" else "GOAL MODE",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = state.sessionTitle.ifBlank { "Koda Dev" },
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = Color(0xFFF0F6FC),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (state.isGoalMode) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.tertiaryContainer
+                                        ) {
+                                            Text(
+                                                text = if (state.activeStepCount > 0) "GOAL · Step ${state.activeStepCount}" else "GOAL MODE",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                if (state.projectName.isNotBlank()) {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (state.projectName.isNotBlank()) {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color(0xFF58A6FF)
+                                        )
+                                        Text(
+                                            text = state.projectName,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF8B949E),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "·",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF8B949E)
+                                        )
+                                    }
                                     Text(
-                                        text = state.projectName,
+                                        text = when {
+                                            state.isStreaming && state.isGoalMode -> "Autonomous Goal running…"
+                                            state.isStreaming -> "Working…"
+                                            else -> state.model
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (state.isStreaming) Color(0xFF58A6FF) else Color(0xFF8B949E),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(
-                                        text = "·",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                 }
-                                Text(
-                                    text = when {
-                                        state.isStreaming && state.isGoalMode -> "Autonomous Goal running…"
-                                        state.isStreaming -> "Working…"
-                                        else -> state.model
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (state.isStreaming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                            }
+                        }
+                    },
+                    actions = {
+                        if (state.projectUri != null) {
+                            IconButton(
+                                onClick = { showTerminalSheet = true }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Terminal,
+                                    contentDescription = "Project Terminal",
+                                    tint = Color(0xFFF0F6FC)
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.startNewSession() },
+                                enabled = !state.isStreaming
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "New Chat",
+                                    tint = Color(0xFFF0F6FC)
+                                )
+                            }
+                            IconButton(
+                                onClick = { showHistorySheet = true }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = "Chat History",
+                                    tint = Color(0xFFF0F6FC)
                                 )
                             }
                         }
-                    }
-                },
-                actions = {
-                    if (state.projectUri != null) {
-                        IconButton(
-                            onClick = { showTerminalSheet = true }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Terminal,
-                                contentDescription = "Project Terminal",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.startNewSession() },
-                            enabled = !state.isStreaming
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "New Chat",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        IconButton(
-                            onClick = { showHistorySheet = true }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = "Chat History",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                },
-                scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(scaffoldState),
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
                 )
-            )
-        },
-        bottomBar = {
-            Column {
+            }
+
+            // Floating Input Deck (Liquid Glass capsule floating over scrolling messages)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .onGloballyPositioned { coords ->
+                        inputBarHeightPx = coords.size.height.toFloat()
+                    }
+            ) {
                 if (state.activeBackgroundTasks.isNotEmpty()) {
                     ActiveTasksStrip(
                         tasks = state.activeBackgroundTasks,
@@ -408,91 +575,9 @@ fun ChatScreen(
                             "/goal $current"
                         }
                         inputText = newText
-                    }
+                    },
+                    backdropState = backdropState
                 )
-            }
-        }
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Pending changes banner
-                if (state.pendingChanges.isNotEmpty()) {
-                    PendingChangesBanner(
-                        changes = state.pendingChanges,
-                        onApproveAll = { viewModel.approveAllChanges() },
-                        onRejectAll = { viewModel.rejectAllChanges() },
-                        onApprove = { viewModel.approveChange(it) },
-                        onReject = { viewModel.rejectChange(it) },
-                        onReviewDiffs = {
-                            selectedDiffChange = state.pendingChanges.firstOrNull()
-                            showDiffBottomSheet = true
-                        }
-                    )
-                }
-
-                // Error notification banner
-                if (state.error != null) {
-                    ErrorBanner(
-                        error = state.error ?: "",
-                        onDismiss = { viewModel.clearError() }
-                    )
-                }
-
-                // Messages area or Empty State
-                if (displayMessages.isEmpty() && !state.isStreaming) {
-                    EmptyChatState(
-                        hasProject = state.projectUri != null,
-                        projectName = state.projectName,
-                        modelName = state.model,
-                        onSuggestionClick = { suggestionPrompt ->
-                            viewModel.sendMessage(suggestionPrompt)
-                        }
-                    )
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(
-                            items = displayMessages,
-                            key = { it.id },
-                            contentType = { it.role.name }
-                        ) { message ->
-                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
-                            val isLive = state.isStreaming && isLastItem
-
-                            MessageItem(
-                                message = message,
-                                isLive = isLive,
-                                pendingChanges = state.pendingChanges,
-                                onApproveChange = { viewModel.approveChange(it) },
-                                onRejectChange = { viewModel.rejectChange(it) },
-                                onOpenFullReview = { change ->
-                                    selectedDiffChange = change ?: state.pendingChanges.firstOrNull()
-                                    showDiffBottomSheet = true
-                                }
-                            )
-                        }
-
-                        if (state.isStreaming) {
-                            item(key = "streaming_bubble") {
-                                StreamingBubble(
-                                    streamingText = state.streamingText,
-                                    activeTool = state.activeTool,
-                                    modelName = state.model
-                                )
-                            }
-                        }
-                    }
-                }
             }
 
             // Scroll to bottom floating button (centered above input bar)
@@ -502,34 +587,47 @@ fun ChatScreen(
                 exit = fadeOut() + scaleOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 12.dp)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .padding(bottom = with(LocalDensity.current) { inputBarHeightPx.toDp() } + 10.dp)
             ) {
-                Surface(
-                    onClick = {
-                        userScrolledUp = false
-                        coroutineScope.launch {
-                            if (totalItemsCount > 0) {
-                                listState.animateScrollToItem(totalItemsCount - 1)
-                            }
-                        }
-                    },
-                    modifier = Modifier.size(36.dp),
-                    shape = CircleShape,
-                    color = androidx.compose.ui.graphics.Color(0xFF21262D),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF30363D)),
-                    shadowElevation = 4.dp
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Scroll to bottom",
-                            modifier = Modifier.size(20.dp),
-                            tint = androidx.compose.ui.graphics.Color(0xFFF0F6FC)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = CircleShape,
+                            ambientColor = Color(0x60000000),
+                            spotColor = Color(0x90000000)
                         )
-                    }
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF242B38), Color(0xFF151922))
+                            )
+                        )
+                        .border(
+                            width = 0.75.dp,
+                            brush = Brush.verticalGradient(
+                                listOf(Color(0x66FFFFFF), Color(0x18FFFFFF))
+                            ),
+                            shape = CircleShape
+                        )
+                        .springPressClickable {
+                            userScrolledUp = false
+                            coroutineScope.launch {
+                                if (totalItemsCount > 0) {
+                                    listState.animateScrollToItem(totalItemsCount - 1)
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Scroll to bottom",
+                        modifier = Modifier.size(20.dp),
+                        tint = Color(0xFFF0F6FC)
+                    )
                 }
             }
         }
@@ -552,7 +650,8 @@ fun ChatScreen(
             },
             onDeleteSession = { sessionId ->
                 viewModel.deleteSession(sessionId)
-            }
+            },
+            backdropState = backdropState
         )
     }
 

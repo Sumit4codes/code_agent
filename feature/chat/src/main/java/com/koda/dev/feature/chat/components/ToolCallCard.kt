@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,10 +54,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -188,14 +191,17 @@ fun ToolCallCard(
     val info = remember(toolCall.name) { getToolInfo(toolCall.name) }
     val argSummary = remember(toolCall.arguments) { extractArgSummary(toolCall.arguments) }
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-        ),
-        modifier = modifier.fillMaxWidth()
+    val cardShape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.45f, dispersionAlpha = 0.18f),
+                shape = cardShape
+            )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Header row
@@ -208,20 +214,20 @@ fun ToolCallCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Icon badge
+                val iconShape = RoundedCornerShape(8.dp)
                 Box(
                     modifier = Modifier
                         .size(32.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            shape = RoundedCornerShape(8.dp)
-                        ),
+                        .clip(iconShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), iconShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = info.icon,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        modifier = Modifier.size(17.dp),
+                        tint = Color(0xFF58A6FF)
                     )
                 }
 
@@ -229,14 +235,14 @@ fun ToolCallCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = info.title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
                     )
                     if (argSummary.isNotBlank()) {
                         Text(
                             text = argSummary,
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF8B949E),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -244,12 +250,15 @@ fun ToolCallCard(
                 }
 
                 // Completion status
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                val statusShape = RoundedCornerShape(12.dp)
+                Box(
+                    modifier = Modifier
+                        .clip(statusShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), statusShape)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -257,12 +266,12 @@ fun ToolCallCard(
                             imageVector = Icons.Default.Check,
                             contentDescription = null,
                             modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = Color(0xFF39D353)
                         )
                         Text(
                             text = "Tool",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFF39D353)
                         )
                     }
                 }
@@ -293,12 +302,16 @@ fun ToolCallCard(
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
 
-                    val isCommand = ToolNames.normalize(toolCall.name) == ToolNames.EXECUTE_COMMAND
+                    val isCommand = ToolNames.normalize(toolCall.name) == ToolNames.EXECUTE_COMMAND ||
+                        toolCall.name in listOf("run_command", "bash", "exec_command", "execute_command")
 
                     if (isCommand) {
                         val cmd = try {
                             val json = Json.parseToJsonElement(toolCall.arguments).jsonObject
-                            json["command"]?.jsonPrimitive?.content ?: toolCall.arguments
+                            json["command"]?.jsonPrimitive?.content
+                                ?: json["CommandLine"]?.jsonPrimitive?.content
+                                ?: json["cmd"]?.jsonPrimitive?.content
+                                ?: toolCall.arguments
                         } catch (_: Exception) {
                             toolCall.arguments
                         }
@@ -335,6 +348,20 @@ private fun CodeBlockSection(
 ) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
+    var showFullContent by remember(content) { mutableStateOf(false) }
+
+    val rawContent = content.trim()
+    val lines = remember(rawContent) { rawContent.lines() }
+    val isTruncatedNeeded = remember(lines, rawContent) {
+        lines.size > 10 || rawContent.length > 600
+    }
+    val displayContent = remember(rawContent, lines, isTruncatedNeeded, showFullContent) {
+        if (!isTruncatedNeeded || showFullContent) {
+            rawContent
+        } else {
+            if (lines.size > 10) lines.take(10).joinToString("\n") else rawContent.take(600)
+        }
+    }
 
     LaunchedEffect(copied) {
         if (copied) {
@@ -384,7 +411,10 @@ private fun CodeBlockSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 240.dp)
+                .then(
+                    if (showFullContent) Modifier.heightIn(max = 400.dp)
+                    else Modifier.heightIn(max = 240.dp)
+                )
                 .background(
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     shape = RoundedCornerShape(8.dp)
@@ -393,7 +423,7 @@ private fun CodeBlockSection(
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = content,
+                text = displayContent,
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
@@ -401,6 +431,39 @@ private fun CodeBlockSection(
                 ),
                 color = MaterialTheme.colorScheme.onSurface
             )
+        }
+
+        if (isTruncatedNeeded) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { showFullContent = !showFullContent }
+                    .padding(top = 4.dp, bottom = 2.dp, start = 2.dp, end = 2.dp)
+            ) {
+                Text(
+                    text = if (showFullContent) "Show less" else "Show more",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.5.sp
+                    ),
+                    color = Color(0xFF58A6FF)
+                )
+                Icon(
+                    imageVector = if (showFullContent) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (showFullContent) "Show less" else "Show more",
+                    modifier = Modifier.size(13.dp),
+                    tint = Color(0xFF58A6FF)
+                )
+                if (!showFullContent && lines.size > 10) {
+                    Text(
+                        text = "(${lines.size - 10} more lines)",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -434,7 +497,13 @@ private fun extractArgSummary(arguments: String): String {
                 val checkCount = json["_check_count"]?.jsonPrimitive?.content?.let { " · $it checks" } ?: ""
                 "⚙️ $action$taskId$checkCount"
             }
-            json.containsKey("command") -> "$ ${json["command"]?.jsonPrimitive?.content ?: ""}"
+            json.containsKey("command") || json.containsKey("CommandLine") || json.containsKey("cmd") -> {
+                val cmd = json["command"]?.jsonPrimitive?.content
+                    ?: json["CommandLine"]?.jsonPrimitive?.content
+                    ?: json["cmd"]?.jsonPrimitive?.content
+                    ?: ""
+                "$ $cmd"
+            }
             json.containsKey("query") -> "🔍 \"${json["query"]?.jsonPrimitive?.content ?: ""}\""
             json.containsKey("url") -> "🌐 ${json["url"]?.jsonPrimitive?.content ?: ""}"
             json.containsKey("path") -> json["path"]?.jsonPrimitive?.content ?: ""

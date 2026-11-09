@@ -8,12 +8,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -26,9 +29,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koda.dev.core.data.sync.SyncAccountInfo
@@ -46,6 +56,12 @@ import com.koda.dev.core.model.PopularProvider
 import com.koda.dev.core.model.PopularProviders
 import com.koda.dev.core.model.ProviderType
 import com.koda.dev.core.model.WebSearchEngine
+import com.koda.dev.core.ui.glass.BackdropState
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.captureBackdrop
+import com.koda.dev.core.ui.glass.liquidGlassBackdrop
+import com.koda.dev.core.ui.glass.rememberBackdropState
+import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.feature.settings.qr.QrScannerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,29 +87,34 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    ) { padding ->
+    // Dynamic heights of floating liquid glass capsules
+    var topBarHeightPx by remember { mutableFloatStateOf(0f) }
+
+    // Hardware backdrop capture state for optical lens blur and refraction
+    val backdropState = rememberBackdropState()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B0E14)) // Deep optical slate canvas
+    ) {
+        val layoutDirection = LocalLayoutDirection.current
+        val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
+        val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+        // Scrolling Settings Content Stream (captured into backdrop state for real-time glass refraction)
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .captureBackdrop(backdropState)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(
+                    start = 14.dp + safeInsets.calculateStartPadding(layoutDirection),
+                    end = 14.dp + safeInsets.calculateEndPadding(layoutDirection),
+                    top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 90.dp,
+                    bottom = 86.dp + navBarsBottomInset // Dynamic clearance for floating bottom navigation bar
+                ),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 1. ACTIVE PROVIDER BANNER
             ActiveProviderBanner(
@@ -152,7 +173,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onSaveApiKey = { engine, key -> viewModel.saveSearchApiKey(engine, key) }
             )
 
-            // 5. CROSS-DEVICE CLOUD SYNC CARD
+            // 6. CROSS-DEVICE CLOUD SYNC CARD
             CloudSyncCard(
                 syncAccount = state.syncAccount,
                 isSyncing = state.isSyncing,
@@ -163,11 +184,163 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onBackupClick = { viewModel.openBackupDialog() }
             )
 
-            // 5. STORAGE & PRIVACY INFO
+            // 7. STORAGE & PRIVACY INFO
             AboutPrivacyCard()
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
         }
+
+        // Floating Top Bar: 24dp curved Liquid Glass capsule floating over settings
+        val topBarShape = RoundedCornerShape(24.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .onGloballyPositioned { coords ->
+                    topBarHeightPx = coords.size.height.toFloat()
+                }
+                .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .shadow(
+                    elevation = 16.dp,
+                    shape = topBarShape,
+                    ambientColor = Color(0x33000000),
+                    spotColor = Color(0x660F172A)
+                )
+                .liquidGlassBackdrop(
+                    backdropState = backdropState,
+                    shape = topBarShape,
+                    blurRadius = 24.dp,
+                    tintColor = Color(0xC410141E),
+                    specularBorder = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.65f,
+                        dispersionAlpha = 0.28f
+                    ),
+                    borderWidth = 1.dp
+                )
+        ) {
+            // Internal Top Refractive Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(30.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
+            TopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                ),
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Frosted Tune Avatar Disc
+                        Box(
+                            modifier = Modifier.size(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                    .border(
+                                        width = 0.75.dp,
+                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color(0xFF58A6FF)
+                                )
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = "Settings",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC),
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "Providers · Agent · Sync",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Quick QR Scanner Button
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable { showQrScanner = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "Scan QR",
+                                tint = Color(0xFF79C0FF),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+
+                        // Quick Add Provider Button
+                        Box(
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable { viewModel.openAddProviderDialog(PopularProviders.KILO_FREE) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add Provider",
+                                tint = Color(0xFFF0F6FC),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+            )
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 90.dp)
+        )
     }
 
     // CONNECT SYNC DIALOG
@@ -236,35 +409,203 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         )
     }
 
-    // DELETE CONFIRMATION DIALOG
+    // DELETE CONFIRMATION DIALOG (Liquid Glass Modal)
     val deletingProvider = providerToDelete
     if (deletingProvider != null) {
-        AlertDialog(
+        val deleteDialogShape = RoundedCornerShape(24.dp)
+        Dialog(
             onDismissRequest = { providerToDelete = null },
-            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Delete Provider?") },
-            text = {
-                Text(
-                    "Are you sure you want to delete '${deletingProvider.name}' and its stored API key? " +
-                    if (deletingProvider.isDefault) "Another provider will automatically become active." else ""
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.88f)
+                    .shadow(
+                        elevation = 24.dp,
+                        shape = deleteDialogShape,
+                        ambientColor = Color(0x40000000),
+                        spotColor = Color(0x800F172A)
+                    )
+                    .clip(deleteDialogShape)
+                    .background(GlassDesign.liquidGlassBackground())
+                    .border(
+                        width = 1.dp,
+                        brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                        shape = deleteDialogShape
+                    )
+            ) {
+                // Internal Top Refraction Sheen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(GlassDesign.internalGlassSheen())
                 )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteProvider(deletingProvider.id)
-                        providerToDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { providerToDelete = null }) {
-                    Text("Cancel")
+                    // Header with Danger Icon Disc
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFDA3633).copy(alpha = 0.16f))
+                                .border(
+                                    width = 0.75.dp,
+                                    color = Color(0xFFF85149).copy(alpha = 0.40f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFFF85149),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "Delete Provider?",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "This action cannot be undone",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Warning Body
+                    Text(
+                        text = "Are you sure you want to delete '${deletingProvider.name}' and its stored API key?" +
+                                if (deletingProvider.isDefault) " Another configured provider will automatically become active." else "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFC9D1D9)
+                    )
+
+                    // Footer Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Cancel pill button
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .springPressClickable { providerToDelete = null }
+                                .padding(horizontal = 16.dp, vertical = 9.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+
+                        Spacer(Modifier.width(10.dp))
+
+                        // Delete button
+                        val deleteBtnShape = RoundedCornerShape(12.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(deleteBtnShape)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFFDA3633).copy(alpha = 0.75f),
+                                            Color(0xFF8E1515).copy(alpha = 0.85f)
+                                        )
+                                    )
+                                )
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.80f, dispersionAlpha = 0.30f),
+                                    shape = deleteBtnShape
+                                )
+                                .springPressClickable {
+                                    viewModel.deleteProvider(deletingProvider.id)
+                                    providerToDelete = null
+                                }
+                                .padding(horizontal = 16.dp, vertical = 9.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFFFF7B72),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Delete",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LiquidGlassCard(
+    modifier: Modifier = Modifier,
+    shape: RoundedCornerShape = RoundedCornerShape(18.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF161B22).copy(alpha = 0.75f),
+                        Color(0xFF0D1117).copy(alpha = 0.85f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.microGlassBorder(topAlpha = 0.24f, bottomAlpha = 0.06f),
+                shape = shape
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(18.dp)
+                .background(GlassDesign.internalGlassSheen())
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            content = content
         )
     }
 }
@@ -275,13 +616,33 @@ private fun ActiveProviderBanner(
     onEditClick: (ProviderUiModel) -> Unit,
     onQuickModelSelect: (String, String) -> Unit
 ) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-        )
+    val bannerShape = RoundedCornerShape(20.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(bannerShape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF1B2434).copy(alpha = 0.88f),
+                        Color(0xFF101622).copy(alpha = 0.94f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
+                shape = bannerShape
+            )
     ) {
+        // Internal Top Sheen
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .background(GlassDesign.internalGlassSheen())
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -300,25 +661,46 @@ private fun ActiveProviderBanner(
                     Icon(
                         imageVector = Icons.Default.SmartToy,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = Color(0xFF58A6FF),
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = "Active Provider",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
+                        color = Color(0xFF58A6FF)
                     )
                 }
 
                 if (activeProvider != null) {
-                    FilledTonalButton(
-                        onClick = { onEditClick(activeProvider) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .springPressClickable { onEditClick(activeProvider) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Edit", style = MaterialTheme.typography.labelSmall)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = Color(0xFF79C0FF),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                "Edit",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                        }
                     }
                 }
             }
@@ -333,14 +715,14 @@ private fun ActiveProviderBanner(
                         Text(
                             text = activeProvider.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = Color(0xFFF0F6FC),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = activeProvider.baseUrl,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF8B949E),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -349,11 +731,11 @@ private fun ActiveProviderBanner(
                     val isKiloFree = activeProvider.id.startsWith("kilo") || activeProvider.id.startsWith("community") || activeProvider.baseUrl.contains("kilo.ai")
                     // Key Status Chip
                     Surface(
-                        shape = MaterialTheme.shapes.small,
+                        shape = RoundedCornerShape(8.dp),
                         color = if (isKiloFree || activeProvider.hasApiKey) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            Color(0xFF238636).copy(alpha = 0.20f)
                         } else {
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                            Color(0xFFDA3633).copy(alpha = 0.20f)
                         }
                     ) {
                         Row(
@@ -364,13 +746,13 @@ private fun ActiveProviderBanner(
                             Icon(
                                 imageVector = if (isKiloFree || activeProvider.hasApiKey) Icons.Default.CheckCircle else Icons.Default.Key,
                                 contentDescription = null,
-                                tint = if (isKiloFree || activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                tint = if (isKiloFree || activeProvider.hasApiKey) Color(0xFF3FB950) else Color(0xFFF85149),
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
                                 text = if (isKiloFree) "Keyless Free" else if (activeProvider.hasApiKey) "Key configured" else "No key set",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isKiloFree || activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                color = if (isKiloFree || activeProvider.hasApiKey) Color(0xFF3FB950) else Color(0xFFF85149),
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -380,8 +762,9 @@ private fun ActiveProviderBanner(
 
                 // Selected Model Pill
                 Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF0D1117).copy(alpha = 0.85f),
+                    border = BorderStroke(0.75.dp, Color(0xFF30363D)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -394,12 +777,12 @@ private fun ActiveProviderBanner(
                         Text(
                             text = "Model:",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color(0xFF8B949E)
                         )
                         Text(
                             text = activeProvider.model.ifBlank { "(None selected)" },
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.primary,
+                            color = Color(0xFFF0F6FC),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -439,38 +822,48 @@ private fun ProvidersSection(
             ) {
                 Text(
                     text = "AI Providers",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFFF0F6FC)
                 )
                 if (providers.isNotEmpty()) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ) { Text(providers.size.toString()) }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1F6FEB).copy(alpha = 0.20f))
+                            .border(0.75.dp, Color(0xFF388BFD).copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = providers.size.toString(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF79C0FF)
+                        )
+                    }
                 }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                    .border(
+                        width = 0.75.dp,
+                        brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .springPressClickable(onClick = onAddProvider)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                OutlinedButton(
-                    onClick = onScanQrCode,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    modifier = Modifier.height(36.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Scan QR", style = MaterialTheme.typography.labelMedium)
-                }
-
-                Button(
-                    onClick = onAddProvider,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add Provider", style = MaterialTheme.typography.labelMedium)
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(15.dp))
+                    Text(
+                        "Add Provider",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
+                    )
                 }
             }
         }
@@ -549,21 +942,40 @@ private fun ProviderCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    OutlinedCard(
+    val cardShape = RoundedCornerShape(18.dp)
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onSelect() },
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            else MaterialTheme.colorScheme.surface
-        ),
-        border = if (isActive) {
-            CardDefaults.outlinedCardBorder().copy(
-                brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+            .clip(cardShape)
+            .background(
+                if (isActive) Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF1B2434).copy(alpha = 0.88f),
+                        Color(0xFF101622).copy(alpha = 0.94f)
+                    )
+                ) else Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF161B22).copy(alpha = 0.75f),
+                        Color(0xFF0D1117).copy(alpha = 0.85f)
+                    )
+                )
             )
-        } else CardDefaults.outlinedCardBorder()
+            .border(
+                width = 1.dp,
+                brush = if (isActive) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f)
+                else GlassDesign.microGlassBorder(topAlpha = 0.24f, bottomAlpha = 0.06f),
+                shape = cardShape
+            )
+            .springPressClickable(onClick = onSelect)
     ) {
+        if (isActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -571,11 +983,32 @@ private fun ProviderCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Radio Indicator
-            RadioButton(
-                selected = isActive,
-                onClick = onSelect
-            )
+            // Active Liquid Indicator
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (isActive) Modifier.background(Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                        else Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = if (isActive) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.85f, dispersionAlpha = 0.40f)
+                        else GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.08f),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isActive) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Active",
+                        tint = Color(0xFF79C0FF),
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
 
             // Provider Info
             Column(modifier = Modifier.weight(1f)) {
@@ -586,20 +1019,21 @@ private fun ProviderCard(
                     Text(
                         text = provider.name,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = Color(0xFFF0F6FC),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     if (isActive) {
                         Surface(
-                            shape = MaterialTheme.shapes.extraSmall,
-                            color = MaterialTheme.colorScheme.primaryContainer
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF1F6FEB).copy(alpha = 0.25f),
+                            border = BorderStroke(0.75.dp, Color(0xFF388BFD))
                         ) {
                             Text(
                                 text = "ACTIVE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = Color(0xFF79C0FF),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 maxLines = 1,
                                 softWrap = false
@@ -618,13 +1052,13 @@ private fun ProviderCard(
                 ) {
                     if (provider.providerType == ProviderType.ANTIROUTE || provider.id.startsWith("antiroute")) {
                         Surface(
-                            shape = MaterialTheme.shapes.extraSmall,
-                            color = MaterialTheme.colorScheme.tertiaryContainer
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF238636).copy(alpha = 0.25f)
                         ) {
                             Text(
                                 text = "ANTIROUTE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                color = Color(0xFF3FB950),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 maxLines = 1,
                                 softWrap = false
@@ -632,13 +1066,13 @@ private fun ProviderCard(
                         }
                     } else if (isKiloFree) {
                         Surface(
-                            shape = MaterialTheme.shapes.extraSmall,
-                            color = MaterialTheme.colorScheme.tertiaryContainer
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF238636).copy(alpha = 0.25f)
                         ) {
                             Text(
                                 text = "FREE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                color = Color(0xFF3FB950),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 maxLines = 1,
                                 softWrap = false
@@ -647,14 +1081,14 @@ private fun ProviderCard(
                     }
 
                     Surface(
-                        shape = MaterialTheme.shapes.extraSmall,
-                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF21262D),
                         modifier = Modifier.weight(1f, fill = false)
                     ) {
                         Text(
                             text = provider.model.ifBlank { "No model" },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            color = Color(0xFFC9D1D9),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -665,7 +1099,7 @@ private fun ProviderCard(
                     Text(
                         text = if (isKiloFree) "• Keyless Free" else if (provider.hasApiKey) "• Key set" else "• No key",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isKiloFree) MaterialTheme.colorScheme.primary else if (provider.hasApiKey) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        color = if (isKiloFree) Color(0xFF3FB950) else if (provider.hasApiKey) Color(0xFF8B949E) else Color(0xFFF85149),
                         maxLines = 1,
                         softWrap = false
                     )
@@ -677,20 +1111,45 @@ private fun ProviderCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                            shape = CircleShape
+                        )
+                        .springPressClickable(onClick = onEdit),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit provider",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                        tint = Color(0xFFC9D1D9),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                            shape = CircleShape
+                        )
+                        .springPressClickable(onClick = onDelete),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete provider",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                        modifier = Modifier.size(18.dp)
+                        tint = Color(0xFFF85149).copy(alpha = 0.85f),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -709,24 +1168,16 @@ private fun AgentPreferencesCard(
     systemPrompt: String,
     onSystemPromptChange: (String) -> Unit
 ) {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
+    LiquidGlassCard {
+        // Header Row (Toggleable)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .springPressClickable { onToggleExpand() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Row (Toggleable)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggleExpand() },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -867,7 +1318,6 @@ private fun AgentPreferencesCard(
             }
         }
     }
-}
 
 @Composable
 private fun TerminalPreferencesCard(
@@ -876,220 +1326,262 @@ private fun TerminalPreferencesCard(
     fontSizeSp: Int,
     onFontSizeChange: (Int) -> Unit
 ) {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
+    LiquidGlassCard {
+        // Header Row (Toggleable)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .springPressClickable { onToggleExpand() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Row (Toggleable)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggleExpand() },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Terminal,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                Icon(
+                    imageVector = Icons.Default.Terminal,
+                    contentDescription = null,
+                    tint = Color(0xFF58A6FF),
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        text = "Terminal Display & Font",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
                     )
-                    Column {
-                        Text(
-                            text = "Terminal Display & Font",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Text(
-                            text = "Text scale, readability & terminal zoom ($fontSizeSp sp)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(onClick = onToggleExpand) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand"
+                    Text(
+                        text = "Text scale, readability & terminal zoom ($fontSizeSp sp)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF8B949E)
                     )
                 }
             }
 
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            IconButton(onClick = onToggleExpand) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = Color(0xFFC9D1D9)
+                )
+            }
+        }
 
-                    // Font Size Steppers + Slider
-                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                HorizontalDivider(color = Color(0xFF30363D).copy(alpha = 0.5f))
+
+                // Font Size Steppers + Slider
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Font Size",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFF0F6FC)
+                        )
+                        val label = when {
+                            fontSizeSp <= 11 -> "Compact"
+                            fontSizeSp == 14 -> "Default"
+                            fontSizeSp in 15..17 -> "Medium"
+                            fontSizeSp in 18..21 -> "Large"
+                            else -> "Extra Large"
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1F6FEB).copy(alpha = 0.20f))
+                                .border(0.75.dp, Color(0xFF388BFD).copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "Font Size",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                text = "$fontSizeSp sp · $label",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF79C0FF)
                             )
-                            val label = when {
-                                fontSizeSp <= 11 -> "Compact"
-                                fontSizeSp == 14 -> "Default"
-                                fontSizeSp in 15..17 -> "Medium"
-                                fontSizeSp in 18..21 -> "Large"
-                                else -> "Extra Large"
-                            }
-                            Surface(
-                                shape = MaterialTheme.shapes.extraSmall,
-                                color = MaterialTheme.colorScheme.secondaryContainer
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable(enabled = fontSizeSp > 9) { onFontSizeChange(fontSizeSp - 1) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Remove,
+                                contentDescription = "Decrease font size",
+                                tint = if (fontSizeSp > 9) Color(0xFFC9D1D9) else Color(0xFF484F58),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Slider(
+                            value = fontSizeSp.toFloat(),
+                            onValueChange = { onFontSizeChange(it.toInt()) },
+                            valueRange = 9f..28f,
+                            steps = 18,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable(enabled = fontSizeSp < 28) { onFontSizeChange(fontSizeSp + 1) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Increase font size",
+                                tint = if (fontSizeSp < 28) Color(0xFFC9D1D9) else Color(0xFF484F58),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Presets
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            11 to "Compact",
+                            14 to "Default",
+                            16 to "Medium",
+                            18 to "Large",
+                            22 to "Huge"
+                        ).forEach { (size, presetLabel) ->
+                            val isSelected = fontSizeSp == size
+                            val chipShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .clip(chipShape)
+                                    .then(
+                                        if (isSelected) Modifier.background(Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                        else Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                    )
+                                    .border(
+                                        width = 0.75.dp,
+                                        brush = if (isSelected) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.75f, dispersionAlpha = 0.35f)
+                                        else GlassDesign.microGlassBorder(topAlpha = 0.22f, bottomAlpha = 0.06f),
+                                        shape = chipShape
+                                    )
+                                    .springPressClickable { onFontSizeChange(size) }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = "$fontSizeSp sp · $label",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    text = "$size sp ($presetLabel)",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium),
+                                    color = if (isSelected) Color(0xFF79C0FF) else Color(0xFFC9D1D9)
                                 )
                             }
                         }
+                    }
+                }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilledTonalIconButton(
-                                onClick = { onFontSizeChange(fontSizeSp - 1) },
-                                enabled = fontSizeSp > 9,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Remove, contentDescription = "Decrease font size", modifier = Modifier.size(18.dp))
-                            }
-
-                            Slider(
-                                value = fontSizeSp.toFloat(),
-                                onValueChange = { onFontSizeChange(it.toInt()) },
-                                valueRange = 9f..28f,
-                                steps = 18,
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            FilledTonalIconButton(
-                                onClick = { onFontSizeChange(fontSizeSp + 1) },
-                                enabled = fontSizeSp < 28,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Increase font size", modifier = Modifier.size(18.dp))
-                            }
-                        }
-
-                        // Presets
-                        Row(
+                // Live Interactive Preview Box
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Live Terminal Preview",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFF8B949E)
+                    )
+                    Surface(
+                        color = Color(0xFF0D1117),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(0.75.dp, Color(0xFF30363D)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            listOf(
-                                11 to "Compact",
-                                14 to "Default",
-                                16 to "Medium",
-                                18 to "Large",
-                                22 to "Huge"
-                            ).forEach { (size, presetLabel) ->
-                                FilterChip(
-                                    selected = fontSizeSp == size,
-                                    onClick = { onFontSizeChange(size) },
-                                    label = { Text("$size sp ($presetLabel)", fontSize = 11.sp) }
-                                )
-                            }
-                        }
-                    }
-
-                    // Live Interactive Preview Box
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Live Terminal Preview",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Surface(
-                            color = Color(0xFF0D1117),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "koda:~/workspace$ ",
-                                        color = Color(0xFF39D353),
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "ls -la",
-                                        color = Color.White,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp
-                                    )
-                                }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "drwxr-xr-x 4 user user 4096 Oct 2 17:40 src/\n-rw-r--r-- 1 user user 1820 Oct 2 17:40 main.py",
-                                    color = Color(0xFFC9D1D9),
+                                    text = "koda:~/workspace$ ",
+                                    color = Color(0xFF39D353),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = fontSizeSp.sp
+                                    fontSize = fontSizeSp.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "koda:~/workspace$ ",
-                                        color = Color(0xFF39D353),
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "python3 main.py",
-                                        color = Color.White,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp
-                                    )
-                                }
                                 Text(
-                                    text = "Ready to code! Terminal render OK.",
-                                    color = Color(0xFF58A6FF),
+                                    text = "ls -la",
+                                    color = Color.White,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = fontSizeSp.sp
                                 )
                             }
+                            Text(
+                                text = "drwxr-xr-x 4 user user 4096 Oct 2 17:40 src/\n-rw-r--r-- 1 user user 1820 Oct 2 17:40 main.py",
+                                color = Color(0xFFC9D1D9),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = fontSizeSp.sp
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "koda:~/workspace$ ",
+                                    color = Color(0xFF39D353),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = fontSizeSp.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "python3 main.py",
+                                    color = Color.White,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = fontSizeSp.sp
+                                )
+                            }
+                            Text(
+                                text = "Ready to code! Terminal render OK.",
+                                color = Color(0xFF58A6FF),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = fontSizeSp.sp
+                            )
                         }
                     }
-
-                    Text(
-                        text = "Tip: Inside the terminal screen, you can also pinch-to-zoom with two fingers or tap the 'TT' text size icon in the top bar to adjust text on the fly.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
+
+                Text(
+                    text = "Tip: Inside the terminal screen, you can also pinch-to-zoom with two fingers or tap the 'TT' text size icon in the top bar to adjust text on the fly.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF8B949E)
+                )
             }
         }
     }
@@ -1097,37 +1589,28 @@ private fun TerminalPreferencesCard(
 
 @Composable
 private fun AboutPrivacyCard() {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+    LiquidGlassCard {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = "Security & Storage Overview",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = Color(0xFF58A6FF),
+                modifier = Modifier.size(18.dp)
+            )
             Text(
-                text = "• API keys are encrypted via Android EncryptedSharedPreferences (Hardware Keystore).\n• Each provider maintains its own separate API key and endpoint configuration.\n• Projects, code, and chat history remain strictly local on device.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Security & Storage Overview",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = Color(0xFFF0F6FC)
             )
         }
+        Text(
+            text = "• API keys are encrypted via Android EncryptedSharedPreferences (Hardware Keystore).\n• Each provider maintains its own separate API key and endpoint configuration.\n• Projects, code, and chat history remain strictly local on device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF8B949E)
+        )
     }
 }
 
@@ -1153,19 +1636,62 @@ private fun ProviderEditorDialog(
     val context = LocalContext.current
     val currentTemplate = PopularProviders.findById(editorState.selectedTemplateId)
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    val dialogShape = RoundedCornerShape(26.dp)
+    val textFieldShape = RoundedCornerShape(12.dp)
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Color(0xFF58A6FF),
+        unfocusedBorderColor = Color(0xFF30363D),
+        focusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.90f),
+        unfocusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.75f),
+        focusedTextColor = Color(0xFFF0F6FC),
+        unfocusedTextColor = Color(0xFFF0F6FC),
+        focusedLabelColor = Color(0xFF58A6FF),
+        unfocusedLabelColor = Color(0xFF8B949E),
+        focusedPlaceholderColor = Color(0xFF6E7681),
+        unfocusedPlaceholderColor = Color(0xFF6E7681),
+        focusedLeadingIconColor = Color(0xFF58A6FF),
+        unfocusedLeadingIconColor = Color(0xFF8B949E),
+        focusedTrailingIconColor = Color(0xFF58A6FF),
+        unfocusedTrailingIconColor = Color(0xFF8B949E)
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp, vertical = 18.dp)
             ) {
                 // Dialog Header
                 Row(
@@ -1173,16 +1699,82 @@ private fun ProviderEditorDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (editorState.isEditing) "Edit AI Provider" else "Add AI Provider",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (editorState.isEditing) Icons.Default.Tune else Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFF58A6FF)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = if (editorState.isEditing) "Edit AI Provider" else "Add AI Provider",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = if (editorState.isEditing) "Configure endpoint & credentials" else "Connect a new LLM provider",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Close Button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close dialog",
+                            tint = Color(0xFFC9D1D9),
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .height(1.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color(0xFF30363D).copy(alpha = 0.6f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
 
                 // Scrollable Form Content
                 Column(
@@ -1194,8 +1786,8 @@ private fun ProviderEditorDialog(
                     // Popular Providers Preset Selector
                     Text(
                         text = "Choose Provider Preset",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = Color(0xFF8B949E)
                     )
                     Row(
                         modifier = Modifier
@@ -1205,27 +1797,80 @@ private fun ProviderEditorDialog(
                     ) {
                         PopularProviders.allPopular.forEach { preset ->
                             val isSelected = editorState.selectedTemplateId == preset.id
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { onSelectTemplate(preset) },
-                                label = { Text(preset.name) },
-                                leadingIcon = if (isSelected) {
-                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                } else null
-                            )
+                            val chipShape = RoundedCornerShape(10.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .clip(chipShape)
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier
+                                                .background(Color(0xFF1F6FEB).copy(alpha = 0.28f))
+                                                .border(
+                                                    width = 1.dp,
+                                                    brush = Brush.verticalGradient(
+                                                        listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                    ),
+                                                    shape = chipShape
+                                                )
+                                        } else {
+                                            Modifier
+                                                .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                                .border(
+                                                    width = 0.75.dp,
+                                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                                                    shape = chipShape
+                                                )
+                                        }
+                                    )
+                                    .springPressClickable { onSelectTemplate(preset) }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF58A6FF),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Text(
+                                    text = preset.name,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                    ),
+                                    color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
+                                )
+                            }
                         }
                     }
 
                     // Antiroute QR Scan Action
                     if (editorState.selectedTemplateId == "antiroute" || editorState.providerType == ProviderType.ANTIROUTE) {
-                        OutlinedButton(
-                            onClick = onScanQrCode,
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        val qrBtnShape = RoundedCornerShape(12.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(qrBtnShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
+                                    shape = qrBtnShape
+                                )
+                                .springPressClickable(onClick = onScanQrCode)
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Scan Antiroute Tunnel QR Code", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                "Scan Antiroute Tunnel QR Code",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                                color = Color(0xFF79C0FF)
+                            )
                         }
                     }
 
@@ -1236,6 +1881,8 @@ private fun ProviderEditorDialog(
                         label = { Text("Provider Name") },
                         placeholder = { Text("e.g. OpenAI") },
                         singleLine = true,
+                        shape = textFieldShape,
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -1252,6 +1899,8 @@ private fun ProviderEditorDialog(
                             }
                         },
                         singleLine = true,
+                        shape = textFieldShape,
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -1259,20 +1908,62 @@ private fun ProviderEditorDialog(
                     if (editorState.selectedTemplateId == "custom") {
                         Text(
                             text = "API Protocol",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFF8B949E)
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = editorState.providerType == ProviderType.OPENAI_COMPATIBLE,
-                                onClick = { onProviderTypeChange(ProviderType.OPENAI_COMPATIBLE) },
-                                label = { Text("OpenAI Compatible") }
-                            )
-                            FilterChip(
-                                selected = editorState.providerType == ProviderType.ANTHROPIC,
-                                onClick = { onProviderTypeChange(ProviderType.ANTHROPIC) },
-                                label = { Text("Anthropic") }
-                            )
+                            listOf(
+                                ProviderType.OPENAI_COMPATIBLE to "OpenAI Compatible",
+                                ProviderType.ANTHROPIC to "Anthropic"
+                            ).forEach { (type, label) ->
+                                val isSelected = editorState.providerType == type
+                                val chipShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier
+                                        .clip(chipShape)
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier
+                                                    .background(Color(0xFF1F6FEB).copy(alpha = 0.28f))
+                                                    .border(
+                                                        width = 1.dp,
+                                                        brush = Brush.verticalGradient(
+                                                            listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                        ),
+                                                        shape = chipShape
+                                                    )
+                                            } else {
+                                                Modifier
+                                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                                    .border(
+                                                        width = 0.75.dp,
+                                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                                                        shape = chipShape
+                                                    )
+                                            }
+                                        )
+                                        .springPressClickable { onProviderTypeChange(type) }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF58A6FF),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -1295,6 +1986,8 @@ private fun ProviderEditorDialog(
                             visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             singleLine = true,
+                            shape = textFieldShape,
+                            colors = textFieldColors,
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -1304,34 +1997,49 @@ private fun ProviderEditorDialog(
                             Text(
                                 text = "No API key required. Connects directly to Kilo free models (~200 req/hr per IP).",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
+                                color = Color(0xFF79C0FF)
                             )
                         } else if (!helpUrl.isNullOrBlank()) {
-                            TextButton(
-                                onClick = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(helpUrl))
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {}
-                                },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .springPressClickable {
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(helpUrl))
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {}
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 4.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Get API key from ${currentTemplate.name}", style = MaterialTheme.typography.labelSmall)
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Get API key from ${currentTemplate.name}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF58A6FF)
+                                )
                             }
                         }
                     }
 
                     // DYNAMIC MODEL SELECTION & FETCH
-                    OutlinedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium
+                    val modelCardShape = RoundedCornerShape(16.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(modelCardShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                                shape = modelCardShape
+                            )
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(
@@ -1341,23 +2049,58 @@ private fun ProviderEditorDialog(
                             ) {
                                 Text(
                                     text = "Model Selection",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color(0xFFF0F6FC)
                                 )
 
-                                FilledTonalButton(
-                                    onClick = onFetchModels,
-                                    enabled = !editorState.isFetchingModels && editorState.baseUrl.isNotBlank(),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp)
+                                // Frosted Fetch Models Pill Button
+                                val fetchEnabled = !editorState.isFetchingModels && editorState.baseUrl.isNotBlank()
+                                val fetchPillShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier
+                                        .clip(fetchPillShape)
+                                        .then(
+                                            if (fetchEnabled) Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                            else Modifier.background(Color(0xFF21262D).copy(alpha = 0.4f))
+                                        )
+                                        .border(
+                                            width = 0.75.dp,
+                                            brush = if (fetchEnabled) GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f)
+                                                    else Brush.linearGradient(listOf(Color(0xFF30363D), Color(0xFF21262D))),
+                                            shape = fetchPillShape
+                                        )
+                                        .then(
+                                            if (fetchEnabled) Modifier.springPressClickable(onClick = onFetchModels)
+                                            else Modifier
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
                                     if (editorState.isFetchingModels) {
-                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Fetching…", style = MaterialTheme.typography.labelSmall)
-                                    } else {
-                                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(13.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF79C0FF)
+                                        )
                                         Spacer(Modifier.width(4.dp))
-                                        Text("Fetch Models", style = MaterialTheme.typography.labelSmall)
+                                        Text(
+                                            "Fetching…",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF8B949E)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = if (fetchEnabled) Color(0xFF79C0FF) else Color(0xFF484F58)
+                                        )
+                                        Text(
+                                            "Fetch Models",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                            color = if (fetchEnabled) Color(0xFF79C0FF) else Color(0xFF484F58)
+                                        )
                                     }
                                 }
                             }
@@ -1371,11 +2114,13 @@ private fun ProviderEditorDialog(
                                 trailingIcon = {
                                     if (editorState.availableModels.isNotEmpty()) {
                                         IconButton(onClick = { showModelSelectorSheet = true }) {
-                                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose model")
+                                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose model", tint = Color(0xFF79C0FF))
                                         }
                                     }
                                 },
                                 singleLine = true,
+                                shape = textFieldShape,
+                                colors = textFieldColors,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
@@ -1384,7 +2129,7 @@ private fun ProviderEditorDialog(
                                 Text(
                                     text = "Available Models (${editorState.availableModels.size}):",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Color(0xFF8B949E)
                                 )
                                 Row(
                                     modifier = Modifier
@@ -1394,17 +2139,64 @@ private fun ProviderEditorDialog(
                                 ) {
                                     editorState.availableModels.take(8).forEach { modelName ->
                                         val isChosen = editorState.model == modelName
-                                        FilterChip(
-                                            selected = isChosen,
-                                            onClick = { onModelChange(modelName) },
-                                            label = { Text(modelName, style = MaterialTheme.typography.labelSmall) }
-                                        )
+                                        val chipShape = RoundedCornerShape(8.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(chipShape)
+                                                .then(
+                                                    if (isChosen) {
+                                                        Modifier
+                                                            .background(Color(0xFF1F6FEB).copy(alpha = 0.30f))
+                                                            .border(
+                                                                width = 1.dp,
+                                                                brush = Brush.verticalGradient(
+                                                                    listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                                ),
+                                                                shape = chipShape
+                                                            )
+                                                    } else {
+                                                        Modifier
+                                                            .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                                            .border(
+                                                                width = 0.75.dp,
+                                                                brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                                                                shape = chipShape
+                                                            )
+                                                    }
+                                                )
+                                                .springPressClickable { onModelChange(modelName) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = modelName,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isChosen) FontWeight.SemiBold else FontWeight.Normal,
+                                                    fontFamily = FontFamily.Monospace
+                                                ),
+                                                color = if (isChosen) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
+                                            )
+                                        }
                                     }
                                     if (editorState.availableModels.size > 8) {
-                                        AssistChip(
-                                            onClick = { showModelSelectorSheet = true },
-                                            label = { Text("+${editorState.availableModels.size - 8} more", style = MaterialTheme.typography.labelSmall) }
-                                        )
+                                        val moreShape = RoundedCornerShape(8.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(moreShape)
+                                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                                .border(
+                                                    width = 0.75.dp,
+                                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                                    shape = moreShape
+                                                )
+                                                .springPressClickable { showModelSelectorSheet = true }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "+${editorState.availableModels.size - 8} more",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                                color = Color(0xFF58A6FF)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1412,28 +2204,35 @@ private fun ProviderEditorDialog(
                             // Connection / Fetch Result Banner
                             if (editorState.connectionTestMessage != null) {
                                 val isSuccess = editorState.connectionTestSuccess == true
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = if (isSuccess) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-                                    modifier = Modifier.fillMaxWidth()
+                                val bannerShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(bannerShape)
+                                        .background(
+                                            if (isSuccess) Color(0xFF238636).copy(alpha = 0.18f)
+                                            else Color(0xFFDA3633).copy(alpha = 0.18f)
+                                        )
+                                        .border(
+                                            width = 0.75.dp,
+                                            color = if (isSuccess) Color(0xFF3FB950).copy(alpha = 0.40f) else Color(0xFFF85149).copy(alpha = 0.40f),
+                                            shape = bannerShape
+                                        )
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
-                                            contentDescription = null,
-                                            tint = if (isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = editorState.connectionTestMessage,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (isSuccess) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = if (isSuccess) Color(0xFF3FB950) else Color(0xFFF85149),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = editorState.connectionTestMessage,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isSuccess) Color(0xFF7EE787) else Color(0xFFFF7B72)
+                                    )
                                 }
                             }
                         }
@@ -1447,16 +2246,37 @@ private fun ProviderEditorDialog(
                     ) {
                         Text(
                             text = "Set as active provider",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFF0F6FC)
                         )
                         Switch(
                             checked = editorState.isDefault,
-                            onCheckedChange = onIsDefaultChange
+                            onCheckedChange = onIsDefaultChange,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF1F6FEB),
+                                uncheckedThumbColor = Color(0xFF8B949E),
+                                uncheckedTrackColor = Color(0xFF21262D)
+                            )
                         )
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .height(1.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color(0xFF30363D).copy(alpha = 0.6f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
 
                 // Action Buttons
                 Row(
@@ -1464,20 +2284,96 @@ private fun ProviderEditorDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                    // Cancel button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .springPressClickable(onClick = onDismiss)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF8B949E)
+                        )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = onSave,
-                        enabled = !isSaving && editorState.name.isNotBlank() && editorState.baseUrl.isNotBlank()
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // Save Provider button
+                    val canSave = !isSaving && editorState.name.isNotBlank() && editorState.baseUrl.isNotBlank()
+                    val saveBtnShape = RoundedCornerShape(14.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .clip(saveBtnShape)
+                            .background(
+                                if (canSave) {
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFF1F6FEB).copy(alpha = 0.65f),
+                                            Color(0xFF238636).copy(alpha = 0.50f)
+                                        )
+                                    )
+                                } else {
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFF21262D).copy(alpha = 0.40f),
+                                            Color(0xFF161B22).copy(alpha = 0.40f)
+                                        )
+                                    )
+                                }
+                            )
+                            .border(
+                                width = 0.75.dp,
+                                brush = if (canSave) {
+                                    GlassDesign.liquidGlassBorder(
+                                        topSpecularAlpha = 0.80f,
+                                        dispersionAlpha = 0.40f
+                                    )
+                                } else {
+                                    Brush.linearGradient(listOf(Color(0xFF30363D), Color(0xFF21262D)))
+                                },
+                                shape = saveBtnShape
+                            )
+                            .then(
+                                if (canSave) Modifier.springPressClickable(onClick = onSave)
+                                else Modifier
+                            )
+                            .padding(horizontal = 18.dp, vertical = 10.dp)
                     ) {
                         if (isSaving) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color(0xFFF0F6FC)
+                            )
                             Spacer(Modifier.width(6.dp))
-                            Text("Saving…")
+                            Text(
+                                "Saving…",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
                         } else {
-                            Text("Save Provider")
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (canSave) Color(0xFF79C0FF) else Color(0xFF6E7681)
+                            )
+                            Text(
+                                text = "Save Provider",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = if (canSave) Color(0xFFF0F6FC) else Color(0xFF6E7681)
+                            )
                         }
                     }
                 }
@@ -1512,81 +2408,222 @@ private fun ModelSelectorDialog(
         else models.filter { it.contains(searchQuery.trim(), ignoreCase = true) }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    val dialogShape = RoundedCornerShape(26.dp)
+    val textFieldShape = RoundedCornerShape(12.dp)
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Color(0xFF58A6FF),
+        unfocusedBorderColor = Color(0xFF30363D),
+        focusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.90f),
+        unfocusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.75f),
+        focusedTextColor = Color(0xFFF0F6FC),
+        unfocusedTextColor = Color(0xFFF0F6FC),
+        focusedLabelColor = Color(0xFF58A6FF),
+        unfocusedLabelColor = Color(0xFF8B949E),
+        focusedPlaceholderColor = Color(0xFF6E7681),
+        unfocusedPlaceholderColor = Color(0xFF6E7681),
+        focusedLeadingIconColor = Color(0xFF58A6FF),
+        unfocusedLeadingIconColor = Color(0xFF8B949E),
+        focusedTrailingIconColor = Color(0xFF58A6FF),
+        unfocusedTrailingIconColor = Color(0xFF8B949E)
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.92f)
                 .fillMaxHeight(0.85f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(20.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Choose Model (${models.size})",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFF58A6FF)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "Choose Model",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "${filteredModels.size} of ${models.size} models available",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Close Button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close dialog",
+                            tint = Color(0xFFC9D1D9),
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(14.dp))
 
+                // Search Bar
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = { Text("Search models…") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search", tint = Color(0xFF8B949E))
+                            }
+                        }
+                    } else null,
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = textFieldShape,
+                    colors = textFieldColors
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                // Model Items in LazyColumn
+                val listShape = RoundedCornerShape(16.dp)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clip(listShape)
+                        .background(Color(0xFF0D1117).copy(alpha = 0.75f))
+                        .border(1.dp, Color(0xFF30363D).copy(alpha = 0.7f), listShape)
                 ) {
-                    items(filteredModels) { modelName ->
-                        val isSelected = modelName == selectedModel
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(modelName) }
+                    if (filteredModels.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = modelName,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    ),
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
+                            Text(
+                                "No models found matching '$searchQuery'",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(filteredModels) { modelName ->
+                                val isSelected = modelName == selectedModel
+                                val itemShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(itemShape)
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier
+                                                    .background(Color(0xFF1F6FEB).copy(alpha = 0.28f))
+                                                    .border(
+                                                        width = 1.dp,
+                                                        brush = Brush.verticalGradient(
+                                                            listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                        ),
+                                                        shape = itemShape
+                                                    )
+                                            } else {
+                                                Modifier.background(Color.Transparent)
+                                            }
+                                        )
+                                        .springPressClickable { onSelect(modelName) }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = modelName,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                            fontFamily = FontFamily.Monospace
+                                        ),
+                                        color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
                                     )
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF58A6FF),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1614,53 +2651,47 @@ private fun WebSearchPreferencesCard(
     var keyInput by remember(apiKey, currentEngine) { mutableStateOf(apiKey) }
     var showPassword by remember { mutableStateOf(false) }
 
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
+    LiquidGlassCard {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .springPressClickable { onToggleExpand() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggleExpand() },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Public,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                Icon(
+                    imageVector = Icons.Default.Public,
+                    contentDescription = null,
+                    tint = Color(0xFF58A6FF),
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        text = "Web Search & Live Docs",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
                     )
-                    Column {
-                        Text(
-                            text = "Web Search & Live Docs",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Text(
-                            text = if (enabled) "${currentEngine.displayName} · Active" else "Disabled",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(onClick = onToggleExpand) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand"
+                    Text(
+                        text = if (enabled) "${currentEngine.displayName} · Active" else "Disabled",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF8B949E)
                     )
                 }
             }
+
+            IconButton(onClick = onToggleExpand) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = Color(0xFFC9D1D9)
+                )
+            }
+        }
 
             AnimatedVisibility(
                 visible = isExpanded,
@@ -1773,7 +2804,6 @@ private fun WebSearchPreferencesCard(
             }
         }
     }
-}
 
 @Composable
 private fun CloudSyncCard(
@@ -1785,25 +2815,13 @@ private fun CloudSyncCard(
     onDisconnectClick: () -> Unit,
     onBackupClick: () -> Unit
 ) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+    LiquidGlassCard {
+        // Header: Icon + Title + Status Badge
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header: Icon + Title + Status Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
                 Row(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1972,7 +2990,6 @@ private fun CloudSyncCard(
             }
         }
     }
-}
 
 @Composable
 private fun ConnectSyncDialog(
@@ -2014,20 +3031,45 @@ private fun ConnectSyncDialog(
         }
     }
 
-    Dialog(onDismissRequest = {
-        if (deviceAuthState.isAuthorizing) {
-            onCancelDeviceFlow()
-        }
-        onDismiss()
-    }) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    val dialogShape = RoundedCornerShape(26.dp)
+
+    Dialog(
+        onDismissRequest = {
+            if (deviceAuthState.isAuthorizing) {
+                onCancelDeviceFlow()
+            }
+            onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2035,141 +3077,250 @@ private fun ConnectSyncDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Header with Frosted CloudSync Disc & Close Button
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudSync,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "GitHub Cloud Sync",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val discShape = CircleShape
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(discShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.15f), discShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "GitHub Cloud Sync",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "Encrypted Vault Synchronization",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Circular Close Button
+                    val closeShape = CircleShape
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(closeShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), closeShape)
+                            .springPressClickable {
+                                if (deviceAuthState.isAuthorizing) {
+                                    onCancelDeviceFlow()
+                                }
+                                onDismiss()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
                 if (!deviceAuthState.isAuthorizing) {
-                    PrimaryTabRow(selectedTabIndex = tabIndex) {
-                        Tab(
-                            selected = tabIndex == 0,
-                            onClick = { tabIndex = 0 },
-                            text = { Text("1-Tap Browser Sign-In") }
-                        )
-                        Tab(
-                            selected = tabIndex == 1,
-                            onClick = { tabIndex = 1 },
-                            text = { Text("Personal Token") }
-                        )
+                    val tabShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(tabShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), tabShape)
+                            .padding(3.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            listOf("1-Tap Browser Sign-In", "Personal Token").forEachIndexed { idx, label ->
+                                val isSelected = tabIndex == idx
+                                val itemShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(itemShape)
+                                        .background(if (isSelected) Color(0x3358A6FF) else Color.Transparent)
+                                        .border(
+                                            0.75.dp,
+                                            if (isSelected) GlassDesign.liquidGlassBorder(0.60f, 0.25f) else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)),
+                                            itemShape
+                                        )
+                                        .springPressClickable { tabIndex = idx }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) Color(0xFF58A6FF) else Color(0xFF8B949E)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
                 if (deviceAuthState.isAuthorizing) {
                     // ACTIVE DEVICE FLOW IN PROGRESS
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth()
+                    val authBoxShape = RoundedCornerShape(16.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(authBoxShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(1.dp, GlassDesign.liquidGlassBorder(0.60f, 0.25f), authBoxShape)
+                            .padding(16.dp)
                     ) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Text(
                                 text = "Your GitHub Authorization Code",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFF8B949E)
                             )
 
                             val code = deviceAuthState.userCode ?: "..."
-                            Surface(
-                                color = MaterialTheme.colorScheme.surface,
-                                shape = MaterialTheme.shapes.small,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                            val codePillShape = RoundedCornerShape(12.dp)
+                            Box(
+                                modifier = Modifier
+                                    .clip(codePillShape)
+                                    .background(Color(0x330D1117))
+                                    .border(1.dp, Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF58A6FF))), codePillShape)
+                                    .padding(horizontal = 20.dp, vertical = 10.dp)
                             ) {
                                 Text(
                                     text = code,
                                     style = MaterialTheme.typography.headlineMedium.copy(
                                         fontWeight = FontWeight.Bold,
-                                        letterSpacing = 2.sp
+                                        letterSpacing = 2.sp,
+                                        fontFamily = FontFamily.Monospace
                                     ),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    color = Color(0xFF58A6FF)
                                 )
                             }
 
                             Text(
                                 text = if (codeCopied) "Code copied to clipboard! Paste it on GitHub." else "Copy the code and enter it on GitHub.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFFC9D1D9)
                             )
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(code))
-                                        codeCopied = true
-                                    }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val copyBtnShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .clip(copyBtnShape)
+                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), copyBtnShape)
+                                        .springPressClickable {
+                                            clipboardManager.setText(AnnotatedString(code))
+                                            codeCopied = true
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Copy Code")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFC9D1D9))
+                                        Text("Copy Code", style = MaterialTheme.typography.labelMedium, color = Color(0xFFC9D1D9))
+                                    }
                                 }
 
-                                Button(
-                                    onClick = {
-                                        val uri = deviceAuthState.verificationUri ?: "https://github.com/login/device"
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-                                        context.startActivity(intent)
-                                    }
+                                val openBtnShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .height(40.dp)
+                                        .clip(openBtnShape)
+                                        .background(Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD))))
+                                        .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), openBtnShape)
+                                        .springPressClickable {
+                                            val uri = deviceAuthState.verificationUri ?: "https://github.com/login/device"
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                                            context.startActivity(intent)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Open GitHub")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                        Text("Open GitHub", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = Color.White)
+                                    }
                                 }
                             }
 
-                            Spacer(Modifier.height(6.dp))
-
-                            // Immediate Check button so user can trigger verification directly upon returning from browser
-                            Button(
-                                onClick = onCheckDeviceFlowNow,
-                                enabled = !isSyncing,
-                                modifier = Modifier.fillMaxWidth()
+                            val checkBtnShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                                    .clip(checkBtnShape)
+                                    .background(Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043))))
+                                    .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), checkBtnShape)
+                                    .springPressClickable(enabled = !isSyncing, onClick = onCheckDeviceFlowNow),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("I've Approved on GitHub (Check Now)")
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Text("I've Approved on GitHub (Check Now)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                                }
                             }
 
                             val activeErr = deviceAuthState.error ?: errorMessage
                             if (!activeErr.isNullOrBlank()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.errorContainer,
-                                    shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier.fillMaxWidth()
+                                val errShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(errShape)
+                                        .background(Color(0x22F85149))
+                                        .border(0.75.dp, Color(0x55F85149), errShape)
+                                        .padding(10.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Default.Info,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Text(
-                                            text = activeErr,
-                                            color = MaterialTheme.colorScheme.onErrorContainer,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
+                                        Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFFF7B72), modifier = Modifier.size(18.dp))
+                                        Text(text = activeErr, color = Color(0xFFFF7B72), style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
                             }
@@ -2179,14 +3330,11 @@ private fun ConnectSyncDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp
-                                    )
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF58A6FF))
                                     Text(
                                         text = "Waiting for authorization in browser...",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = Color(0xFF8B949E)
                                     )
                                 }
                             }
@@ -2197,8 +3345,18 @@ private fun ConnectSyncDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
-                        TextButton(onClick = onCancelDeviceFlow) {
-                            Text("Cancel")
+                        val cancelShape = RoundedCornerShape(10.dp)
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(cancelShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                                .springPressClickable(onClick = onCancelDeviceFlow)
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Cancel", style = MaterialTheme.typography.labelMedium, color = Color(0xFFC9D1D9))
                         }
                     }
                 } else if (tabIndex == 0) {
@@ -2206,7 +3364,18 @@ private fun ConnectSyncDialog(
                     Text(
                         text = "Sign in via GitHub in your browser with zero manual token generation. Set your encryption passphrase below to secure your API keys with AES-256-GCM.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
+                    )
+
+                    val textFieldColors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x330D1117),
+                        unfocusedContainerColor = Color(0x220D1117),
+                        focusedBorderColor = Color(0xFF58A6FF),
+                        unfocusedBorderColor = Color(0x3330363D),
+                        focusedTextColor = Color(0xFFF0F6FC),
+                        unfocusedTextColor = Color(0xFFF0F6FC),
+                        focusedLabelColor = Color(0xFF58A6FF),
+                        unfocusedLabelColor = Color(0xFF8B949E)
                     )
 
                     // Sync Passphrase Field
@@ -2219,13 +3388,16 @@ private fun ConnectSyncDialog(
                         label = { Text("Encryption Passphrase (min 6 chars)") },
                         placeholder = { Text("Secret passphrase for E2EE") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showPassphrase) "Hide" else "Show"
+                                    contentDescription = if (showPassphrase) "Hide" else "Show",
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
@@ -2241,30 +3413,40 @@ private fun ConnectSyncDialog(
                         label = { Text("Confirm Encryption Passphrase") },
                         placeholder = { Text("Re-enter your secret passphrase") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation()
                     )
 
                     // Expandable Advanced OAuth Configuration
-                    Row(
+                    val advShape = RoundedCornerShape(12.dp)
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showAdvancedOAuth = !showAdvancedOAuth }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clip(advShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f), advShape)
+                            .springPressClickable { showAdvancedOAuth = !showAdvancedOAuth }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = "OAuth App Client ID (Advanced)",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Icon(
-                            imageVector = if (showAdvancedOAuth) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "OAuth App Client ID (Advanced)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF58A6FF)
+                            )
+                            Icon(
+                                imageVector = if (showAdvancedOAuth) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
                     AnimatedVisibility(visible = showAdvancedOAuth) {
@@ -2272,7 +3454,7 @@ private fun ConnectSyncDialog(
                             Text(
                                 text = "GitHub Device Flow requires a registered GitHub OAuth App with 'Enable Device Flow' checked. Enter your Client ID below, or create one for free.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFF8B949E)
                             )
 
                             OutlinedTextField(
@@ -2281,66 +3463,110 @@ private fun ConnectSyncDialog(
                                 label = { Text("Custom GitHub OAuth Client ID") },
                                 placeholder = { Text(com.koda.dev.core.data.sync.GitHubGistSyncClient.DEFAULT_CLIENT_ID) },
                                 singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = textFieldColors,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            OutlinedButton(
-                                onClick = {
-                                    val url = "https://github.com/settings/applications/new"
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                            val regShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(38.dp)
+                                    .clip(regShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), regShape)
+                                    .springPressClickable {
+                                        val url = "https://github.com/settings/applications/new"
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        context.startActivity(intent)
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Register Free OAuth App on GitHub", style = MaterialTheme.typography.labelSmall)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF58A6FF))
+                                    Text("Register Free OAuth App on GitHub", style = MaterialTheme.typography.labelSmall, color = Color(0xFF58A6FF))
+                                }
                             }
                         }
                     }
 
                     val activeError = localValidation ?: errorMessage
                     if (!activeError.isNullOrBlank()) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.fillMaxWidth()
+                        val errShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(errShape)
+                                .background(Color(0x22F85149))
+                                .border(0.75.dp, Color(0x55F85149), errShape)
+                                .padding(12.dp)
                         ) {
                             Text(
                                 text = activeError,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(10.dp)
+                                color = Color(0xFFFF7B72),
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        TextButton(onClick = onDismiss, enabled = !isSyncing) {
-                            Text("Cancel")
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (passphrase.length < 6) {
-                                    localValidation = "Passphrase must be at least 6 characters"
-                                    return@Button
-                                }
-                                if (passphrase != confirmPassphrase) {
-                                    localValidation = "Passphrases do not match"
-                                    return@Button
-                                }
-                                onStartDeviceFlow(passphrase, customClientId.trim().ifBlank { null })
-                            },
-                            enabled = !isSyncing
+                        val cancelShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(cancelShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                                .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Sign in with GitHub")
+                            Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color(0xFFC9D1D9))
+                        }
+
+                        val submitShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(44.dp)
+                                .clip(submitShape)
+                                .background(
+                                    if (!isSyncing) Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                    else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (!isSyncing) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                    else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                    submitShape
+                                )
+                                .springPressClickable(enabled = !isSyncing) {
+                                    if (passphrase.length < 6) {
+                                        localValidation = "Passphrase must be at least 6 characters"
+                                        return@springPressClickable
+                                    }
+                                    if (passphrase != confirmPassphrase) {
+                                        localValidation = "Passphrases do not match"
+                                        return@springPressClickable
+                                    }
+                                    onStartDeviceFlow(passphrase, customClientId.trim().ifBlank { null })
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Text("Sign in with GitHub", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                            }
                         }
                     }
                 } else {
@@ -2348,25 +3574,43 @@ private fun ConnectSyncDialog(
                     Text(
                         text = "Instant 10-second setup with 100% reliability! Paste an existing GitHub Personal Access Token (PAT) with 'gist' scope.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
 
-                    OutlinedButton(
-                        onClick = {
-                            val url = "https://github.com/settings/tokens/new?scopes=gist&description=KodaDev%20Sync"
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    val patShape = RoundedCornerShape(10.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .clip(patShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), patShape)
+                            .springPressClickable {
+                                val url = "https://github.com/settings/tokens/new?scopes=gist&description=KodaDev%20Sync"
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                context.startActivity(intent)
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Create Token on GitHub (gist scope)", style = MaterialTheme.typography.labelSmall)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF58A6FF))
+                            Text("Create Token on GitHub (gist scope)", style = MaterialTheme.typography.labelSmall, color = Color(0xFF58A6FF))
+                        }
                     }
+
+                    val textFieldColors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x330D1117),
+                        unfocusedContainerColor = Color(0x220D1117),
+                        focusedBorderColor = Color(0xFF58A6FF),
+                        unfocusedBorderColor = Color(0x3330363D),
+                        focusedTextColor = Color(0xFFF0F6FC),
+                        unfocusedTextColor = Color(0xFFF0F6FC),
+                        focusedLabelColor = Color(0xFF58A6FF),
+                        unfocusedLabelColor = Color(0xFF8B949E)
+                    )
 
                     OutlinedTextField(
                         value = manualToken,
@@ -2377,13 +3621,16 @@ private fun ConnectSyncDialog(
                         label = { Text("GitHub Personal Access Token") },
                         placeholder = { Text("ghp_xxxxxxxxxxxx") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showManualToken) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showManualToken = !showManualToken }) {
                                 Icon(
                                     imageVector = if (showManualToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showManualToken) "Hide" else "Show"
+                                    contentDescription = if (showManualToken) "Hide" else "Show",
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
@@ -2398,13 +3645,16 @@ private fun ConnectSyncDialog(
                         label = { Text("Encryption Passphrase (min 6 chars)") },
                         placeholder = { Text("Secret passphrase for E2EE") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showPassphrase) "Hide" else "Show"
+                                    contentDescription = if (showPassphrase) "Hide" else "Show",
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
@@ -2412,44 +3662,71 @@ private fun ConnectSyncDialog(
 
                     val activeError = localValidation ?: errorMessage
                     if (!activeError.isNullOrBlank()) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.fillMaxWidth()
+                        val errShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(errShape)
+                                .background(Color(0x22F85149))
+                                .border(0.75.dp, Color(0x55F85149), errShape)
+                                .padding(12.dp)
                         ) {
                             Text(
                                 text = activeError,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(10.dp)
+                                color = Color(0xFFFF7B72),
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        TextButton(onClick = onDismiss, enabled = !isSyncing) {
-                            Text("Cancel")
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (manualToken.isBlank()) {
-                                    localValidation = "Token cannot be empty"
-                                    return@Button
-                                }
-                                if (passphrase.length < 6) {
-                                    localValidation = "Passphrase must be at least 6 characters"
-                                    return@Button
-                                }
-                                onManualConnect(manualToken, passphrase)
-                            },
-                            enabled = !isSyncing
+                        val cancelShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(cancelShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                                .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("Connect & Sync")
+                            Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color(0xFFC9D1D9))
+                        }
+
+                        val connectShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(44.dp)
+                                .clip(connectShape)
+                                .background(
+                                    if (!isSyncing) Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                    else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (!isSyncing) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                    else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                    connectShape
+                                )
+                                .springPressClickable(enabled = !isSyncing) {
+                                    if (manualToken.isBlank()) {
+                                        localValidation = "Token cannot be empty"
+                                        return@springPressClickable
+                                    }
+                                    if (passphrase.length < 6) {
+                                        localValidation = "Passphrase must be at least 6 characters"
+                                        return@springPressClickable
+                                    }
+                                    onManualConnect(manualToken, passphrase)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Connect & Sync", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
                         }
                     }
                 }
@@ -2467,24 +3744,106 @@ private fun PassphrasePromptDialog(
 ) {
     var passphrase by remember { mutableStateOf("") }
     var showPassphrase by remember { mutableStateOf(false) }
+    val dialogShape = RoundedCornerShape(26.dp)
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = if (action == SyncAction.SYNC) "Encrypt & Sync Vault" else "Decrypt & Restore Vault",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                // Header with Frosted Avatar Disc & Close Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val discShape = CircleShape
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(discShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.15f), discShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (action == SyncAction.SYNC) Icons.Default.CloudSync else Icons.Default.LockReset,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = if (action == SyncAction.SYNC) "Encrypt & Sync Vault" else "Decrypt & Restore Vault",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "Zero-Knowledge AES-256-GCM",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Circular Close Button
+                    val closeShape = CircleShape
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(closeShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), closeShape)
+                            .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
 
                 Text(
                     text = if (action == SyncAction.SYNC)
@@ -2492,7 +3851,7 @@ private fun PassphrasePromptDialog(
                     else
                         "Enter your sync passphrase to decrypt your providers from GitHub.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color(0xFFC9D1D9)
                 )
 
                 OutlinedTextField(
@@ -2500,13 +3859,25 @@ private fun PassphrasePromptDialog(
                     onValueChange = { passphrase = it },
                     label = { Text("Passphrase") },
                     singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x330D1117),
+                        unfocusedContainerColor = Color(0x220D1117),
+                        focusedBorderColor = Color(0xFF58A6FF),
+                        unfocusedBorderColor = Color(0x3330363D),
+                        focusedTextColor = Color(0xFFF0F6FC),
+                        unfocusedTextColor = Color(0xFFF0F6FC),
+                        focusedLabelColor = Color(0xFF58A6FF),
+                        unfocusedLabelColor = Color(0xFF8B949E)
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
                         IconButton(onClick = { showPassphrase = !showPassphrase }) {
                             Icon(
                                 imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showPassphrase) "Hide" else "Show"
+                                contentDescription = if (showPassphrase) "Hide" else "Show",
+                                tint = Color(0xFF8B949E)
                             )
                         }
                     }
@@ -2514,20 +3885,56 @@ private fun PassphrasePromptDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    TextButton(onClick = onDismiss, enabled = !isSyncing) {
-                        Text("Cancel")
+                    val cancelShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(cancelShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                            .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFC9D1D9)
+                        )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = { onSubmit(passphrase) },
-                        enabled = passphrase.isNotBlank() && !isSyncing
+
+                    val submitShape = RoundedCornerShape(12.dp)
+                    val canSubmit = passphrase.isNotBlank() && !isSyncing
+                    Box(
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(44.dp)
+                            .clip(submitShape)
+                            .background(
+                                if (canSubmit) {
+                                    Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                } else {
+                                    Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                                }
+                            )
+                            .border(
+                                1.dp,
+                                if (canSubmit) GlassDesign.liquidGlassBorder(0.70f, 0.35f) else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                submitShape
+                            )
+                            .springPressClickable(enabled = canSubmit) { onSubmit(passphrase) },
+                        contentAlignment = Alignment.Center
                     ) {
                         if (isSyncing) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                         } else {
-                            Text(if (action == SyncAction.SYNC) "Sync" else "Restore")
+                            Text(
+                                text = if (action == SyncAction.SYNC) "Sync Vault" else "Restore Vault",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = if (canSubmit) Color.White else Color(0xFF484F58)
+                            )
                         }
                     }
                 }
@@ -2550,16 +3957,40 @@ private fun BackupDialog(
     var showPassphrase by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
+    val dialogShape = RoundedCornerShape(26.dp)
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2567,30 +3998,124 @@ private fun BackupDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(
-                    text = "Encrypted Vault Backup",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                // Header with Frosted Avatar Disc & Close Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val discShape = CircleShape
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(discShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.15f), discShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                PrimaryTabRow(selectedTabIndex = tabIndex) {
-                    Tab(
-                        selected = tabIndex == 0,
-                        onClick = { tabIndex = 0 },
-                        text = { Text("Export") }
-                    )
-                    Tab(
-                        selected = tabIndex == 1,
-                        onClick = { tabIndex = 1 },
-                        text = { Text("Import") }
-                    )
+                        Column {
+                            Text(
+                                text = "Encrypted Vault Backup",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "Zero-Knowledge Local Export / Import",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Circular Close Button
+                    val closeShape = CircleShape
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(closeShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), closeShape)
+                            .springPressClickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
+
+                // Micro-glass Segmented Tabs: Export / Import
+                val tabShape = RoundedCornerShape(12.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(tabShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), tabShape)
+                        .padding(3.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        listOf("Export", "Import").forEachIndexed { idx, label ->
+                            val isSelected = tabIndex == idx
+                            val itemShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(itemShape)
+                                    .background(if (isSelected) Color(0x3358A6FF) else Color.Transparent)
+                                    .border(
+                                        0.75.dp,
+                                        if (isSelected) GlassDesign.liquidGlassBorder(0.60f, 0.25f) else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)),
+                                        itemShape
+                                    )
+                                    .springPressClickable { tabIndex = idx }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                    ),
+                                    color = if (isSelected) Color(0xFF58A6FF) else Color(0xFF8B949E)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val textFieldColors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color(0x330D1117),
+                    unfocusedContainerColor = Color(0x220D1117),
+                    focusedBorderColor = Color(0xFF58A6FF),
+                    unfocusedBorderColor = Color(0x3330363D),
+                    focusedTextColor = Color(0xFFF0F6FC),
+                    unfocusedTextColor = Color(0xFFF0F6FC),
+                    focusedLabelColor = Color(0xFF58A6FF),
+                    unfocusedLabelColor = Color(0xFF8B949E)
+                )
 
                 if (tabIndex == 0) {
                     // EXPORT TAB
                     Text(
                         text = "Generate a zero-knowledge encrypted backup payload. You can transfer this text to another device offline.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
 
                     OutlinedTextField(
@@ -2598,26 +4123,48 @@ private fun BackupDialog(
                         onValueChange = { passphrase = it },
                         label = { Text("Encryption Passphrase (min 6 chars)") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = null
+                                    contentDescription = null,
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
                     )
 
-                    Button(
-                        onClick = { onExport(passphrase) },
-                        enabled = passphrase.length >= 6,
-                        modifier = Modifier.fillMaxWidth()
+                    val canExport = passphrase.length >= 6
+                    val exportBtnShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(exportBtnShape)
+                            .background(
+                                if (canExport) Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                            )
+                            .border(
+                                1.dp,
+                                if (canExport) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                exportBtnShape
+                            )
+                            .springPressClickable(enabled = canExport) { onExport(passphrase) },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Generate Encrypted Payload")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (canExport) Color.White else Color(0xFF484F58))
+                            Text("Generate Encrypted Payload", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (canExport) Color.White else Color(0xFF484F58))
+                        }
                     }
 
                     if (!exportJsonText.isNullOrBlank()) {
@@ -2626,21 +4173,34 @@ private fun BackupDialog(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Encrypted Payload JSON") },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = textFieldColors,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp)
                         )
 
-                        Button(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(exportJsonText))
-                                copied = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
+                        val copyBtnShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(copyBtnShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                .border(1.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), copyBtnShape)
+                                .springPressClickable {
+                                    clipboardManager.setText(AnnotatedString(exportJsonText))
+                                    copied = true
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (copied) "Copied to Clipboard!" else "Copy Encrypted Payload")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF58A6FF))
+                                Text(if (copied) "Copied to Clipboard!" else "Copy Encrypted Payload", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = Color(0xFF58A6FF))
+                            }
                         }
                     }
                 } else {
@@ -2648,7 +4208,7 @@ private fun BackupDialog(
                     Text(
                         text = "Paste an encrypted backup payload from another device and provide the passphrase used to encrypt it.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
 
                     OutlinedTextField(
@@ -2656,6 +4216,8 @@ private fun BackupDialog(
                         onValueChange = { importJson = it },
                         label = { Text("Encrypted Payload JSON") },
                         placeholder = { Text("Paste payload JSON here") },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp)
@@ -2666,40 +4228,65 @@ private fun BackupDialog(
                         onValueChange = { passphrase = it },
                         label = { Text("Decryption Passphrase") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = null
+                                    contentDescription = null,
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
                     )
 
-                    Button(
-                        onClick = { onImport(importJson, passphrase) },
-                        enabled = importJson.isNotBlank() && passphrase.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth()
+                    val canImport = importJson.isNotBlank() && passphrase.isNotBlank()
+                    val importBtnShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(importBtnShape)
+                            .background(
+                                if (canImport) Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043)))
+                                else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                            )
+                            .border(
+                                1.dp,
+                                if (canImport) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                importBtnShape
+                            )
+                            .springPressClickable(enabled = canImport) { onImport(importJson, passphrase) },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Decrypt & Restore Providers")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (canImport) Color.White else Color(0xFF484F58))
+                            Text("Decrypt & Restore Providers", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (canImport) Color.White else Color(0xFF484F58))
+                        }
                     }
                 }
 
                 if (!errorMessage.isNullOrBlank()) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.fillMaxWidth()
+                    val errShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(errShape)
+                            .background(Color(0x22F85149))
+                            .border(0.75.dp, Color(0x55F85149), errShape)
+                            .padding(12.dp)
                     ) {
                         Text(
                             text = errorMessage,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp)
+                            color = Color(0xFFFF7B72),
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
@@ -2708,8 +4295,18 @@ private fun BackupDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Close")
+                    val closeBtnShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .height(40.dp)
+                            .clip(closeBtnShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), closeBtnShape)
+                            .springPressClickable { onDismiss() }
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Close", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = Color(0xFFC9D1D9))
                     }
                 }
             }

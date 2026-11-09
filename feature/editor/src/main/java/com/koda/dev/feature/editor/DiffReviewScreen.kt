@@ -1,25 +1,39 @@
 package com.koda.dev.feature.editor
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.koda.dev.core.model.ChangeType
 import com.koda.dev.core.model.DiffHunk
 import com.koda.dev.core.model.DiffLine
 import com.koda.dev.core.model.DiffLineType
 import com.koda.dev.core.model.PendingChange
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.springPressClickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,48 +45,185 @@ fun DiffReviewScreen(
     onRejectAll: () -> Unit,
     onNavigateBack: (() -> Unit)? = null
 ) {
+    val barShape = RoundedCornerShape(22.dp)
+
     Scaffold(
+        containerColor = Color(0xFF0B0E14),
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    if (onNavigateBack != null) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = barShape,
+                        ambientColor = Color(0x33000000),
+                        spotColor = Color(0x660F172A)
+                    )
+                    .clip(barShape)
+                    .background(GlassDesign.liquidGlassBackground())
+                    .border(
+                        width = 1.dp,
+                        brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
+                        shape = barShape
+                    )
+            ) {
+                // Internal top refractive sheen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .background(GlassDesign.internalGlassSheen())
+                )
+
+                TopAppBar(
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    navigationIcon = {
+                        if (onNavigateBack != null) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.38f, bottomAlpha = 0.10f), CircleShape)
+                                    .springPressClickable(onClick = onNavigateBack),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color(0xFFF0F6FC)
+                                )
+                            }
+                        }
+                    },
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Difference,
+                                    contentDescription = null,
+                                    tint = Color(0xFF58A6FF),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            Column {
+                                Text(
+                                    text = "Pending Changes",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color(0xFFF0F6FC)
+                                )
+                                Text(
+                                    text = "${pendingChanges.size} ${if (pendingChanges.size == 1) "file" else "files"} to review",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF8B949E)
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        if (pendingChanges.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.padding(end = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Reject All
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), RoundedCornerShape(12.dp))
+                                        .springPressClickable(onClick = onRejectAll)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        "Reject All",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                        color = Color(0xFFF85149)
+                                    )
+                                }
+
+                                // Apply All
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF238636).copy(alpha = 0.35f))
+                                        .border(0.75.dp, Color(0xFF39D353).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                        .springPressClickable(onClick = onApproveAll)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        "Apply All",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = Color(0xFF39D353)
+                                    )
+                                }
+                            }
                         }
                     }
-                },
-                title = { Text("Pending Changes (${pendingChanges.size})") },
-                actions = {
-                    if (pendingChanges.isNotEmpty()) {
-                        TextButton(onClick = onApproveAll) {
-                            Text("Apply All")
-                        }
-                        TextButton(onClick = onRejectAll) {
-                            Text("Reject All")
-                        }
-                    }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
         if (pendingChanges.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = androidx.compose.ui.Alignment.Center
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    "No pending changes",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                            .border(1.dp, GlassDesign.liquidGlassBorder(0.60f, 0.25f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF39D353),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                    Text(
+                        "No pending changes",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
+                    )
+                    Text(
+                        "All suggested changes have been reviewed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF8B949E)
+                    )
+                }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(pendingChanges, key = { it.id }) { change ->
@@ -93,102 +244,164 @@ private fun PendingChangeCard(
     onApprove: () -> Unit,
     onReject: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Header
+    val cardShape = RoundedCornerShape(18.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 10.dp,
+                shape = cardShape,
+                ambientColor = Color(0x33000000),
+                spotColor = Color(0x660F172A)
+            )
+            .clip(cardShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+            .border(
+                width = 0.75.dp,
+                brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                shape = cardShape
+            )
+            .padding(14.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Header: file path & change type badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = change.filePath,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f)
-                )
-                val label = when (change.changeType) {
-                    ChangeType.EDIT -> "EDIT"
-                    ChangeType.CREATE -> "CREATE"
-                    ChangeType.DELETE -> "DELETE"
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFF58A6FF)
+                    )
+                    Text(
+                        text = change.filePath,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC),
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                val color = when (change.changeType) {
-                    ChangeType.EDIT -> MaterialTheme.colorScheme.tertiary
-                    ChangeType.CREATE -> MaterialTheme.colorScheme.primary
-                    ChangeType.DELETE -> MaterialTheme.colorScheme.error
+
+                val (label, labelColor, bgTint) = when (change.changeType) {
+                    ChangeType.EDIT -> Triple("EDIT", Color(0xFF79C0FF), Color(0x252F81F7))
+                    ChangeType.CREATE -> Triple("CREATE", Color(0xFF39D353), Color(0x25238636))
+                    ChangeType.DELETE -> Triple("DELETE", Color(0xFFF85149), Color(0x25DA3633))
                 }
-                Surface(
-                    color = color.copy(alpha = 0.15f),
-                    shape = MaterialTheme.shapes.small
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(bgTint)
+                        .border(0.5.dp, labelColor.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        label,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = color
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = labelColor
                     )
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            // Diff view
-            if (change.changeType == ChangeType.DELETE) {
-                Text(
-                    "This file will be deleted.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            } else if (change.changeType == ChangeType.CREATE) {
-                Text(
-                    "New file",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.height(4.dp))
-                val lines = (change.proposedContent ?: "").lines()
-                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    for ((i, line) in lines.take(50).withIndex()) {
+            // Diff container (dark code block)
+            val codeShape = RoundedCornerShape(10.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(codeShape)
+                    .background(Color(0xFF0D1117))
+                    .border(0.5.dp, Color(0xFF30363D), codeShape)
+                    .padding(8.dp)
+            ) {
+                if (change.changeType == ChangeType.DELETE) {
+                    Text(
+                        "This file will be deleted.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = Color(0xFFF85149),
+                        modifier = Modifier.padding(4.dp)
+                    )
+                } else if (change.changeType == ChangeType.CREATE) {
+                    val lines = (change.proposedContent ?: "").lines()
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        for ((i, line) in lines.take(50).withIndex()) {
+                            Text(
+                                buildAnnotatedString {
+                                    withStyle(SpanStyle(color = Color(0xFF6E7681))) {
+                                        append(String.format("%3d ", i + 1))
+                                    }
+                                    withStyle(SpanStyle(color = Color(0xFF39D353), fontFamily = FontFamily.Monospace)) {
+                                        append("+ $line")
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp)
+                            )
+                        }
+                    }
+                } else {
+                    val hunks = com.koda.dev.core.files.DiffEngine.computeDiff(
+                        change.originalContent ?: "",
+                        change.proposedContent ?: "",
+                        change.filePath
+                    )
+                    if (hunks.isEmpty()) {
                         Text(
-                            buildAnnotatedString {
-                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                                    append("${i + 1} ")
-                                }
-                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace)) {
-                                    append("+ $line")
-                                }
-                            },
+                            "No differences detected.",
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp)
+                            color = Color(0xFF8B949E),
+                            modifier = Modifier.padding(4.dp)
                         )
+                    } else {
+                        DiffViewer(hunks = hunks, modifier = Modifier.fillMaxWidth())
                     }
                 }
-            } else {
-                // Show unified diff for edits
-                val hunks = com.koda.dev.core.files.DiffEngine.computeDiff(
-                    change.originalContent ?: "",
-                    change.proposedContent ?: "",
-                    change.filePath
-                )
-                if (hunks.isEmpty()) {
-                    Text("No differences detected.", style = MaterialTheme.typography.bodySmall)
-                } else {
-                    DiffViewer(hunks = hunks, modifier = Modifier.fillMaxWidth())
-                }
             }
-
-            Spacer(Modifier.height(8.dp))
 
             // Action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(onClick = onReject) {
-                    Text("Reject")
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.08f), RoundedCornerShape(10.dp))
+                        .springPressClickable(onClick = onReject)
+                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        "Reject",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = Color(0xFFF85149)
+                    )
                 }
-                Spacer(Modifier.width(8.dp))
-                FilledTonalButton(onClick = onApprove) {
-                    Text("Apply")
+
+                Spacer(Modifier.width(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF238636).copy(alpha = 0.35f))
+                        .border(0.75.dp, Color(0xFF39D353).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                        .springPressClickable(onClick = onApprove)
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        "Apply",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFF39D353)
+                    )
                 }
             }
         }
@@ -200,22 +413,22 @@ fun DiffViewer(
     hunks: List<DiffHunk>,
     modifier: Modifier = Modifier
 ) {
-    val additionColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-    val deletionColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+    val additionColor = Color(0xFF238636).copy(alpha = 0.20f)
+    val deletionColor = Color(0xFFDA3633).copy(alpha = 0.20f)
 
     Column(modifier = modifier) {
         for (hunk in hunks) {
             Text(
                 "@@ -${hunk.oldStartLine},${hunk.oldLineCount} +${hunk.newStartLine},${hunk.newLineCount} @@",
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp),
+                color = Color(0xFF79C0FF),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp)
             )
             for (line in hunk.lines) {
                 val bg = when (line.type) {
                     DiffLineType.ADDITION -> additionColor
                     DiffLineType.DELETION -> deletionColor
-                    DiffLineType.CONTEXT -> androidx.compose.ui.graphics.Color.Transparent
+                    DiffLineType.CONTEXT -> Color.Transparent
                 }
                 val prefix = when (line.type) {
                     DiffLineType.ADDITION -> "+"
@@ -223,25 +436,25 @@ fun DiffViewer(
                     DiffLineType.CONTEXT -> " "
                 }
                 val textColor = when (line.type) {
-                    DiffLineType.ADDITION -> MaterialTheme.colorScheme.primary
-                    DiffLineType.DELETION -> MaterialTheme.colorScheme.error
-                    DiffLineType.CONTEXT -> MaterialTheme.colorScheme.onSurface
+                    DiffLineType.ADDITION -> Color(0xFF39D353)
+                    DiffLineType.DELETION -> Color(0xFFF85149)
+                    DiffLineType.CONTEXT -> Color(0xFFC9D1D9)
                 }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(bg)
-                        .padding(horizontal = 4.dp, vertical = 0.5.dp)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
                 ) {
                     Text(
                         prefix,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.5.sp),
                         color = textColor,
-                        modifier = Modifier.width(12.dp)
+                        modifier = Modifier.width(14.dp)
                     )
                     Text(
                         line.content,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.5.sp),
                         color = textColor
                     )
                 }
