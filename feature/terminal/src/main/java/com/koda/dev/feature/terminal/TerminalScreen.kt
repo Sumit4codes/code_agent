@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -94,6 +95,14 @@ fun TerminalScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .captureBackdrop(backdropState)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    terminalViewInstance?.requestFocus()
+                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                    terminalViewInstance?.let { imm?.showSoftInput(it, 0) }
+                }
         ) {
             // Dynamic top spacing so terminal output clears the floating top bar
             Spacer(
@@ -293,6 +302,8 @@ fun TerminalScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
             )
 
             // Dynamic bottom spacing so terminal output clears the floating accessory dock and bottom nav bar
