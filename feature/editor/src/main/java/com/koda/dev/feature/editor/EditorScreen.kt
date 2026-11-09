@@ -411,6 +411,7 @@ private fun EditorTopAppBar(
 ) {
     val activeTab = state.activeTab
     val barShape = RoundedCornerShape(22.dp)
+    var moreMenuExpanded by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -465,6 +466,7 @@ private fun EditorTopAppBar(
             title = {
                 val currentTitle = activeTab?.name ?: state.projectName.ifBlank { "Files" }
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -485,7 +487,9 @@ private fun EditorTopAppBar(
                         )
                     }
 
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -501,13 +505,13 @@ private fun EditorTopAppBar(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.25f, bottomAlpha = 0.10f))
-                                        .border(0.75.dp, GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .background(Color(0x2639D353))
+                                        .border(0.75.dp, Color(0x6639D353), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
@@ -516,7 +520,7 @@ private fun EditorTopAppBar(
                                         )
                                         Text(
                                             text = "MODIFIED",
-                                            style = MaterialTheme.typography.labelSmall,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFF39D353)
                                         )
@@ -529,8 +533,8 @@ private fun EditorTopAppBar(
                         if (subtitle.isNotBlank() && subtitle != currentTitle) {
                             Text(
                                 text = subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = Color(0xFF8B949E),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -540,7 +544,7 @@ private fun EditorTopAppBar(
             },
             actions = {
                 Row(
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier.padding(end = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -582,97 +586,155 @@ private fun EditorTopAppBar(
                         }
                     }
 
-                    // Browse files drawer toggle (when code full-width)
-                    if (state.openTabs.isNotEmpty() && !isSplitView) {
+                    // More Options Dropdown (...)
+                    Box {
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
-                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.10f), CircleShape)
-                                .springPressClickable(onClick = onToggleDrawer),
+                                .background(GlassDesign.microGlassBackground(topAlpha = if (moreMenuExpanded) 0.28f else 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (moreMenuExpanded) 0.50f else 0.30f, bottomAlpha = 0.10f), CircleShape)
+                                .springPressClickable { moreMenuExpanded = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = "Browse Files",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = if (moreMenuExpanded) Color(0xFF58A6FF) else Color(0xFFC9D1D9),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
-                    }
 
-                    // Open Terminal Sheet
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
-                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape)
-                            .springPressClickable(onClick = onOpenTerminal),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Terminal,
-                            contentDescription = "Open Terminal",
-                            tint = Color(0xFF39D353),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    // Word wrap toggle
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(GlassDesign.microGlassBackground(topAlpha = if (wrapLines) 0.28f else 0.14f, bottomAlpha = 0.05f))
-                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (wrapLines) 0.50f else 0.30f, bottomAlpha = 0.10f), CircleShape)
-                            .springPressClickable(onClick = onToggleWrapLines),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.WrapText,
-                            contentDescription = "Toggle line wrap",
-                            tint = if (wrapLines) Color(0xFF58A6FF) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    // Split View toggle
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(GlassDesign.microGlassBackground(topAlpha = if (isSplitView) 0.28f else 0.14f, bottomAlpha = 0.05f))
-                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (isSplitView) 0.50f else 0.30f, bottomAlpha = 0.10f), CircleShape)
-                            .springPressClickable(onClick = onToggleSplitView),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.VerticalSplit,
-                            contentDescription = "Toggle Split View",
-                            tint = if (isSplitView) Color(0xFF58A6FF) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    // Copy content
-                    if (activeTab != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
-                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.10f), CircleShape)
-                                .springPressClickable(onClick = onCopyContent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy file content",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
+                        DropdownMenu(
+                            expanded = moreMenuExpanded,
+                            onDismissRequest = { moreMenuExpanded = false },
+                            containerColor = Color(0xFF161B22),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f)
                             )
+                        ) {
+                            // File Explorer Drawer toggle
+                            DropdownMenuItem(
+                                text = { Text("File Explorer", color = Color(0xFFF0F6FC)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.FolderOpen,
+                                        contentDescription = null,
+                                        tint = Color(0xFF58A6FF),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    onToggleDrawer()
+                                }
+                            )
+
+                            // Open Workspace Terminal Sheet
+                            DropdownMenuItem(
+                                text = { Text("Open Terminal", color = Color(0xFFF0F6FC)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Terminal,
+                                        contentDescription = null,
+                                        tint = Color(0xFF39D353),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    onOpenTerminal()
+                                }
+                            )
+
+                            HorizontalDivider(
+                                color = Color(0xFF30363D),
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+
+                            // Word Wrap toggle
+                            DropdownMenuItem(
+                                text = { Text("Word Wrap", color = Color(0xFFF0F6FC)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.WrapText,
+                                        contentDescription = null,
+                                        tint = if (wrapLines) Color(0xFF58A6FF) else Color(0xFF8B949E),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                trailingIcon = if (wrapLines) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Active",
+                                            tint = Color(0xFF58A6FF),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    onToggleWrapLines()
+                                }
+                            )
+
+                            // Split View toggle
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (isSplitView) "Single Pane View" else "Split Explorer View",
+                                        color = Color(0xFFF0F6FC)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.VerticalSplit,
+                                        contentDescription = null,
+                                        tint = if (isSplitView) Color(0xFF58A6FF) else Color(0xFF8B949E),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                trailingIcon = if (isSplitView) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Active",
+                                            tint = Color(0xFF58A6FF),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    onToggleSplitView()
+                                }
+                            )
+
+                            // Copy file content (if file open)
+                            if (activeTab != null) {
+                                HorizontalDivider(
+                                    color = Color(0xFF30363D),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Copy File Content", color = Color(0xFFF0F6FC)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.ContentCopy,
+                                            contentDescription = null,
+                                            tint = Color(0xFF8B949E),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        onCopyContent()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
