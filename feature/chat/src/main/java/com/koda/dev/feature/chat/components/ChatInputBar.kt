@@ -60,7 +60,7 @@ import com.koda.dev.core.model.ProviderConfig
 /**
  * Modern unified capsule bottom input bar matching the reference design:
  * Single continuous dark capsule holding:
- * - Multi-line prompt field with placeholder: "Ask anything, @ to mention, / for actions"
+ * - Multi-line prompt field with placeholder: "Ask anything..."
  * - Bottom strip with:
  *   - "+" options button (Goal mode, prompt options)
  *   - Model selector pill: Opens registered AI providers from settings
@@ -233,7 +233,7 @@ fun ChatInputBar(
                             Text(
                                 text = when {
                                     isStreaming -> "Steer agent or guide run..."
-                                    hasProject -> "Ask anything, @ to mention, / for actions"
+                                    hasProject -> "Ask anything..."
                                     else -> "Open a project to chat..."
                                 },
                                 style = MaterialTheme.typography.bodyMedium.copy(
