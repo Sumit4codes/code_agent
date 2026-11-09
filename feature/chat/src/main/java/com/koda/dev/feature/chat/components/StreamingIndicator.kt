@@ -12,6 +12,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -126,14 +127,17 @@ fun ActiveToolRuntimeCard(
         }
     }
 
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFF161B22),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            Color(0xFF30363D)
-        ),
-        modifier = modifier.fillMaxWidth()
+    val cardShape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f),
+                shape = cardShape
+            )
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             // Header row with Icon, Name, and Status indicator
@@ -142,20 +146,20 @@ fun ActiveToolRuntimeCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val iconShape = RoundedCornerShape(8.dp)
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(6.dp)
-                        ),
+                        .clip(iconShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), iconShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = info.icon,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = Color(0xFF58A6FF)
                     )
                 }
 
@@ -163,7 +167,7 @@ fun ActiveToolRuntimeCard(
                     Text(
                         text = info.title,
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = Color(0xFFF0F6FC)
                     )
                     if (argPreview.isNotBlank()) {
                         Text(
@@ -172,7 +176,7 @@ fun ActiveToolRuntimeCard(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF8B949E),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -180,37 +184,42 @@ fun ActiveToolRuntimeCard(
                 }
 
                 // Live status chip
+                val statusShape = RoundedCornerShape(12.dp)
                 when (activeTool.status) {
                     ToolExecutionStatus.RUNNING -> {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        Box(
+                            modifier = Modifier
+                                .clip(statusShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), statusShape)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(10.dp),
                                     strokeWidth = 1.5.dp,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = Color(0xFF58A6FF)
                                 )
                                 Text(
                                     text = "Running…",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Color(0xFF58A6FF)
                                 )
                             }
                         }
                     }
                     ToolExecutionStatus.SUCCESS -> {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
+                        Box(
+                            modifier = Modifier
+                                .clip(statusShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), statusShape)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -218,23 +227,25 @@ fun ActiveToolRuntimeCard(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
                                     modifier = Modifier.size(12.dp),
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = Color(0xFF39D353)
                                 )
                                 Text(
                                     text = if (activeTool.durationMs != null) "${activeTool.durationMs}ms" else "Done",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Color(0xFF39D353)
                                 )
                             }
                         }
                     }
                     ToolExecutionStatus.ERROR -> {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.errorContainer
+                        Box(
+                            modifier = Modifier
+                                .clip(statusShape)
+                                .background(Color(0x22F85149))
+                                .border(0.75.dp, Color(0x44F85149), statusShape)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -242,12 +253,12 @@ fun ActiveToolRuntimeCard(
                                     imageVector = Icons.Default.ErrorOutline,
                                     contentDescription = null,
                                     modifier = Modifier.size(12.dp),
-                                    tint = MaterialTheme.colorScheme.error
+                                    tint = Color(0xFFFF7B72)
                                 )
                                 Text(
                                     text = "Failed",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Color(0xFFFF7B72)
                                 )
                             }
                         }

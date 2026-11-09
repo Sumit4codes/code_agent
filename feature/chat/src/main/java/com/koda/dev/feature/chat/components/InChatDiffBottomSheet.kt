@@ -2,6 +2,7 @@ package com.koda.dev.feature.chat.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +52,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +65,7 @@ import com.koda.dev.core.model.ChangeType
 import com.koda.dev.core.model.DiffHunk
 import com.koda.dev.core.model.DiffLineType
 import com.koda.dev.core.model.PendingChange
+import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.core.ui.theme.JetBrainsMono
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,23 +129,54 @@ fun InChatDiffBottomSheet(
         }
     }
 
+    val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF0D1117),
+        containerColor = Color.Transparent,
         contentColor = Color(0xFFF0F6FC),
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        dragHandle = {
-            BottomSheetDefaults.DragHandle(
-                color = Color(0xFF30363D)
-            )
-        }
+        shape = sheetShape,
+        dragHandle = null
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.92f)
+                .shadow(
+                    elevation = 20.dp,
+                    shape = sheetShape,
+                    ambientColor = Color(0x33000000),
+                    spotColor = Color(0x660F172A)
+                )
+                .clip(sheetShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                    shape = sheetShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Drag Handle
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 10.dp, bottom = 6.dp)
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color(0x40FFFFFF))
+                )
             // Top Bar
             Row(
                 modifier = Modifier
@@ -625,46 +661,59 @@ fun InChatDiffBottomSheet(
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(
-                            onClick = {
-                                onReject(currentChange)
-                                if (pendingChanges.size <= 1) {
-                                    onDismiss()
+                        val rejectShape = RoundedCornerShape(10.dp)
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(rejectShape)
+                                .background(Color(0x22F85149))
+                                .border(0.75.dp, Color(0x44F85149), rejectShape)
+                                .springPressClickable {
+                                    onReject(currentChange)
+                                    if (pendingChanges.size <= 1) {
+                                        onDismiss()
+                                    }
                                 }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF7B72)),
-                            border = BorderStroke(1.dp, Color(0xFFF85149).copy(alpha = 0.5f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(38.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Reject", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFFF7B72))
+                                Text("Reject", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color(0xFFFF7B72), maxLines = 1)
+                            }
                         }
 
-                        FilledTonalButton(
-                            onClick = {
-                                onApprove(currentChange)
-                                if (pendingChanges.size <= 1) {
-                                    onDismiss()
+                        val applyShape = RoundedCornerShape(10.dp)
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(applyShape)
+                                .background(Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043))))
+                                .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), applyShape)
+                                .springPressClickable {
+                                    onApprove(currentChange)
+                                    if (pendingChanges.size <= 1) {
+                                        onDismiss()
+                                    }
                                 }
-                            },
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = Color(0xFF238636),
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(38.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Apply", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                Text("Apply", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White, maxLines = 1)
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
 }

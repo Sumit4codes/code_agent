@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koda.dev.core.model.PendingChange
+import com.koda.dev.core.ui.glass.springPressClickable
 
 /**
  * Modern file changes diff pill matching the reference design:
@@ -50,14 +51,18 @@ fun FileChangesPill(
         if (stats.filesCount == 1) "1 file changed" else "${stats.filesCount} files changed"
     }
 
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFF161B22),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF30363D)),
+    val pillShape = RoundedCornerShape(12.dp)
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onOpenFullReview() }
+            .clip(pillShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f),
+                shape = pillShape
+            )
+            .springPressClickable { onOpenFullReview() }
     ) {
         Row(
             modifier = Modifier
@@ -111,16 +116,16 @@ fun FileChangesPill(
             }
 
             // Right button: "[ Review ]"
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = Color(0xFF21262D),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF30363D)),
+            val reviewBtnShape = RoundedCornerShape(8.dp)
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { onOpenFullReview() }
+                    .clip(reviewBtnShape)
+                    .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), reviewBtnShape)
+                    .springPressClickable { onOpenFullReview() }
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -128,7 +133,7 @@ fun FileChangesPill(
                         imageVector = Icons.Default.RateReview,
                         contentDescription = "Review diffs",
                         modifier = Modifier.size(14.dp),
-                        tint = Color(0xFF8B949E)
+                        tint = Color(0xFF58A6FF)
                     )
                     Text(
                         text = "Review",

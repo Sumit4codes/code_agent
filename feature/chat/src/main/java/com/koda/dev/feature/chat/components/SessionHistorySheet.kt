@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +58,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.koda.dev.core.model.ChatSession
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -324,85 +327,340 @@ fun SessionHistorySheet(
     // Rename Dialog
     sessionToRename?.let { session ->
         var renameText by remember(session.title) { mutableStateOf(session.title) }
-        AlertDialog(
+        val dialogShape = RoundedCornerShape(24.dp)
+
+        Dialog(
             onDismissRequest = { sessionToRename = null },
-            title = {
-                Text(
-                    text = "Rename Chat Session",
-                    color = Color(0xFFF0F6FC),
-                    fontWeight = FontWeight.SemiBold
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .shadow(
+                        elevation = 24.dp,
+                        shape = dialogShape,
+                        ambientColor = Color(0x40000000),
+                        spotColor = Color(0x800F172A)
+                    )
+                    .clip(dialogShape)
+                    .background(GlassDesign.liquidGlassBackground())
+                    .border(
+                        width = 1.dp,
+                        brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                        shape = dialogShape
+                    )
+            ) {
+                // Internal Top Refraction Sheen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(GlassDesign.internalGlassSheen())
                 )
-            },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    label = { Text("Session Title") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (renameText.isNotBlank()) {
-                            onRenameSession(session.id, renameText.trim())
-                            sessionToRename = null
-                        }
-                    },
-                    enabled = renameText.isNotBlank()
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Save", color = Color(0xFF58A6FF))
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = Color(0xFF58A6FF),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Column {
+                                Text(
+                                    text = "Rename Chat Session",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFFF0F6FC)
+                                )
+                                Text(
+                                    text = "Enter a descriptive name",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF8B949E)
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
+                                .springPressClickable { sessionToRename = null },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color(0xFF8B949E),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Text Input
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text("Session Title", color = Color(0xFF8B949E)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color(0x33000000),
+                            unfocusedContainerColor = Color(0x22000000),
+                            focusedBorderColor = Color(0xFF58A6FF),
+                            unfocusedBorderColor = Color(0x26FFFFFF),
+                            focusedTextColor = Color(0xFFF0F6FC),
+                            unfocusedTextColor = Color(0xFFF0F6FC)
+                        )
+                    )
+
+                    // Action Buttons (Cancel + Save)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val cancelShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(cancelShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.10f), cancelShape)
+                                .springPressClickable { sessionToRename = null },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                                color = Color(0xFFC9D1D9)
+                            )
+                        }
+
+                        val saveShape = RoundedCornerShape(12.dp)
+                        val isValid = renameText.isNotBlank()
+                        val saveBg = if (isValid) {
+                            Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                        } else {
+                            Brush.horizontalGradient(listOf(Color(0x331F6FEB), Color(0x33388BFD)))
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(saveShape)
+                                .background(saveBg)
+                                .border(
+                                    width = 1.dp,
+                                    brush = if (isValid) GlassDesign.liquidGlassBorder(0.70f, 0.35f) else GlassDesign.microGlassBorder(0.20f, 0.06f),
+                                    shape = saveShape
+                                )
+                                .springPressClickable(enabled = isValid) {
+                                    onRenameSession(session.id, renameText.trim())
+                                    sessionToRename = null
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Save",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = if (isValid) Color.White else Color(0x66FFFFFF)
+                            )
+                        }
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { sessionToRename = null }) {
-                    Text("Cancel", color = Color(0xFF8B949E))
-                }
-            },
-            containerColor = Color(0xFF161B22),
-            shape = RoundedCornerShape(20.dp)
-        )
+            }
+        }
     }
 
     // Delete Confirmation Dialog
     sessionToDelete?.let { session ->
-        AlertDialog(
+        val dialogShape = RoundedCornerShape(24.dp)
+
+        Dialog(
             onDismissRequest = { sessionToDelete = null },
-            title = {
-                Text(
-                    text = "Delete Chat Session?",
-                    color = Color(0xFFF0F6FC),
-                    fontWeight = FontWeight.SemiBold
-                )
-            },
-            text = {
-                Text(
-                    text = "This will permanently delete this conversation and its message history.",
-                    color = Color(0xFF8B949E)
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteSession(session.id)
-                        sessionToDelete = null
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .shadow(
+                        elevation = 24.dp,
+                        shape = dialogShape,
+                        ambientColor = Color(0x40000000),
+                        spotColor = Color(0x800F172A)
                     )
+                    .clip(dialogShape)
+                    .background(GlassDesign.liquidGlassBackground())
+                    .border(
+                        width = 1.dp,
+                        brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                        shape = dialogShape
+                    )
+            ) {
+                // Internal Top Refraction Sheen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(GlassDesign.internalGlassSheen())
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Delete")
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x26F85149))
+                                    .border(0.75.dp, GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.60f, dispersionAlpha = 0.25f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFF7B72),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Column {
+                                Text(
+                                    text = "Delete Chat Session?",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFFFF7B72)
+                                )
+                                Text(
+                                    text = "Cannot be recovered",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF8B949E)
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
+                                .springPressClickable { sessionToDelete = null },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color(0xFF8B949E),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Warning Text in frosted container
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0x1AF85149))
+                            .border(0.75.dp, Color(0x33F85149), RoundedCornerShape(12.dp))
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = "This will permanently delete \"${session.title}\" and all of its conversation history.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFF0F6FC),
+                            lineHeight = 20.sp
+                        )
+                    }
+
+                    // Action Buttons (Cancel + Delete)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val cancelShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                            .clip(cancelShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.10f), cancelShape)
+                            .springPressClickable { sessionToDelete = null },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                                color = Color(0xFFC9D1D9)
+                            )
+                        }
+
+                        val deleteShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(deleteShape)
+                                .background(Brush.horizontalGradient(listOf(Color(0xFFDA3633), Color(0xFFF85149))))
+                                .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), deleteShape)
+                                .springPressClickable {
+                                    onDeleteSession(session.id)
+                                    sessionToDelete = null
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Delete",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { sessionToDelete = null }) {
-                    Text("Cancel", color = Color(0xFF8B949E))
-                }
-            },
-            containerColor = Color(0xFF161B22),
-            shape = RoundedCornerShape(20.dp)
-        )
+            }
+        }
     }
 }
 

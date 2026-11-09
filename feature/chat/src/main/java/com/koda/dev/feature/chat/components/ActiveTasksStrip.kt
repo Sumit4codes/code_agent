@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,13 +49,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.koda.dev.core.terminal.TaskStatusInfo
 import com.koda.dev.core.terminal.TaskSummary
+import com.koda.dev.core.ui.glass.springPressClickable
 
 @Composable
 fun ActiveTasksStrip(
@@ -67,13 +77,24 @@ fun ActiveTasksStrip(
     var selectedTask by remember { mutableStateOf<TaskSummary?>(null) }
     val hasStalled = remember(tasks) { tasks.any { it.isStalled } }
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-        shape = RoundedCornerShape(12.dp),
+    val stripShape = RoundedCornerShape(14.dp)
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
+            .shadow(
+                elevation = 8.dp,
+                shape = stripShape,
+                ambientColor = Color(0x30000000),
+                spotColor = Color(0x500F172A)
+            )
+            .clip(stripShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f),
+                shape = stripShape
+            )
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -170,25 +191,29 @@ private fun TaskChip(
     onKill: () -> Unit
 ) {
     val isStalled = task.isStalled
-    val chipBg = if (isStalled) {
-        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest
-    }
-    val chipBorder = if (isStalled) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-    }
+    val chipShape = RoundedCornerShape(10.dp)
 
-    Surface(
-        color = chipBg,
-        border = chipBorder,
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier.clickable(onClick = onClick)
+    Box(
+        modifier = Modifier
+            .clip(chipShape)
+            .then(
+                if (isStalled) {
+                    Modifier.background(Color(0x22F85149))
+                } else {
+                    Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                }
+            )
+            .then(
+                if (isStalled) {
+                    Modifier.border(0.75.dp, GlassDesign.liquidGlassBorder(0.60f, 0.25f), chipShape)
+                } else {
+                    Modifier.border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), chipShape)
+                }
+            )
+            .springPressClickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
         Row(
-            modifier = Modifier.padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -196,14 +221,14 @@ private fun TaskChip(
                 Icon(
                     imageVector = Icons.Default.Warning,
                     contentDescription = "Stalled",
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = Color(0xFFFF7B72),
                     modifier = Modifier.size(12.dp)
                 )
             } else {
                 CircularProgressIndicator(
                     modifier = Modifier.size(10.dp),
                     strokeWidth = 1.5.dp,
-                    color = MaterialTheme.colorScheme.primary
+                    color = Color(0xFF58A6FF)
                 )
             }
 
@@ -212,40 +237,44 @@ private fun TaskChip(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isStalled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                color = if (isStalled) Color(0xFFFF7B72) else Color(0xFFF0F6FC)
             )
 
             Text(
                 text = task.command.take(20) + if (task.command.length > 20) "…" else "",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color(0xFF8B949E),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Surface(
-                color = if (isStalled) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = RoundedCornerShape(4.dp)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (isStalled) Color(0x33F85149) else Color(0x22FFFFFF))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
                 Text(
                     text = if (isStalled) "${task.silenceSeconds}s silent" else "${task.runtimeSeconds}s",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Medium,
-                    color = if (isStalled) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    color = if (isStalled) Color(0xFFFF7B72) else Color(0xFF8B949E)
                 )
             }
 
-            IconButton(
-                onClick = onKill,
-                modifier = Modifier.size(20.dp)
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .springPressClickable(onClick = onKill),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Kill Task",
-                    tint = if (isStalled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (isStalled) Color(0xFFFF7B72) else Color(0xFF8B949E),
                     modifier = Modifier.size(13.dp)
                 )
             }
@@ -263,58 +292,123 @@ private fun TaskDetailsDialog(
 ) {
     var inputMessage by remember { mutableStateOf("") }
     val output = details?.recentOutput ?: "(No output captured yet)"
+    val dialogShape = RoundedCornerShape(24.dp)
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Terminal,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
                 )
-                Text(
-                    text = "${task.taskId} Details",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                    shape = dialogShape
                 )
-                Spacer(modifier = Modifier.weight(1f))
-                Surface(
-                    color = if (task.isStalled) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = if (task.isStalled) "STALLED" else "RUNNING",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (task.isStalled) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-        },
-        text = {
+        ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "${task.taskId} Details",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (task.isStalled) Color(0x33F85149) else Color(0x33238636))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (task.isStalled) "STALLED" else "RUNNING",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (task.isStalled) Color(0xFFFF7B72) else Color(0xFF39D353)
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
                 // Command display
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x22000000))
+                        .border(0.75.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+                        .padding(10.dp)
                 ) {
                     Text(
                         text = "$ ${task.command}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(8.dp)
+                        color = Color(0xFF58A6FF)
                     )
                 }
 
@@ -326,37 +420,37 @@ private fun TaskDetailsDialog(
                     Text(
                         text = "Runtime: ${task.runtimeSeconds}s",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
                     Text(
                         text = "Silence: ${task.silenceSeconds}s",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (task.isStalled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (task.isStalled) Color(0xFFFF7B72) else Color(0xFF8B949E)
                     )
                 }
 
                 // Output window
                 Text(
                     text = "Recent Terminal Output:",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color(0xFFC9D1D9)
                 )
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 160.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x33000000))
+                        .border(0.75.dp, Color(0x26FFFFFF), RoundedCornerShape(10.dp))
                 ) {
                     val scrollState = rememberScrollState()
                     Text(
                         text = output,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = Color(0xFFF0F6FC),
                         modifier = Modifier
-                            .padding(8.dp)
+                            .padding(10.dp)
                             .verticalScroll(scrollState)
                     )
                 }
@@ -365,47 +459,88 @@ private fun TaskDetailsDialog(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
                         value = inputMessage,
                         onValueChange = { inputMessage = it },
-                        placeholder = { Text("Send stdin input…", fontSize = 11.sp) },
+                        placeholder = { Text("Send stdin input…", fontSize = 11.sp, color = Color(0xFF6E7681)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                        shape = RoundedCornerShape(10.dp),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color(0x22000000),
+                            unfocusedContainerColor = Color(0x18000000),
+                            focusedBorderColor = Color(0xFF58A6FF),
+                            unfocusedBorderColor = Color(0x20FFFFFF),
+                            focusedTextColor = Color(0xFFF0F6FC),
+                            unfocusedTextColor = Color(0xFFF0F6FC)
+                        )
                     )
-                    IconButton(
-                        onClick = {
-                            if (inputMessage.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
+                            .springPressClickable(enabled = inputMessage.isNotEmpty()) {
                                 onSendInput(inputMessage + "\n")
                                 inputMessage = ""
-                            }
-                        },
-                        enabled = inputMessage.isNotEmpty()
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
                             contentDescription = "Send stdin",
-                            tint = if (inputMessage.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(18.dp)
+                            tint = if (inputMessage.isNotEmpty()) Color(0xFF58A6FF) else Color(0xFF6E7681),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Action Buttons (Close + Kill Task)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val closeShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(closeShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.10f), closeShape)
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Close",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFC9D1D9)
+                        )
+                    }
+
+                    val killShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(killShape)
+                            .background(Brush.horizontalGradient(listOf(Color(0xFFDA3633), Color(0xFFF85149))))
+                            .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), killShape)
+                            .springPressClickable { onKill() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Kill Task",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
                         )
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onKill,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-            ) {
-                Text("Kill Task", color = MaterialTheme.colorScheme.onError)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
         }
-    )
+    }
 }

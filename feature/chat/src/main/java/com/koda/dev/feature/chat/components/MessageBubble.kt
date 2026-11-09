@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -50,6 +53,7 @@ import com.koda.dev.core.model.Message
 import com.koda.dev.core.model.MessageRole
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.ui.components.MarkdownText
+import com.koda.dev.core.ui.glass.springPressClickable
 import kotlinx.coroutines.delay
 
 @Composable
@@ -137,15 +141,49 @@ fun UserMessageBubble(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.End
     ) {
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = Color(0xFF21262D),
-            border = BorderStroke(
-                1.dp,
-                if (isSteering) Color(0xFF2F81F7).copy(alpha = 0.6f) else Color(0xFF30363D)
-            ),
-            modifier = Modifier.widthIn(max = 560.dp)
+        val bubbleShape = RoundedCornerShape(
+            topStart = 20.dp,
+            topEnd = 20.dp,
+            bottomStart = 20.dp,
+            bottomEnd = 6.dp
+        )
+        val bubbleBackground = if (isSteering) {
+            Brush.linearGradient(
+                listOf(
+                    Color(0xFF1F6FEB).copy(alpha = 0.40f),
+                    Color(0xFF0F172A).copy(alpha = 0.85f)
+                )
+            )
+        } else {
+            GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f)
+        }
+        val bubbleBorder = if (isSteering) {
+            GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.75f, dispersionAlpha = 0.35f)
+        } else {
+            GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f)
+        }
+
+        Box(
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = bubbleShape,
+                    ambientColor = Color(0x30000000),
+                    spotColor = Color(0x600F172A)
+                )
+                .clip(bubbleShape)
+                .background(bubbleBackground)
+                .border(1.dp, bubbleBorder, bubbleShape)
         ) {
+            // Internal top highlight sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(18.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 if (isSteering) {
                     Row(
@@ -267,17 +305,20 @@ fun AssistantMessageBubble(
             // Copy action button
             Box(
                 modifier = Modifier
+                    .size(28.dp)
                     .clip(CircleShape)
-                    .clickable {
+                    .background(GlassDesign.microGlassBackground(topAlpha = if (copied) 0.22f else 0.12f, bottomAlpha = 0.04f))
+                    .border(0.5.dp, GlassDesign.microGlassBorder(topAlpha = if (copied) 0.50f else 0.25f, bottomAlpha = 0.08f), CircleShape)
+                    .springPressClickable {
                         clipboardManager.setText(AnnotatedString(message.content))
                         copied = true
-                    }
-                    .padding(4.dp)
+                    },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
                     contentDescription = "Copy message",
-                    modifier = Modifier.size(15.dp),
+                    modifier = Modifier.size(14.dp),
                     tint = if (copied) Color(0xFF3FB950) else Color(0xFF8B949E)
                 )
             }
@@ -285,38 +326,46 @@ fun AssistantMessageBubble(
             Spacer(modifier = Modifier.width(6.dp))
 
             // Thumbs Up button
+            val isLiked = userRating == true
             Box(
                 modifier = Modifier
+                    .size(28.dp)
                     .clip(CircleShape)
-                    .clickable {
-                        userRating = if (userRating == true) null else true
-                    }
-                    .padding(4.dp)
+                    .background(GlassDesign.microGlassBackground(topAlpha = if (isLiked) 0.22f else 0.12f, bottomAlpha = 0.04f))
+                    .border(0.5.dp, GlassDesign.microGlassBorder(topAlpha = if (isLiked) 0.50f else 0.25f, bottomAlpha = 0.08f), CircleShape)
+                    .springPressClickable {
+                        userRating = if (isLiked) null else true
+                    },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (userRating == true) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                    imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                     contentDescription = "Helpful",
-                    modifier = Modifier.size(15.dp),
-                    tint = if (userRating == true) Color(0xFF2F81F7) else Color(0xFF8B949E)
+                    modifier = Modifier.size(14.dp),
+                    tint = if (isLiked) Color(0xFF58A6FF) else Color(0xFF8B949E)
                 )
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             // Thumbs Down button
+            val isDisliked = userRating == false
             Box(
                 modifier = Modifier
+                    .size(28.dp)
                     .clip(CircleShape)
-                    .clickable {
-                        userRating = if (userRating == false) null else false
-                    }
-                    .padding(4.dp)
+                    .background(GlassDesign.microGlassBackground(topAlpha = if (isDisliked) 0.22f else 0.12f, bottomAlpha = 0.04f))
+                    .border(0.5.dp, GlassDesign.microGlassBorder(topAlpha = if (isDisliked) 0.50f else 0.25f, bottomAlpha = 0.08f), CircleShape)
+                    .springPressClickable {
+                        userRating = if (isDisliked) null else false
+                    },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (userRating == false) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                    imageVector = if (isDisliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
                     contentDescription = "Not helpful",
-                    modifier = Modifier.size(15.dp),
-                    tint = if (userRating == false) Color(0xFFF85149) else Color(0xFF8B949E)
+                    modifier = Modifier.size(14.dp),
+                    tint = if (isDisliked) Color(0xFFF85149) else Color(0xFF8B949E)
                 )
             }
         }
