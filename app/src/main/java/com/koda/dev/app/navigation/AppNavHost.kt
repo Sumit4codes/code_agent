@@ -106,8 +106,8 @@ fun AppNavHost(
                 } else {
                     slideIntoContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        animationSpec = tween(320, easing = FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(240, easing = LinearOutSlowInEasing))
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(220, easing = LinearOutSlowInEasing))
                 }
             },
             exitTransition = {
@@ -119,11 +119,8 @@ fun AppNavHost(
                 } else {
                     slideOutOfContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        targetOffset = { it / 4 },
-                        animationSpec = tween(320, easing = FastOutSlowInEasing)
-                    ) + scaleOut(
-                        targetScale = 0.94f,
-                        animationSpec = tween(320, easing = FastOutSlowInEasing)
+                        targetOffset = { it / 5 },
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
                     ) + fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
                 }
             },
@@ -136,12 +133,9 @@ fun AppNavHost(
                 } else {
                     slideIntoContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        initialOffset = { it / 4 },
-                        animationSpec = tween(300, easing = FastOutSlowInEasing)
-                    ) + scaleIn(
-                        initialScale = 0.94f,
-                        animationSpec = tween(300, easing = FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(220, easing = LinearOutSlowInEasing))
+                        initialOffset = { it / 5 },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(200, easing = LinearOutSlowInEasing))
                 }
             },
             popExitTransition = {
@@ -153,7 +147,7 @@ fun AppNavHost(
                 } else {
                     slideOutOfContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
                     ) + fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
                 }
             }

@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -96,11 +97,12 @@ fun EditorScreen(
         }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val totalMaxWidth = maxWidth
-        val isWideScreen = totalMaxWidth >= 600.dp
-        val isSplitView = userSplitPreference ?: isWideScreen
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val isWideScreen = screenWidth >= 600.dp
+    val isSplitView = userSplitPreference ?: isWideScreen
 
+    Box(modifier = Modifier.fillMaxSize()) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             gesturesEnabled = !isSplitView,
@@ -108,7 +110,7 @@ fun EditorScreen(
                 val drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)
                 ModalDrawerSheet(
                     modifier = Modifier
-                        .widthIn(max = minOf(320.dp, totalMaxWidth * 0.85f))
+                        .widthIn(max = minOf(320.dp, screenWidth * 0.85f))
                         .fillMaxHeight()
                         .shadow(elevation = 20.dp, shape = drawerShape)
                         .clip(drawerShape)
@@ -117,31 +119,39 @@ fun EditorScreen(
                     drawerContainerColor = Color.Transparent,
                     drawerShape = drawerShape
                 ) {
-                    FileExplorerPane(
-                        state = state,
-                        searchQuery = searchQuery,
-                        onSearchQueryChange = { searchQuery = it },
-                        onNavigateInto = { viewModel.navigateInto(it) },
-                        onNavigateUp = { viewModel.navigateUp() },
-                        onBreadcrumbClick = { viewModel.navigateToBreadcrumb(it) },
-                        onFileSelect = { file ->
-                            viewModel.selectFile(file)
-                            coroutineScope.launch { drawerState.close() }
-                        },
-                        onNewFileClick = { parentUri -> viewModel.openCreateFileDialog(parentUri) },
-                        onNewFolderClick = { parentUri -> viewModel.openCreateFolderDialog(parentUri) },
-                        onRenameClick = { node -> viewModel.openRenameDialog(node) },
-                        onDeleteClick = { node -> viewModel.openDeleteDialog(node) },
-                        onRefreshClick = { viewModel.refresh() },
-                        onCopyPath = { path ->
-                            clipboardManager.setText(AnnotatedString(path))
-                            coroutineScope.launch { snackbarHostState.showSnackbar("Copied path to clipboard") }
-                        },
-                        onCloseDrawer = {
-                            coroutineScope.launch { drawerState.close() }
-                        },
-                        showDrawerHeader = true
+                    val shouldComposeExplorer = !isSplitView && (
+                        state.openTabs.isNotEmpty() ||
+                        drawerState.isOpen ||
+                        drawerState.isAnimationRunning ||
+                        drawerState.targetValue == DrawerValue.Open
                     )
+                    if (shouldComposeExplorer) {
+                        FileExplorerPane(
+                            state = state,
+                            searchQuery = searchQuery,
+                            onSearchQueryChange = { searchQuery = it },
+                            onNavigateInto = { viewModel.navigateInto(it) },
+                            onNavigateUp = { viewModel.navigateUp() },
+                            onBreadcrumbClick = { viewModel.navigateToBreadcrumb(it) },
+                            onFileSelect = { file ->
+                                viewModel.selectFile(file)
+                                coroutineScope.launch { drawerState.close() }
+                            },
+                            onNewFileClick = { parentUri -> viewModel.openCreateFileDialog(parentUri) },
+                            onNewFolderClick = { parentUri -> viewModel.openCreateFolderDialog(parentUri) },
+                            onRenameClick = { node -> viewModel.openRenameDialog(node) },
+                            onDeleteClick = { node -> viewModel.openDeleteDialog(node) },
+                            onRefreshClick = { viewModel.refresh() },
+                            onCopyPath = { path ->
+                                clipboardManager.setText(AnnotatedString(path))
+                                coroutineScope.launch { snackbarHostState.showSnackbar("Copied path to clipboard") }
+                            },
+                            onCloseDrawer = {
+                                coroutineScope.launch { drawerState.close() }
+                            },
+                            showDrawerHeader = true
+                        )
+                    }
                 }
             }
         ) {
@@ -152,7 +162,17 @@ fun EditorScreen(
                         state = state,
                         isSplitView = isSplitView,
                         wrapLines = wrapLines,
-                        onNavigateBack = onNavigateBack,
+                        onNavigateBack = {
+                            if (drawerState.isOpen) {
+                                coroutineScope.launch { drawerState.close() }
+                            } else if (state.activeTab?.isDirty == true) {
+                                viewModel.closeActiveTab(force = false)
+                            } else if (state.openTabs.isNotEmpty()) {
+                                viewModel.closeActiveTab(force = true)
+                            } else if (onNavigateBack != null) {
+                                onNavigateBack()
+                            }
+                        },
                         onToggleDrawer = {
                             coroutineScope.launch {
                                 if (drawerState.isOpen) drawerState.close() else drawerState.open()
@@ -200,11 +220,19 @@ fun EditorScreen(
                             .padding(padding),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            "Open a project to browse files",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (projectId.isNotBlank() && projectId != "none") {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 2.5.dp,
+                                color = Color(0xFF58A6FF)
+                            )
+                        } else {
+                            Text(
+                                "Open a project to browse files",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 } else if (isSplitView) {
                     // Split View: Explorer Sidebar + Code Editor
@@ -215,7 +243,7 @@ fun EditorScreen(
                             .consumeWindowInsets(padding)
                             .imePadding()
                     ) {
-                        val sidebarWidth = if (isWideScreen) 270.dp else (totalMaxWidth * 0.42f).coerceIn(180.dp, 300.dp)
+                        val sidebarWidth = if (isWideScreen) 270.dp else (screenWidth * 0.42f).coerceIn(180.dp, 300.dp)
                         Surface(
                             modifier = Modifier
                                 .width(sidebarWidth)
@@ -1025,7 +1053,22 @@ fun FileExplorerPane(
                     }
                 }
 
-                if (filteredTree.isEmpty()) {
+                if (state.isLoading && filteredTree.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = Color(0xFF58A6FF)
+                            )
+                        }
+                    }
+                } else if (filteredTree.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
