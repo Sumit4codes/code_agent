@@ -652,7 +652,8 @@ fun ChatScreen(
             },
             onDeleteSession = { sessionId ->
                 viewModel.deleteSession(sessionId)
-            }
+            },
+            backdropState = backdropState
         )
     }
 

@@ -58,6 +58,7 @@ fun ProviderSelectorSheet(
     activeProviderId: String?,
     onSelectProvider: (String) -> Unit,
     onDismiss: () -> Unit,
+    backdropState: BackdropState? = null,
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -80,15 +81,16 @@ fun ProviderSelectorSheet(
                     ambientColor = Color(0x33000000),
                     spotColor = Color(0x660F172A)
                 )
-                .clip(sheetShape)
-                .background(GlassDesign.liquidGlassBackground())
-                .border(
-                    width = 1.dp,
-                    brush = GlassDesign.liquidGlassBorder(
+                .liquidGlassBackdrop(
+                    backdropState = backdropState,
+                    shape = sheetShape,
+                    blurRadius = 24.dp,
+                    tintColor = Color(0xC410141E),
+                    specularBorder = GlassDesign.liquidGlassBorder(
                         topSpecularAlpha = 0.65f,
                         dispersionAlpha = 0.28f
                     ),
-                    shape = sheetShape
+                    borderWidth = 1.dp
                 )
         ) {
             // Internal Top Refraction Sheen

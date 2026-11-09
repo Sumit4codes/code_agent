@@ -98,7 +98,8 @@ fun ChatInputBar(
             onSelectGoal = {
                 onSelectGoal()
                 showOptionsSheet = false
-            }
+            },
+            backdropState = backdropState
         )
     }
 
@@ -109,7 +110,8 @@ fun ChatInputBar(
             onSelectProvider = { providerId ->
                 onSelectProvider?.invoke(providerId)
             },
-            onDismiss = { showProviderSheet = false }
+            onDismiss = { showProviderSheet = false },
+            backdropState = backdropState
         )
     }
 
