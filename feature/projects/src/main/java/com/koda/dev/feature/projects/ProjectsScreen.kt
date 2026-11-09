@@ -21,7 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
@@ -44,6 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -692,18 +696,118 @@ fun DirectoryPickerDialog(
         }
     }
 
-    AlertDialog(
+    val dialogShape = RoundedCornerShape(26.dp)
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                "Select Project Folder",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = Color(0xFFF0F6FC)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
+        ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
             )
-        },
-        containerColor = Color(0xFF161B22),
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header with Frosted Folder Avatar Disc
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.size(40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                    .border(
+                                        width = 0.75.dp,
+                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = Color(0xFF58A6FF)
+                                )
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = "Select Project Folder",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "Choose root directory for workspace",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Close Button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close dialog",
+                            tint = Color(0xFFC9D1D9),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
                 // Direct Path Input
                 OutlinedTextField(
                     value = pathInput,
@@ -717,66 +821,82 @@ fun DirectoryPickerDialog(
                     label = { Text("Folder Path", color = Color(0xFF8B949E)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                     textStyle = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = FontFamily.Monospace,
                         color = Color(0xFFF0F6FC)
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFF58A6FF),
-                        unfocusedBorderColor = Color(0xFF30363D)
+                        unfocusedBorderColor = Color(0xFF30363D),
+                        focusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.90f),
+                        unfocusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.80f)
                     )
                 )
-
-                Spacer(Modifier.height(8.dp))
 
                 // Quick jump shortcuts
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     val ext = Environment.getExternalStorageDirectory()
                     val docs = File(ext, "Documents")
                     val download = File(ext, "Download")
 
-                    SuggestionChip(
-                        onClick = {
-                            currentDir = ext
-                            pathInput = ext.absolutePath
-                        },
-                        label = { Text("Root", style = MaterialTheme.typography.labelSmall) }
+                    val shortcuts = listOf(
+                        "Root" to ext,
+                        "Documents" to docs,
+                        "Download" to download
                     )
-                    if (docs.exists()) {
-                        SuggestionChip(
-                            onClick = {
-                                currentDir = docs
-                                pathInput = docs.absolutePath
-                            },
-                            label = { Text("Documents", style = MaterialTheme.typography.labelSmall) }
-                        )
-                    }
-                    if (download.exists()) {
-                        SuggestionChip(
-                            onClick = {
-                                currentDir = download
-                                pathInput = download.absolutePath
-                            },
-                            label = { Text("Download", style = MaterialTheme.typography.labelSmall) }
-                        )
+
+                    shortcuts.forEach { (label, dir) ->
+                        if (dir.exists()) {
+                            val isCurrent = currentDir.absolutePath == dir.absolutePath
+                            val chipShape = RoundedCornerShape(10.dp)
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(chipShape)
+                                    .then(
+                                        if (isCurrent) {
+                                            Modifier.background(Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                        } else {
+                                            Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                        }
+                                    )
+                                    .border(
+                                        width = 0.75.dp,
+                                        brush = if (isCurrent) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.7f, dispersionAlpha = 0.35f)
+                                        else GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.08f),
+                                        shape = chipShape
+                                    )
+                                    .springPressClickable {
+                                        currentDir = dir
+                                        pathInput = dir.absolutePath
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = if (isCurrent) Color(0xFF79C0FF) else Color(0xFFC9D1D9)
+                                )
+                            }
+                        }
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
-
-                // Subdirectories listing
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1117)),
-                    shape = RoundedCornerShape(12.dp),
+                // Subdirectories listing card
+                val listCardShape = RoundedCornerShape(16.dp)
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
-                        .border(1.dp, Color(0xFF30363D), RoundedCornerShape(12.dp))
+                        .height(210.dp)
+                        .clip(listCardShape)
+                        .background(Color(0xFF0D1117).copy(alpha = 0.85f))
+                        .border(1.dp, Color(0xFF30363D), listCardShape)
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+                    LazyColumn(modifier = Modifier.fillMaxSize().padding(6.dp)) {
                         // Parent directory item
                         val parent = currentDir.parentFile
                         if (parent != null && parent.canRead()) {
@@ -785,21 +905,23 @@ fun DirectoryPickerDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .springPressClickable {
                                             currentDir = parent
                                             pathInput = parent.absolutePath
                                         }
-                                        .padding(8.dp)
+                                        .padding(horizontal = 10.dp, vertical = 8.dp)
                                 ) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
                                         contentDescription = "Go up",
-                                        tint = Color(0xFF8B949E)
+                                        tint = Color(0xFF8B949E),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         ".. (Up)",
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                                         color = Color(0xFF8B949E)
                                     )
                                 }
@@ -809,11 +931,11 @@ fun DirectoryPickerDialog(
                         if (subdirectories.isEmpty()) {
                             item {
                                 Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(24.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        "No subdirectories",
+                                        "No subdirectories found",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF8B949E)
                                     )
@@ -825,58 +947,108 @@ fun DirectoryPickerDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .springPressClickable {
                                             currentDir = dir
                                             pathInput = dir.absolutePath
                                         }
-                                        .padding(8.dp)
+                                        .padding(horizontal = 10.dp, vertical = 8.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Folder,
                                         contentDescription = null,
-                                        tint = Color(0xFF58A6FF)
+                                        tint = Color(0xFF58A6FF),
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        dir.name,
+                                        text = dir.name,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = Color(0xFFF0F6FC),
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
                         }
                     }
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val target = File(pathInput)
-                    if (target.exists() && target.isDirectory) {
-                        onFolderSelected(target)
-                    } else if (currentDir.exists() && currentDir.isDirectory) {
-                        onFolderSelected(currentDir)
+
+                // Footer action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Cancel button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .springPressClickable(onClick = onDismiss)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF8B949E)
+                        )
                     }
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF238636),
-                    contentColor = Color.White
-                )
-            ) {
-                Text("Select Folder")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Color(0xFF8B949E)
-                )
-            ) {
-                Text("Cancel")
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // Select Folder button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        Color(0xFF1F6FEB).copy(alpha = 0.50f),
+                                        Color(0xFF238636).copy(alpha = 0.40f)
+                                    )
+                                )
+                            )
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.liquidGlassBorder(
+                                    topSpecularAlpha = 0.80f,
+                                    dispersionAlpha = 0.40f
+                                ),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .springPressClickable {
+                                val target = File(pathInput)
+                                if (target.exists() && target.isDirectory) {
+                                    onFolderSelected(target)
+                                } else if (currentDir.exists() && currentDir.isDirectory) {
+                                    onFolderSelected(currentDir)
+                                }
+                            }
+                            .padding(horizontal = 18.dp, vertical = 10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = Color(0xFF79C0FF)
+                        )
+                        Text(
+                            text = "Select Folder",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFFF0F6FC)
+                        )
+                    }
+                }
             }
         }
-    )
+    }
 }
