@@ -86,6 +86,7 @@ fun ChatInputBar(
     contextUsage: ContextUsageState = ContextUsageState(),
     onCompact: () -> Unit = {},
     onOpenDetails: () -> Unit = {},
+    backdropState: BackdropState? = null,
     modifier: Modifier = Modifier
 ) {
     var showOptionsSheet by remember { mutableStateOf(false) }
@@ -117,16 +118,6 @@ fun ChatInputBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color.Transparent,
-                        Color(0x660D1117),
-                        Color(0xD90D1117),
-                        Color(0xF50D1117)
-                    )
-                )
-            )
             .imePadding()
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -194,56 +185,34 @@ fun ChatInputBar(
                 }
             }
 
-            // Main Unified Liquid Glass Capsule Card (Liquid Glass Effect)
+            // Main Unified Liquid Glass Capsule Card (Liquid Glass Optics: Blur + SDF Refraction)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .shadow(
-                        elevation = 20.dp,
+                        elevation = 16.dp,
                         shape = glassShape,
-                        ambientColor = Color(0x80000000),
-                        spotColor = Color(0xCC000000)
+                        ambientColor = Color(0x33000000),
+                        spotColor = Color(0x660F172A)
                     )
-                    .clip(glassShape)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color(0xFF242B38), // Frosted slate-glass top sheen
-                                Color(0xFF191E28), // Deep optical glass core
-                                Color(0xFF12151E)  // Liquid refraction base
-                            )
-                        )
-                    )
-                    .border(
-                        width = 1.25.dp,
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                Color(0x80FFFFFF), // Bright specular highlight at top apex
-                                Color(0x3379C0FF), // Refraction cool dispersion tint
-                                Color(0x18FFFFFF), // Soft lateral rim
-                                Color(0x0DFFFFFF)  // Translucent bottom rim
-                            )
+                    .liquidGlassBackdrop(
+                        backdropState = backdropState,
+                        shape = glassShape,
+                        blurRadius = 24.dp,
+                        tintColor = Color(0xC410141E),
+                        specularBorder = GlassDesign.liquidGlassBorder(
+                            topSpecularAlpha = 0.65f,
+                            dispersionAlpha = 0.28f
                         ),
-                        shape = glassShape
+                        borderWidth = 1.dp
                     )
             ) {
-                // Top Specular Hairline Highlight (Liquid Glass signature edge)
+                // Internal Top Refraction Sheen (subtle light penetration through curved glass)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(1.dp)
-                        .padding(horizontal = 28.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    Color.Transparent,
-                                    Color(0x33FFFFFF),
-                                    Color(0x80FFFFFF),
-                                    Color(0x33FFFFFF),
-                                    Color.Transparent
-                                )
-                            )
-                        )
+                        .height(36.dp)
+                        .background(GlassDesign.internalGlassSheen())
                 )
 
                 Column(
@@ -269,7 +238,7 @@ fun ChatInputBar(
                                     fontSize = 14.5.sp,
                                     lineHeight = 20.sp
                                 ),
-                                color = Color(0xFF8B949E),
+                                color = Color(0xFF94A3B8),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -279,7 +248,7 @@ fun ChatInputBar(
                             value = inputText,
                             onValueChange = onInputChange,
                             textStyle = TextStyle(
-                                color = Color(0xFFF0F6FC),
+                                color = Color(0xFFF8FAFC),
                                 fontSize = 14.5.sp,
                                 lineHeight = 20.sp
                             ),
@@ -306,16 +275,9 @@ fun ChatInputBar(
                                 modifier = Modifier
                                     .size(28.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(
-                                                Color(0x26FFFFFF),
-                                                Color(0x0FFFFFFF)
-                                            )
-                                        )
-                                    )
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
                                     .border(0.5.dp, Color(0x33FFFFFF), CircleShape)
-                                    .clickable { showOptionsSheet = true },
+                                    .springPressClickable { showOptionsSheet = true },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -336,25 +298,13 @@ fun ChatInputBar(
                             Row(
                                 modifier = Modifier
                                     .clip(chipShape)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(
-                                                Color(0x2EFFFFFF),
-                                                Color(0x12FFFFFF)
-                                            )
-                                        )
-                                    )
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.09f))
                                     .border(
                                         width = 0.75.dp,
-                                        brush = Brush.verticalGradient(
-                                            listOf(
-                                                Color(0x55FFFFFF),
-                                                Color(0x18FFFFFF)
-                                            )
-                                        ),
+                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
                                         shape = chipShape
                                     )
-                                    .clickable { showProviderSheet = true }
+                                    .springPressClickable { showProviderSheet = true }
                                     .padding(horizontal = 10.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -404,7 +354,7 @@ fun ChatInputBar(
                                                 )
                                             )
                                             .border(0.75.dp, Color(0x66FFFFFF), CircleShape)
-                                            .clickable { onSteer?.invoke() ?: onSend() },
+                                            .springPressClickable { onSteer?.invoke() ?: onSend() },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
@@ -426,7 +376,7 @@ fun ChatInputBar(
                                                 )
                                             )
                                             .border(0.75.dp, Color(0x66FFFFFF), CircleShape)
-                                            .clickable { onCancel() },
+                                            .springPressClickable { onCancel() },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
@@ -487,7 +437,7 @@ fun ChatInputBar(
                                             },
                                             shape = sendShape
                                         )
-                                        .clickable(enabled = isEnabled) { onSend() },
+                                        .springPressClickable(enabled = isEnabled) { onSend() },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(

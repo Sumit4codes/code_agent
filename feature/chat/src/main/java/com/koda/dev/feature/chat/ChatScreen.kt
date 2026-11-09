@@ -62,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,8 +70,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -87,7 +91,10 @@ import com.koda.dev.feature.chat.components.MessageItem
 import com.koda.dev.feature.chat.components.PendingChangesBanner
 import com.koda.dev.feature.chat.components.SessionHistorySheet
 import com.koda.dev.feature.chat.components.StreamingBubble
+import com.koda.dev.feature.chat.components.captureBackdrop
 import com.koda.dev.feature.chat.components.groupMessagesIntoTurns
+import com.koda.dev.feature.chat.components.rememberBackdropState
+import com.koda.dev.feature.chat.components.springPressClickable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -126,6 +133,8 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val scaffoldState = rememberTopAppBarState()
+    val backdropState = rememberBackdropState()
+    var inputBarHeightPx by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank() && projectId != "none" && state.projectId != projectId) {
@@ -220,9 +229,9 @@ fun ChatScreen(
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xF5181D26), // 96% frosted slate top
-                                Color(0xEB141822), // 92% optical glass
-                                Color(0xD90F131A)  // 85% translucent bottom
+                                Color(0xFA161B22), // 98% frosted slate top
+                                Color(0xF5131720), // 96% optical core
+                                Color(0xEB0E1117)  // 92% translucent bottom
                             )
                         )
                     )
@@ -393,7 +402,7 @@ fun ChatScreen(
                     )
                 )
 
-                // Specular Refraction Bottom Hairline (Liquid Glass edge)
+                // Subtle Optical Edge Separator (soft boundary for scrolling content flow)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -403,10 +412,9 @@ fun ChatScreen(
                             Brush.horizontalGradient(
                                 listOf(
                                     Color.Transparent,
-                                    Color(0x33FFFFFF),
-                                    Color(0x66FFFFFF),
-                                    Color(0x2679C0FF),
-                                    Color(0x33FFFFFF),
+                                    Color(0x14FFFFFF),
+                                    Color(0x24FFFFFF),
+                                    Color(0x14FFFFFF),
                                     Color.Transparent
                                 )
                             )
@@ -414,8 +422,117 @@ fun ChatScreen(
                 )
             }
         },
-        bottomBar = {
-            Column {
+        bottomBar = {}
+    ) { padding ->
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .captureBackdrop(backdropState)
+            ) {
+                // Pending changes banner
+                if (state.pendingChanges.isNotEmpty()) {
+                    PendingChangesBanner(
+                        changes = state.pendingChanges,
+                        onApproveAll = { viewModel.approveAllChanges() },
+                        onRejectAll = { viewModel.rejectAllChanges() },
+                        onApprove = { viewModel.approveChange(it) },
+                        onReject = { viewModel.rejectChange(it) },
+                        onReviewDiffs = {
+                            selectedDiffChange = state.pendingChanges.firstOrNull()
+                            showDiffBottomSheet = true
+                        },
+                        modifier = Modifier.padding(top = padding.calculateTopPadding())
+                    )
+                }
+
+                // Error notification banner
+                if (state.error != null) {
+                    ErrorBanner(
+                        error = state.error ?: "",
+                        onDismiss = { viewModel.clearError() },
+                        modifier = Modifier.padding(top = if (state.pendingChanges.isEmpty()) padding.calculateTopPadding() else 0.dp)
+                    )
+                }
+
+                // Messages area or Empty State
+                if (displayMessages.isEmpty() && !state.isStreaming) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(
+                                top = padding.calculateTopPadding(),
+                                bottom = with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp
+                            )
+                    ) {
+                        EmptyChatState(
+                            hasProject = state.projectUri != null,
+                            projectName = state.projectName,
+                            modelName = state.model,
+                            onSuggestionClick = { suggestionPrompt ->
+                                viewModel.sendMessage(suggestionPrompt)
+                            }
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = padding.calculateTopPadding() + 8.dp,
+                            bottom = with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(
+                            items = displayMessages,
+                            key = { it.id },
+                            contentType = { it.role.name }
+                        ) { message ->
+                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
+                            val isLive = state.isStreaming && isLastItem
+
+                            MessageItem(
+                                message = message,
+                                isLive = isLive,
+                                pendingChanges = state.pendingChanges,
+                                onApproveChange = { viewModel.approveChange(it) },
+                                onRejectChange = { viewModel.rejectChange(it) },
+                                onOpenFullReview = { change ->
+                                    selectedDiffChange = change ?: state.pendingChanges.firstOrNull()
+                                    showDiffBottomSheet = true
+                                }
+                            )
+                        }
+
+                        if (state.isStreaming) {
+                            item(key = "streaming_bubble") {
+                                StreamingBubble(
+                                    streamingText = state.streamingText,
+                                    activeTool = state.activeTool,
+                                    modelName = state.model
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Floating Input Deck (Liquid Glass capsule floating over scrolling messages)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .onGloballyPositioned { coords ->
+                        inputBarHeightPx = coords.size.height.toFloat()
+                    }
+            ) {
                 if (state.activeBackgroundTasks.isNotEmpty()) {
                     ActiveTasksStrip(
                         tasks = state.activeBackgroundTasks,
@@ -464,102 +581,9 @@ fun ChatScreen(
                             "/goal $current"
                         }
                         inputText = newText
-                    }
+                    },
+                    backdropState = backdropState
                 )
-            }
-        }
-    ) { padding ->
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Pending changes banner
-                if (state.pendingChanges.isNotEmpty()) {
-                    PendingChangesBanner(
-                        changes = state.pendingChanges,
-                        onApproveAll = { viewModel.approveAllChanges() },
-                        onRejectAll = { viewModel.rejectAllChanges() },
-                        onApprove = { viewModel.approveChange(it) },
-                        onReject = { viewModel.rejectChange(it) },
-                        onReviewDiffs = {
-                            selectedDiffChange = state.pendingChanges.firstOrNull()
-                            showDiffBottomSheet = true
-                        },
-                        modifier = Modifier.padding(top = padding.calculateTopPadding())
-                    )
-                }
-
-                // Error notification banner
-                if (state.error != null) {
-                    ErrorBanner(
-                        error = state.error ?: "",
-                        onDismiss = { viewModel.clearError() },
-                        modifier = Modifier.padding(top = if (state.pendingChanges.isEmpty()) padding.calculateTopPadding() else 0.dp)
-                    )
-                }
-
-                // Messages area or Empty State
-                if (displayMessages.isEmpty() && !state.isStreaming) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
-                    ) {
-                        EmptyChatState(
-                            hasProject = state.projectUri != null,
-                            projectName = state.projectName,
-                            modelName = state.model,
-                            onSuggestionClick = { suggestionPrompt ->
-                                viewModel.sendMessage(suggestionPrompt)
-                            }
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = padding.calculateTopPadding() + 8.dp,
-                            bottom = padding.calculateBottomPadding() + 8.dp
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(
-                            items = displayMessages,
-                            key = { it.id },
-                            contentType = { it.role.name }
-                        ) { message ->
-                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
-                            val isLive = state.isStreaming && isLastItem
-
-                            MessageItem(
-                                message = message,
-                                isLive = isLive,
-                                pendingChanges = state.pendingChanges,
-                                onApproveChange = { viewModel.approveChange(it) },
-                                onRejectChange = { viewModel.rejectChange(it) },
-                                onOpenFullReview = { change ->
-                                    selectedDiffChange = change ?: state.pendingChanges.firstOrNull()
-                                    showDiffBottomSheet = true
-                                }
-                            )
-                        }
-
-                        if (state.isStreaming) {
-                            item(key = "streaming_bubble") {
-                                StreamingBubble(
-                                    streamingText = state.streamingText,
-                                    activeTool = state.activeTool,
-                                    modelName = state.model
-                                )
-                            }
-                        }
-                    }
-                }
             }
 
             // Scroll to bottom floating button (centered above input bar)
@@ -569,34 +593,46 @@ fun ChatScreen(
                 exit = fadeOut() + scaleOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = padding.calculateBottomPadding() + 10.dp)
+                    .padding(bottom = with(LocalDensity.current) { inputBarHeightPx.toDp() } + 10.dp)
             ) {
-                Surface(
-                    onClick = {
-                        userScrolledUp = false
-                        coroutineScope.launch {
-                            if (totalItemsCount > 0) {
-                                listState.animateScrollToItem(totalItemsCount - 1)
-                            }
-                        }
-                    },
-                    modifier = Modifier.size(36.dp),
-                    shape = CircleShape,
-                    color = androidx.compose.ui.graphics.Color(0xFF21262D),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF30363D)),
-                    shadowElevation = 4.dp
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Scroll to bottom",
-                            modifier = Modifier.size(20.dp),
-                            tint = androidx.compose.ui.graphics.Color(0xFFF0F6FC)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = CircleShape,
+                            ambientColor = Color(0x60000000),
+                            spotColor = Color(0x90000000)
                         )
-                    }
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF242B38), Color(0xFF151922))
+                            )
+                        )
+                        .border(
+                            width = 0.75.dp,
+                            brush = Brush.verticalGradient(
+                                listOf(Color(0x66FFFFFF), Color(0x18FFFFFF))
+                            ),
+                            shape = CircleShape
+                        )
+                        .springPressClickable {
+                            userScrolledUp = false
+                            coroutineScope.launch {
+                                if (totalItemsCount > 0) {
+                                    listState.animateScrollToItem(totalItemsCount - 1)
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Scroll to bottom",
+                        modifier = Modifier.size(20.dp),
+                        tint = Color(0xFFF0F6FC)
+                    )
                 }
             }
         }

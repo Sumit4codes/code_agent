@@ -70,25 +70,13 @@ fun ContextWindowButton(
         Row(
             modifier = Modifier
                 .clip(pillShape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0x2EFFFFFF),
-                            Color(0x12FFFFFF)
-                        )
-                    )
-                )
+                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.09f))
                 .border(
                     width = 0.75.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0x55FFFFFF),
-                            Color(0x18FFFFFF)
-                        )
-                    ),
+                    brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
                     shape = pillShape
                 )
-                .clickable { showPopover = true }
+                .springPressClickable { showPopover = true }
                 .padding(horizontal = 7.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -154,23 +142,12 @@ fun ContextWindowButton(
                     spotColor = Color(0xCC000000)
                 )
                 .clip(popoverShape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFF222836),
-                            Color(0xFF171B24),
-                            Color(0xFF10141C)
-                        )
-                    )
-                )
+                .background(GlassDesign.liquidGlassBackground())
                 .border(
                     width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0x80FFFFFF),
-                            Color(0x2679C0FF),
-                            Color(0x10FFFFFF)
-                        )
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.45f,
+                        dispersionAlpha = 0.18f
                     ),
                     shape = popoverShape
                 )
@@ -275,7 +252,7 @@ fun ContextWindowButton(
                             .clip(actionPillShape)
                             .background(Color(0x1FFFFFFF))
                             .border(0.5.dp, Color(0x33FFFFFF), actionPillShape)
-                            .clickable {
+                            .springPressClickable {
                                 showPopover = false
                                 onOpenDetails()
                             }
@@ -303,7 +280,7 @@ fun ContextWindowButton(
                                 )
                             )
                             .border(0.75.dp, Color(0x66FFFFFF), actionPillShape)
-                            .clickable {
+                            .springPressClickable {
                                 showPopover = false
                                 onCompact()
                             }

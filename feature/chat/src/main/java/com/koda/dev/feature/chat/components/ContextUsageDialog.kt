@@ -70,51 +70,28 @@ fun ContextUsageDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .shadow(
-                    elevation = 24.dp,
+                    elevation = 20.dp,
                     shape = dialogShape,
-                    ambientColor = Color(0x80000000),
-                    spotColor = Color(0xCC000000)
+                    ambientColor = Color(0x33000000),
+                    spotColor = Color(0x660F172A)
                 )
                 .clip(dialogShape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFF222836), // Frosted slate top sheen
-                            Color(0xFF171B24), // Optical core
-                            Color(0xFF10141C)  // Deep liquid glass base
-                        )
-                    )
-                )
+                .background(GlassDesign.liquidGlassBackground())
                 .border(
-                    width = 1.25.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0x80FFFFFF), // Bright specular highlight at top curve
-                            Color(0x3379C0FF), // Dispersion tint
-                            Color(0x18FFFFFF),
-                            Color(0x08FFFFFF)
-                        )
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.65f,
+                        dispersionAlpha = 0.28f
                     ),
                     shape = dialogShape
                 )
         ) {
-            // Top specular hairline highlight
+            // Internal Top Refraction Sheen
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
-                    .padding(horizontal = 32.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                Color.Transparent,
-                                Color(0x33FFFFFF),
-                                Color(0x80FFFFFF),
-                                Color(0x33FFFFFF),
-                                Color.Transparent
-                            )
-                        )
-                    )
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
             )
 
             Column(
@@ -158,7 +135,7 @@ fun ContextUsageDialog(
                                 )
                             )
                             .border(0.5.dp, Color(0x33FFFFFF), CircleShape)
-                            .clickable { onDismiss() },
+                            .springPressClickable { onDismiss() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -376,7 +353,7 @@ fun ContextUsageDialog(
                                 .clip(btnShape)
                                 .background(Color(0x1FFFFFFF))
                                 .border(0.5.dp, Color(0x33FFFFFF), btnShape)
-                                .clickable { onDismiss() }
+                                .springPressClickable { onDismiss() }
                                 .padding(vertical = 10.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -407,7 +384,7 @@ fun ContextUsageDialog(
                                     )
                                 )
                                 .border(0.75.dp, Color(0x80FFFFFF), btnShape)
-                                .clickable {
+                                .springPressClickable {
                                     onDismiss()
                                     onCompact()
                                 }
