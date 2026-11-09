@@ -270,6 +270,7 @@ fun AppNavHost(
                 },
                 modifier = Modifier
                     .navigationBarsPadding()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             )
         }

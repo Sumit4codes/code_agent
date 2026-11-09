@@ -15,20 +15,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -249,7 +237,9 @@ fun ChatScreen(
                                 selectedDiffChange = state.pendingChanges.firstOrNull()
                                 showDiffBottomSheet = true
                             },
-                            modifier = Modifier.padding(top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp)
+                            modifier = Modifier
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                .padding(top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp)
                         )
                     }
 
@@ -258,7 +248,9 @@ fun ChatScreen(
                         ErrorBanner(
                             error = state.error ?: "",
                             onDismiss = { viewModel.clearError() },
-                            modifier = Modifier.padding(top = if (state.pendingChanges.isEmpty()) (if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp) else 0.dp)
+                            modifier = Modifier
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                .padding(top = if (state.pendingChanges.isEmpty()) (if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp) else 0.dp)
                         )
                     }
 
@@ -267,6 +259,7 @@ fun ChatScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                                 .padding(
                                     top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
                                     bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
@@ -282,14 +275,16 @@ fun ChatScreen(
                             )
                         }
                     } else {
+                        val layoutDirection = LocalLayoutDirection.current
+                        val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
                             contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
+                                start = 16.dp + safeInsets.calculateStartPadding(layoutDirection),
+                                end = 16.dp + safeInsets.calculateEndPadding(layoutDirection),
                                 top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
                                 bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
                             ),
@@ -339,6 +334,7 @@ fun ChatScreen(
                         topBarHeightPx = coords.size.height.toFloat()
                     }
                     .statusBarsPadding()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
                     .shadow(
                         elevation = 16.dp,
@@ -526,6 +522,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .onGloballyPositioned { coords ->
                         inputBarHeightPx = coords.size.height.toFloat()
                     }
@@ -590,6 +587,7 @@ fun ChatScreen(
                 exit = fadeOut() + scaleOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(bottom = with(LocalDensity.current) { inputBarHeightPx.toDp() } + 10.dp)
             ) {
                 Box(

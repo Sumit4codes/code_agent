@@ -48,6 +48,7 @@ fun ProgrammingAccessoryBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             .background(GlassDesign.liquidGlassBackground(topAlpha = 0.92f, midAlpha = 0.88f, bottomAlpha = 0.82f))
             .border(
                 width = 0.5.dp,

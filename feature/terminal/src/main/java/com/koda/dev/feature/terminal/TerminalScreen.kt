@@ -94,6 +94,7 @@ fun TerminalScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                 .captureBackdrop(backdropState)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -307,9 +308,12 @@ fun TerminalScreen(
             )
 
             // Dynamic bottom spacing so terminal output clears the floating accessory dock and bottom nav bar
+            val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             Spacer(
                 modifier = Modifier.height(
-                    if (bottomDockHeightPx > 0f) with(LocalDensity.current) { bottomDockHeightPx.toDp() } + (if (isKeyboardOpen) 10.dp else 86.dp) else 80.dp
+                    if (bottomDockHeightPx > 0f) {
+                        with(LocalDensity.current) { bottomDockHeightPx.toDp() } + (if (isKeyboardOpen) 10.dp else if (projectId.isNullOrBlank()) (80.dp + navBarsBottomInset) else (14.dp + navBarsBottomInset))
+                    } else 80.dp
                 )
             )
         }
@@ -324,6 +328,7 @@ fun TerminalScreen(
                     topBarHeightPx = coords.size.height.toFloat()
                 }
                 .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                 .padding(horizontal = 14.dp, vertical = 6.dp)
                 .shadow(
                     elevation = 16.dp,
@@ -583,12 +588,13 @@ fun TerminalScreen(
                     bottomDockHeightPx = coords.size.height.toFloat()
                 }
                 .navigationBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                 .imePadding()
                 .padding(
                     start = 12.dp,
                     end = 12.dp,
                     top = 4.dp,
-                    bottom = if (isKeyboardOpen) 6.dp else 80.dp
+                    bottom = if (isKeyboardOpen) 6.dp else if (projectId.isNullOrBlank()) 76.dp else 10.dp
                 )
                 .shadow(
                     elevation = 18.dp,

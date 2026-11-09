@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -119,16 +120,20 @@ fun ProjectsScreen(
             .fillMaxSize()
             .background(Color(0xFF0B0E14)) // Deep optical slate canvas
     ) {
+        val layoutDirection = LocalLayoutDirection.current
+        val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
+        val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
         // Scrolling Project Content Stream (captured into backdrop state for real-time glass refraction)
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .captureBackdrop(backdropState),
             contentPadding = PaddingValues(
-                start = 14.dp,
-                end = 14.dp,
+                start = 14.dp + safeInsets.calculateStartPadding(layoutDirection),
+                end = 14.dp + safeInsets.calculateEndPadding(layoutDirection),
                 top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 90.dp,
-                bottom = 90.dp // Clearance for floating bottom navigation bar
+                bottom = 86.dp + navBarsBottomInset // Dynamic clearance for floating bottom navigation bar
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -236,6 +241,7 @@ fun ProjectsScreen(
                     topBarHeightPx = coords.size.height.toFloat()
                 }
                 .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                 .padding(horizontal = 14.dp, vertical = 6.dp)
                 .shadow(
                     elevation = 16.dp,

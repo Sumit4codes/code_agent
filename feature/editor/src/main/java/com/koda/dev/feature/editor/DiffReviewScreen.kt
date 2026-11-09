@@ -54,6 +54,7 @@ fun DiffReviewScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
                     .shadow(
                         elevation = 16.dp,
