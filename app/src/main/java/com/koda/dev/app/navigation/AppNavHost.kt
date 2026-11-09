@@ -1,20 +1,34 @@
 package com.koda.dev.app.navigation
 
 import android.net.Uri
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -22,9 +36,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.compose.runtime.remember
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.koda.dev.core.ui.glass.BackdropState
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.captureBackdrop
+import com.koda.dev.core.ui.glass.liquidGlassBackdrop
+import com.koda.dev.core.ui.glass.rememberBackdropState
+import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.feature.chat.ChatScreen
 import com.koda.dev.feature.chat.ChatViewModel
 import com.koda.dev.feature.editor.DiffReviewScreen
@@ -42,6 +59,7 @@ object Routes {
     const val DIFF_REVIEW = "diff_review"
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AppNavHost(
     navController: NavHostController = rememberNavController(),
@@ -50,63 +68,23 @@ fun AppNavHost(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val isTopLevelRoute = currentRoute == Routes.PROJECTS || currentRoute == Routes.TERMINAL || currentRoute == Routes.SETTINGS
+    val isKeyboardOpen = WindowInsets.isImeVisible
 
-    Scaffold(
-        bottomBar = {
-            if (isTopLevelRoute) {
-                NavigationBar {
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                        label = { Text("Projects") },
-                        selected = currentRoute == Routes.PROJECTS,
-                        onClick = {
-                            if (currentRoute != Routes.PROJECTS) {
-                                navController.navigate(Routes.PROJECTS) {
-                                    popUpTo(Routes.PROJECTS) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        }
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Terminal, contentDescription = "Terminal") },
-                        label = { Text("Terminal") },
-                        selected = currentRoute == Routes.TERMINAL,
-                        onClick = {
-                            if (currentRoute != Routes.TERMINAL) {
-                                navController.navigate(Routes.TERMINAL) {
-                                    popUpTo(Routes.PROJECTS) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        }
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                        label = { Text("Settings") },
-                        selected = currentRoute == Routes.SETTINGS,
-                        onClick = {
-                            if (currentRoute != Routes.SETTINGS) {
-                                navController.navigate(Routes.SETTINGS) {
-                                    popUpTo(Routes.PROJECTS) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-        }
-    ) { innerPadding ->
+    // Hardware backdrop capture state for floating liquid glass navigation bar
+    val navBackdropState = rememberBackdropState()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B0E14))
+    ) {
+        // Main Screen NavHost with backdrop capture for real-time glass refraction
         NavHost(
             navController = navController,
             startDestination = startDestination,
             modifier = Modifier
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
+                .fillMaxSize()
+                .captureBackdrop(navBackdropState)
         ) {
             composable(Routes.PROJECTS) {
                 ProjectsScreen(
@@ -202,6 +180,146 @@ fun AppNavHost(
             }
             composable(Routes.SETTINGS) {
                 SettingsScreen()
+            }
+        }
+
+        // Floating Liquid Glass Bottom Navigation Bar
+        AnimatedVisibility(
+            visible = isTopLevelRoute && !isKeyboardOpen,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            FloatingLiquidGlassNavBar(
+                currentRoute = currentRoute,
+                backdropState = navBackdropState,
+                onNavigate = { route ->
+                    if (currentRoute != route) {
+                        navController.navigate(route) {
+                            popUpTo(Routes.PROJECTS) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Floating Liquid Glass Navigation Bar with 26dp curved corners,
+ * real-time physical backdrop blur, AGSL lens refraction, and spring-press tactile tabs.
+ */
+@Composable
+private fun FloatingLiquidGlassNavBar(
+    currentRoute: String?,
+    backdropState: BackdropState?,
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val navBarShape = RoundedCornerShape(26.dp)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(62.dp)
+            .shadow(
+                elevation = 20.dp,
+                shape = navBarShape,
+                ambientColor = Color(0x40000000),
+                spotColor = Color(0x800F172A)
+            )
+            .liquidGlassBackdrop(
+                backdropState = backdropState,
+                shape = navBarShape,
+                blurRadius = 24.dp,
+                tintColor = Color(0xD410141E),
+                specularBorder = GlassDesign.liquidGlassBorder(
+                    topSpecularAlpha = 0.65f,
+                    dispersionAlpha = 0.28f
+                ),
+                borderWidth = 1.dp
+            )
+    ) {
+        // Internal Top Refractive Sheen
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(26.dp)
+                .background(GlassDesign.internalGlassSheen())
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            val navItems = listOf(
+                Triple(Routes.PROJECTS, "Projects", Icons.Default.Folder),
+                Triple(Routes.TERMINAL, "Terminal", Icons.Default.Terminal),
+                Triple(Routes.SETTINGS, "Settings", Icons.Default.Settings)
+            )
+
+            navItems.forEach { (route, label, icon) ->
+                val isSelected = currentRoute == route
+                val itemShape = RoundedCornerShape(20.dp)
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(itemShape)
+                        .then(
+                            if (isSelected) {
+                                Modifier
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color(0xFF1F6FEB).copy(alpha = 0.35f),
+                                                Color(0xFF238636).copy(alpha = 0.25f)
+                                            )
+                                        )
+                                    )
+                                    .border(
+                                        width = 0.75.dp,
+                                        brush = GlassDesign.liquidGlassBorder(
+                                            topSpecularAlpha = 0.70f,
+                                            dispersionAlpha = 0.35f
+                                        ),
+                                        shape = itemShape
+                                    )
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .springPressClickable { onNavigate(route) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            modifier = Modifier.size(19.dp),
+                            tint = if (isSelected) Color(0xFF79C0FF) else Color(0xFF7D8590)
+                        )
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
+                            ),
+                            color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFF7D8590)
+                        )
+                    }
+                }
             }
         }
     }

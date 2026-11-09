@@ -295,10 +295,10 @@ fun TerminalScreen(
                     .fillMaxWidth()
             )
 
-            // Dynamic bottom spacing so terminal output clears the floating accessory dock
+            // Dynamic bottom spacing so terminal output clears the floating accessory dock and bottom nav bar
             Spacer(
                 modifier = Modifier.height(
-                    if (bottomDockHeightPx > 0f) with(LocalDensity.current) { bottomDockHeightPx.toDp() } + 6.dp else 70.dp
+                    if (bottomDockHeightPx > 0f) with(LocalDensity.current) { bottomDockHeightPx.toDp() } + (if (isKeyboardOpen) 10.dp else 86.dp) else 80.dp
                 )
             )
         }
@@ -573,7 +573,12 @@ fun TerminalScreen(
                 }
                 .navigationBarsPadding()
                 .imePadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .padding(
+                    start = 12.dp,
+                    end = 12.dp,
+                    top = 4.dp,
+                    bottom = if (isKeyboardOpen) 6.dp else 80.dp
+                )
                 .shadow(
                     elevation = 18.dp,
                     shape = bottomDockShape,

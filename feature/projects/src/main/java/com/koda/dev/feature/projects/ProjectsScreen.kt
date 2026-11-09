@@ -98,7 +98,6 @@ fun ProjectsScreen(
 
     // Dynamic heights of floating liquid glass capsules
     var topBarHeightPx by remember { mutableFloatStateOf(0f) }
-    var bottomDockHeightPx by remember { mutableFloatStateOf(0f) }
 
     // Hardware backdrop capture state for optical lens blur and refraction
     val backdropState = rememberBackdropState()
@@ -122,7 +121,7 @@ fun ProjectsScreen(
                 start = 14.dp,
                 end = 14.dp,
                 top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 90.dp,
-                bottom = if (bottomDockHeightPx > 0f) with(LocalDensity.current) { bottomDockHeightPx.toDp() } + 16.dp else 110.dp
+                bottom = 90.dp // Clearance for floating bottom navigation bar
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -149,7 +148,7 @@ fun ProjectsScreen(
                     )
                 }
             } else {
-                // Section Header
+                // Section Header with Storage Status Badge
                 item(key = "workspace_header") {
                     Row(
                         modifier = Modifier
@@ -158,19 +157,53 @@ fun ProjectsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = "RECENT PROJECTS",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.2.sp
-                            ),
-                            color = Color(0xFF7D8590)
-                        )
-                        Text(
-                            text = "${projects.size} ${if (projects.size == 1) "directory" else "directories"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF58A6FF)
-                        )
+                        Column {
+                            Text(
+                                text = "RECENT PROJECTS",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.2.sp
+                                ),
+                                color = Color(0xFF7D8590)
+                            )
+                            Text(
+                                text = "${projects.size} ${if (projects.size == 1) "directory" else "directories"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF58A6FF)
+                            )
+                        }
+
+                        // Storage status badge
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.05f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.08f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    if (!hasPermission) {
+                                        requestFullStoragePermission(context)
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (hasPermission) Color(0xFF238636) else Color(0xFFD29922))
+                            )
+                            Text(
+                                text = if (hasPermission) "Storage Active" else "Grant Storage",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                color = if (hasPermission) Color(0xFF3FB950) else Color(0xFFE3B341)
+                            )
+                        }
                     }
                 }
 
@@ -307,128 +340,6 @@ fun ProjectsScreen(
                     }
                 }
             )
-        }
-
-        // Floating Bottom Dock: 24dp curved Liquid Glass capsule floating over scrolling content
-        val bottomDockShape = RoundedCornerShape(24.dp)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .onGloballyPositioned { coords ->
-                    bottomDockHeightPx = coords.size.height.toFloat()
-                }
-                .navigationBarsPadding()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-                .shadow(
-                    elevation = 18.dp,
-                    shape = bottomDockShape,
-                    ambientColor = Color(0x40000000),
-                    spotColor = Color(0x800F172A)
-                )
-                .liquidGlassBackdrop(
-                    backdropState = backdropState,
-                    shape = bottomDockShape,
-                    blurRadius = 24.dp,
-                    tintColor = Color(0xD010141E),
-                    specularBorder = GlassDesign.liquidGlassBorder(
-                        topSpecularAlpha = 0.65f,
-                        dispersionAlpha = 0.28f
-                    ),
-                    borderWidth = 1.dp
-                )
-        ) {
-            // Internal Top Refractive Sheen
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .background(GlassDesign.internalGlassSheen())
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Storage access & project status badge
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.05f))
-                        .border(
-                            width = 0.75.dp,
-                            brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.08f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .clickable {
-                            if (!hasPermission) {
-                                requestFullStoragePermission(context)
-                            }
-                        }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(if (hasPermission) Color(0xFF238636) else Color(0xFFD29922))
-                    )
-                    Text(
-                        text = if (hasPermission) "Storage Active" else "Grant Storage",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                        color = if (hasPermission) Color(0xFF3FB950) else Color(0xFFE3B341)
-                    )
-                }
-
-                // Primary CTA: "+ Open Folder" Action Pill
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    Color(0xFF1F6FEB).copy(alpha = 0.40f),
-                                    Color(0xFF238636).copy(alpha = 0.30f)
-                                )
-                            )
-                        )
-                        .border(
-                            width = 0.75.dp,
-                            brush = GlassDesign.liquidGlassBorder(
-                                topSpecularAlpha = 0.70f,
-                                dispersionAlpha = 0.35f
-                            ),
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                        .springPressClickable {
-                            if (!hasPermission) {
-                                requestFullStoragePermission(context)
-                            } else {
-                                showFolderDialog = true
-                            }
-                        }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CreateNewFolder,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = Color(0xFF79C0FF)
-                    )
-                    Text(
-                        text = "Open Folder",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFFF0F6FC)
-                    )
-                }
-            }
         }
     }
 
