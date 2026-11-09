@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -86,6 +87,7 @@ import com.koda.dev.feature.chat.components.ActiveTasksStrip
 import com.koda.dev.feature.chat.components.ChatInputBar
 import com.koda.dev.feature.chat.components.ContextUsageDialog
 import com.koda.dev.feature.chat.components.EmptyChatState
+import com.koda.dev.feature.chat.components.GlassDesign
 import com.koda.dev.feature.chat.components.InChatDiffBottomSheet
 import com.koda.dev.feature.chat.components.MessageItem
 import com.koda.dev.feature.chat.components.PendingChangesBanner
@@ -93,6 +95,7 @@ import com.koda.dev.feature.chat.components.SessionHistorySheet
 import com.koda.dev.feature.chat.components.StreamingBubble
 import com.koda.dev.feature.chat.components.captureBackdrop
 import com.koda.dev.feature.chat.components.groupMessagesIntoTurns
+import com.koda.dev.feature.chat.components.liquidGlassBackdrop
 import com.koda.dev.feature.chat.components.rememberBackdropState
 import com.koda.dev.feature.chat.components.springPressClickable
 import kotlinx.coroutines.delay
@@ -135,6 +138,7 @@ fun ChatScreen(
     val scaffoldState = rememberTopAppBarState()
     val backdropState = rememberBackdropState()
     var inputBarHeightPx by remember { mutableFloatStateOf(0f) }
+    var topBarHeightPx by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank() && projectId != "none" && state.projectId != projectId) {
@@ -221,22 +225,149 @@ fun ChatScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {},
+            bottomBar = {}
+        ) { padding ->
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .captureBackdrop(backdropState)
+                ) {
+                    // Pending changes banner
+                    if (state.pendingChanges.isNotEmpty()) {
+                        PendingChangesBanner(
+                            changes = state.pendingChanges,
+                            onApproveAll = { viewModel.approveAllChanges() },
+                            onRejectAll = { viewModel.rejectAllChanges() },
+                            onApprove = { viewModel.approveChange(it) },
+                            onReject = { viewModel.rejectChange(it) },
+                            onReviewDiffs = {
+                                selectedDiffChange = state.pendingChanges.firstOrNull()
+                                showDiffBottomSheet = true
+                            },
+                            modifier = Modifier.padding(top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp)
+                        )
+                    }
+
+                    // Error notification banner
+                    if (state.error != null) {
+                        ErrorBanner(
+                            error = state.error ?: "",
+                            onDismiss = { viewModel.clearError() },
+                            modifier = Modifier.padding(top = if (state.pendingChanges.isEmpty()) (if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp) else 0.dp)
+                        )
+                    }
+
+                    // Messages area or Empty State
+                    if (displayMessages.isEmpty() && !state.isStreaming) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(
+                                    top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
+                                    bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
+                                )
+                        ) {
+                            EmptyChatState(
+                                hasProject = state.projectUri != null,
+                                projectName = state.projectName,
+                                modelName = state.model,
+                                onSuggestionClick = { suggestionPrompt ->
+                                    viewModel.sendMessage(suggestionPrompt)
+                                }
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
+                                bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                        items(
+                            items = displayMessages,
+                            key = { it.id },
+                            contentType = { it.role.name }
+                        ) { message ->
+                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
+                            val isLive = state.isStreaming && isLastItem
+
+                            MessageItem(
+                                message = message,
+                                isLive = isLive,
+                                pendingChanges = state.pendingChanges,
+                                onApproveChange = { viewModel.approveChange(it) },
+                                onRejectChange = { viewModel.rejectChange(it) },
+                                onOpenFullReview = { change ->
+                                    selectedDiffChange = change ?: state.pendingChanges.firstOrNull()
+                                    showDiffBottomSheet = true
+                                }
+                            )
+                        }
+
+                        if (state.isStreaming) {
+                            item(key = "streaming_bubble") {
+                                StreamingBubble(
+                                    streamingText = state.streamingText,
+                                    activeTool = state.activeTool,
+                                    modelName = state.model
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Floating Top Bar (Liquid Glass capsule floating over scrolling messages)
+            val topBarShape = RoundedCornerShape(24.dp)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color(0xFA161B22), // 98% frosted slate top
-                                Color(0xF5131720), // 96% optical core
-                                Color(0xEB0E1117)  // 92% translucent bottom
-                            )
-                        )
+                    .align(Alignment.TopCenter)
+                    .onGloballyPositioned { coords ->
+                        topBarHeightPx = coords.size.height.toFloat()
+                    }
+                    .statusBarsPadding()
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = topBarShape,
+                        ambientColor = Color(0x33000000),
+                        spotColor = Color(0x660F172A)
+                    )
+                    .liquidGlassBackdrop(
+                        backdropState = backdropState,
+                        shape = topBarShape,
+                        blurRadius = 24.dp,
+                        tintColor = Color(0xC410141E),
+                        specularBorder = GlassDesign.liquidGlassBorder(
+                            topSpecularAlpha = 0.65f,
+                            dispersionAlpha = 0.28f
+                        ),
+                        borderWidth = 1.dp
                     )
             ) {
+                // Internal Top Refraction Sheen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(30.dp)
+                        .background(GlassDesign.internalGlassSheen())
+                )
+
                 TopAppBar(
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                     navigationIcon = {
                         if (onNavigateBack != null) {
                             IconButton(onClick = onNavigateBack) {
@@ -262,22 +393,10 @@ fun ChatScreen(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(CircleShape)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                listOf(
-                                                    Color(0x2EFFFFFF),
-                                                    Color(0x12FFFFFF)
-                                                )
-                                            )
-                                        )
+                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
                                         .border(
                                             width = 0.75.dp,
-                                            brush = Brush.verticalGradient(
-                                                listOf(
-                                                    Color(0x66FFFFFF),
-                                                    Color(0x1AFFFFFF)
-                                                )
-                                            ),
+                                            brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
                                             shape = CircleShape
                                         ),
                                     contentAlignment = Alignment.Center
@@ -396,132 +515,10 @@ fun ChatScreen(
                             }
                         }
                     },
-                    scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(scaffoldState),
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent
                     )
                 )
-
-                // Subtle Optical Edge Separator (soft boundary for scrolling content flow)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    Color.Transparent,
-                                    Color(0x14FFFFFF),
-                                    Color(0x24FFFFFF),
-                                    Color(0x14FFFFFF),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                )
-            }
-        },
-        bottomBar = {}
-    ) { padding ->
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .captureBackdrop(backdropState)
-            ) {
-                // Pending changes banner
-                if (state.pendingChanges.isNotEmpty()) {
-                    PendingChangesBanner(
-                        changes = state.pendingChanges,
-                        onApproveAll = { viewModel.approveAllChanges() },
-                        onRejectAll = { viewModel.rejectAllChanges() },
-                        onApprove = { viewModel.approveChange(it) },
-                        onReject = { viewModel.rejectChange(it) },
-                        onReviewDiffs = {
-                            selectedDiffChange = state.pendingChanges.firstOrNull()
-                            showDiffBottomSheet = true
-                        },
-                        modifier = Modifier.padding(top = padding.calculateTopPadding())
-                    )
-                }
-
-                // Error notification banner
-                if (state.error != null) {
-                    ErrorBanner(
-                        error = state.error ?: "",
-                        onDismiss = { viewModel.clearError() },
-                        modifier = Modifier.padding(top = if (state.pendingChanges.isEmpty()) padding.calculateTopPadding() else 0.dp)
-                    )
-                }
-
-                // Messages area or Empty State
-                if (displayMessages.isEmpty() && !state.isStreaming) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(
-                                top = padding.calculateTopPadding(),
-                                bottom = with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp
-                            )
-                    ) {
-                        EmptyChatState(
-                            hasProject = state.projectUri != null,
-                            projectName = state.projectName,
-                            modelName = state.model,
-                            onSuggestionClick = { suggestionPrompt ->
-                                viewModel.sendMessage(suggestionPrompt)
-                            }
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = padding.calculateTopPadding() + 8.dp,
-                            bottom = with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(
-                            items = displayMessages,
-                            key = { it.id },
-                            contentType = { it.role.name }
-                        ) { message ->
-                            val isLastItem = message.id == displayMessages.lastOrNull()?.id
-                            val isLive = state.isStreaming && isLastItem
-
-                            MessageItem(
-                                message = message,
-                                isLive = isLive,
-                                pendingChanges = state.pendingChanges,
-                                onApproveChange = { viewModel.approveChange(it) },
-                                onRejectChange = { viewModel.rejectChange(it) },
-                                onOpenFullReview = { change ->
-                                    selectedDiffChange = change ?: state.pendingChanges.firstOrNull()
-                                    showDiffBottomSheet = true
-                                }
-                            )
-                        }
-
-                        if (state.isStreaming) {
-                            item(key = "streaming_bubble") {
-                                StreamingBubble(
-                                    streamingText = state.streamingText,
-                                    activeTool = state.activeTool,
-                                    modelName = state.model
-                                )
-                            }
-                        }
-                    }
-                }
             }
 
             // Floating Input Deck (Liquid Glass capsule floating over scrolling messages)
