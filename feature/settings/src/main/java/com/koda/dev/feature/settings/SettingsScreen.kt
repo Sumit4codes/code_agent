@@ -8,12 +8,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -26,9 +29,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +54,12 @@ import com.koda.dev.core.model.PopularProvider
 import com.koda.dev.core.model.PopularProviders
 import com.koda.dev.core.model.ProviderType
 import com.koda.dev.core.model.WebSearchEngine
+import com.koda.dev.core.ui.glass.BackdropState
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.captureBackdrop
+import com.koda.dev.core.ui.glass.liquidGlassBackdrop
+import com.koda.dev.core.ui.glass.rememberBackdropState
+import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.feature.settings.qr.QrScannerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,29 +85,31 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    ) { padding ->
+    // Dynamic heights of floating liquid glass capsules
+    var topBarHeightPx by remember { mutableFloatStateOf(0f) }
+    var bottomDockHeightPx by remember { mutableFloatStateOf(0f) }
+
+    // Hardware backdrop capture state for optical lens blur and refraction
+    val backdropState = rememberBackdropState()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B0E14)) // Deep optical slate canvas
+    ) {
+        // Scrolling Settings Content Stream (captured into backdrop state for real-time glass refraction)
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .captureBackdrop(backdropState)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 90.dp,
+                    bottom = if (bottomDockHeightPx > 0f) with(LocalDensity.current) { bottomDockHeightPx.toDp() } + 16.dp else 110.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 1. ACTIVE PROVIDER BANNER
             ActiveProviderBanner(
@@ -152,7 +168,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onSaveApiKey = { engine, key -> viewModel.saveSearchApiKey(engine, key) }
             )
 
-            // 5. CROSS-DEVICE CLOUD SYNC CARD
+            // 6. CROSS-DEVICE CLOUD SYNC CARD
             CloudSyncCard(
                 syncAccount = state.syncAccount,
                 isSyncing = state.isSyncing,
@@ -163,11 +179,290 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onBackupClick = { viewModel.openBackupDialog() }
             )
 
-            // 5. STORAGE & PRIVACY INFO
+            // 7. STORAGE & PRIVACY INFO
             AboutPrivacyCard()
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
         }
+
+        // Floating Top Bar: 24dp curved Liquid Glass capsule floating over settings
+        val topBarShape = RoundedCornerShape(24.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .onGloballyPositioned { coords ->
+                    topBarHeightPx = coords.size.height.toFloat()
+                }
+                .statusBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .shadow(
+                    elevation = 16.dp,
+                    shape = topBarShape,
+                    ambientColor = Color(0x33000000),
+                    spotColor = Color(0x660F172A)
+                )
+                .liquidGlassBackdrop(
+                    backdropState = backdropState,
+                    shape = topBarShape,
+                    blurRadius = 24.dp,
+                    tintColor = Color(0xC410141E),
+                    specularBorder = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.65f,
+                        dispersionAlpha = 0.28f
+                    ),
+                    borderWidth = 1.dp
+                )
+        ) {
+            // Internal Top Refractive Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(30.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
+            TopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                ),
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Frosted Tune Avatar Disc
+                        Box(
+                            modifier = Modifier.size(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                    .border(
+                                        width = 0.75.dp,
+                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color(0xFF58A6FF)
+                                )
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = "Settings",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC),
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "Providers · Agent · Sync",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Quick QR Scanner Button
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable { showQrScanner = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "Scan QR",
+                                tint = Color(0xFF79C0FF),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+
+                        // Quick Add Provider Button
+                        Box(
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable { viewModel.openAddProviderDialog(PopularProviders.KILO_FREE) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add Provider",
+                                tint = Color(0xFFF0F6FC),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+            )
+        }
+
+        // Floating Bottom Dock: 24dp curved Liquid Glass capsule floating over settings
+        val bottomDockShape = RoundedCornerShape(24.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .onGloballyPositioned { coords ->
+                    bottomDockHeightPx = coords.size.height.toFloat()
+                }
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .shadow(
+                    elevation = 18.dp,
+                    shape = bottomDockShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .liquidGlassBackdrop(
+                    backdropState = backdropState,
+                    shape = bottomDockShape,
+                    blurRadius = 24.dp,
+                    tintColor = Color(0xD010141E),
+                    specularBorder = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.65f,
+                        dispersionAlpha = 0.28f
+                    ),
+                    borderWidth = 1.dp
+                )
+        ) {
+            // Internal Top Refractive Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Active provider status badge
+                val active = state.activeProvider
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.05f))
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.08f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable {
+                            if (active != null) {
+                                viewModel.openEditProviderDialog(active)
+                            } else {
+                                viewModel.openAddProviderDialog(PopularProviders.KILO_FREE)
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (active != null) Color(0xFF238636) else Color(0xFFD29922))
+                    )
+                    Text(
+                        text = active?.name ?: "No Provider",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = if (active != null) Color(0xFF3FB950) else Color(0xFFE3B341),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // Primary CTA: "+ Add Provider" Action Pill
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color(0xFF1F6FEB).copy(alpha = 0.40f),
+                                    Color(0xFF238636).copy(alpha = 0.30f)
+                                )
+                            )
+                        )
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.liquidGlassBorder(
+                                topSpecularAlpha = 0.70f,
+                                dispersionAlpha = 0.35f
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .springPressClickable {
+                            viewModel.openAddProviderDialog(PopularProviders.KILO_FREE)
+                        }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFF79C0FF)
+                    )
+                    Text(
+                        text = "Add Provider",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
+                    )
+                }
+            }
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(
+                    bottom = if (bottomDockHeightPx > 0f) with(LocalDensity.current) { bottomDockHeightPx.toDp() } + 12.dp else 90.dp
+                )
+        )
     }
 
     // CONNECT SYNC DIALOG
@@ -275,13 +570,33 @@ private fun ActiveProviderBanner(
     onEditClick: (ProviderUiModel) -> Unit,
     onQuickModelSelect: (String, String) -> Unit
 ) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-        )
+    val bannerShape = RoundedCornerShape(20.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(bannerShape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF1B2434).copy(alpha = 0.88f),
+                        Color(0xFF101622).copy(alpha = 0.94f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
+                shape = bannerShape
+            )
     ) {
+        // Internal Top Sheen
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .background(GlassDesign.internalGlassSheen())
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -300,13 +615,13 @@ private fun ActiveProviderBanner(
                     Icon(
                         imageVector = Icons.Default.SmartToy,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = Color(0xFF58A6FF),
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = "Active Provider",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
+                        color = Color(0xFF58A6FF)
                     )
                 }
 
@@ -314,7 +629,12 @@ private fun ActiveProviderBanner(
                     FilledTonalButton(
                         onClick = { onEditClick(activeProvider) },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
+                        modifier = Modifier.height(32.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Color(0xFF21262D),
+                            contentColor = Color(0xFFF0F6FC)
+                        )
                     ) {
                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
@@ -333,14 +653,14 @@ private fun ActiveProviderBanner(
                         Text(
                             text = activeProvider.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = Color(0xFFF0F6FC),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = activeProvider.baseUrl,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF8B949E),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -349,11 +669,11 @@ private fun ActiveProviderBanner(
                     val isKiloFree = activeProvider.id.startsWith("kilo") || activeProvider.id.startsWith("community") || activeProvider.baseUrl.contains("kilo.ai")
                     // Key Status Chip
                     Surface(
-                        shape = MaterialTheme.shapes.small,
+                        shape = RoundedCornerShape(8.dp),
                         color = if (isKiloFree || activeProvider.hasApiKey) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            Color(0xFF238636).copy(alpha = 0.20f)
                         } else {
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                            Color(0xFFDA3633).copy(alpha = 0.20f)
                         }
                     ) {
                         Row(
@@ -364,13 +684,13 @@ private fun ActiveProviderBanner(
                             Icon(
                                 imageVector = if (isKiloFree || activeProvider.hasApiKey) Icons.Default.CheckCircle else Icons.Default.Key,
                                 contentDescription = null,
-                                tint = if (isKiloFree || activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                tint = if (isKiloFree || activeProvider.hasApiKey) Color(0xFF3FB950) else Color(0xFFF85149),
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
                                 text = if (isKiloFree) "Keyless Free" else if (activeProvider.hasApiKey) "Key configured" else "No key set",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isKiloFree || activeProvider.hasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                color = if (isKiloFree || activeProvider.hasApiKey) Color(0xFF3FB950) else Color(0xFFF85149),
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -380,8 +700,9 @@ private fun ActiveProviderBanner(
 
                 // Selected Model Pill
                 Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF0D1117).copy(alpha = 0.85f),
+                    border = BorderStroke(0.75.dp, Color(0xFF30363D)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -394,12 +715,12 @@ private fun ActiveProviderBanner(
                         Text(
                             text = "Model:",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color(0xFF8B949E)
                         )
                         Text(
                             text = activeProvider.model.ifBlank { "(None selected)" },
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.primary,
+                            color = Color(0xFFF0F6FC),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -549,21 +870,40 @@ private fun ProviderCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    OutlinedCard(
+    val cardShape = RoundedCornerShape(18.dp)
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onSelect() },
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            else MaterialTheme.colorScheme.surface
-        ),
-        border = if (isActive) {
-            CardDefaults.outlinedCardBorder().copy(
-                brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+            .clip(cardShape)
+            .background(
+                if (isActive) Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF1B2434).copy(alpha = 0.88f),
+                        Color(0xFF101622).copy(alpha = 0.94f)
+                    )
+                ) else Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF161B22).copy(alpha = 0.75f),
+                        Color(0xFF0D1117).copy(alpha = 0.85f)
+                    )
+                )
             )
-        } else CardDefaults.outlinedCardBorder()
+            .border(
+                width = 1.dp,
+                brush = if (isActive) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f)
+                else GlassDesign.microGlassBorder(topAlpha = 0.24f, bottomAlpha = 0.06f),
+                shape = cardShape
+            )
+            .springPressClickable(onClick = onSelect)
     ) {
+        if (isActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -586,20 +926,21 @@ private fun ProviderCard(
                     Text(
                         text = provider.name,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = Color(0xFFF0F6FC),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     if (isActive) {
                         Surface(
-                            shape = MaterialTheme.shapes.extraSmall,
-                            color = MaterialTheme.colorScheme.primaryContainer
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF1F6FEB).copy(alpha = 0.25f),
+                            border = BorderStroke(0.75.dp, Color(0xFF388BFD))
                         ) {
                             Text(
                                 text = "ACTIVE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = Color(0xFF79C0FF),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 maxLines = 1,
                                 softWrap = false
@@ -618,13 +959,13 @@ private fun ProviderCard(
                 ) {
                     if (provider.providerType == ProviderType.ANTIROUTE || provider.id.startsWith("antiroute")) {
                         Surface(
-                            shape = MaterialTheme.shapes.extraSmall,
-                            color = MaterialTheme.colorScheme.tertiaryContainer
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF238636).copy(alpha = 0.25f)
                         ) {
                             Text(
                                 text = "ANTIROUTE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                color = Color(0xFF3FB950),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 maxLines = 1,
                                 softWrap = false
@@ -632,13 +973,13 @@ private fun ProviderCard(
                         }
                     } else if (isKiloFree) {
                         Surface(
-                            shape = MaterialTheme.shapes.extraSmall,
-                            color = MaterialTheme.colorScheme.tertiaryContainer
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF238636).copy(alpha = 0.25f)
                         ) {
                             Text(
                                 text = "FREE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                color = Color(0xFF3FB950),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 maxLines = 1,
                                 softWrap = false
@@ -647,14 +988,14 @@ private fun ProviderCard(
                     }
 
                     Surface(
-                        shape = MaterialTheme.shapes.extraSmall,
-                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF21262D),
                         modifier = Modifier.weight(1f, fill = false)
                     ) {
                         Text(
                             text = provider.model.ifBlank { "No model" },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            color = Color(0xFFC9D1D9),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -665,7 +1006,7 @@ private fun ProviderCard(
                     Text(
                         text = if (isKiloFree) "• Keyless Free" else if (provider.hasApiKey) "• Key set" else "• No key",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isKiloFree) MaterialTheme.colorScheme.primary else if (provider.hasApiKey) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        color = if (isKiloFree) Color(0xFF3FB950) else if (provider.hasApiKey) Color(0xFF8B949E) else Color(0xFFF85149),
                         maxLines = 1,
                         softWrap = false
                     )
@@ -677,20 +1018,45 @@ private fun ProviderCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                            shape = CircleShape
+                        )
+                        .springPressClickable(onClick = onEdit),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit provider",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                        tint = Color(0xFFC9D1D9),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                            shape = CircleShape
+                        )
+                        .springPressClickable(onClick = onDelete),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete provider",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                        modifier = Modifier.size(18.dp)
+                        tint = Color(0xFFF85149).copy(alpha = 0.85f),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

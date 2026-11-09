@@ -202,7 +202,8 @@ internal fun TerminalFontSizeDialog(
 @Composable
 internal fun AccessoryKeyboardBar(
     onKeyPress: (String) -> Unit,
-    isControlActive: Boolean
+    isControlActive: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
     val quickTokens = listOf(
@@ -211,12 +212,11 @@ internal fun AccessoryKeyboardBar(
     )
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .background(Color(0xFF161B22))
             .horizontalScroll(scrollState)
             .focusProperties { canFocus = false }
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -224,12 +224,12 @@ internal fun AccessoryKeyboardBar(
         Button(
             onClick = { onKeyPress("ESC") },
             colors = ButtonDefaults.buttonColors(
-                containerColor = EscKeyBg,
+                containerColor = EscKeyBg.copy(alpha = 0.85f),
                 contentColor = Color.White
             ),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-            shape = RoundedCornerShape(4.dp),
-            modifier = Modifier.height(28.dp)
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.height(30.dp)
         ) {
             Text(
                 text = "ESC",
@@ -243,12 +243,12 @@ internal fun AccessoryKeyboardBar(
         Button(
             onClick = { onKeyPress("TAB") },
             colors = ButtonDefaults.buttonColors(
-                containerColor = AccessoryKeyBg,
+                containerColor = Color(0xFF21262D).copy(alpha = 0.85f),
                 contentColor = AccessoryKeyContent
             ),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-            shape = RoundedCornerShape(4.dp),
-            modifier = Modifier.height(28.dp)
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.height(30.dp)
         ) {
             Text(
                 text = "TAB",
@@ -262,12 +262,12 @@ internal fun AccessoryKeyboardBar(
         Button(
             onClick = { onKeyPress("CTRL") },
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isControlActive) TerminalPrompt else AccessoryKeyBg,
+                containerColor = if (isControlActive) TerminalPrompt else Color(0xFF21262D).copy(alpha = 0.85f),
                 contentColor = if (isControlActive) Color.Black else AccessoryKeyContent
             ),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-            shape = RoundedCornerShape(4.dp),
-            modifier = Modifier.height(28.dp)
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.height(30.dp)
         ) {
             Text(
                 text = "CTRL",
@@ -281,12 +281,12 @@ internal fun AccessoryKeyboardBar(
         Button(
             onClick = { onKeyPress("CTRL-C") },
             colors = ButtonDefaults.buttonColors(
-                containerColor = TerminalStderr,
+                containerColor = TerminalStderr.copy(alpha = 0.85f),
                 contentColor = Color.White
             ),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-            shape = RoundedCornerShape(4.dp),
-            modifier = Modifier.height(28.dp)
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.height(30.dp)
         ) {
             Text(
                 text = "CTRL-C",
@@ -297,50 +297,70 @@ internal fun AccessoryKeyboardBar(
         }
 
         // Arrow Left
-        IconButton(
+        FilledTonalIconButton(
             onClick = { onKeyPress("LEFT") },
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(30.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = Color(0xFF21262D).copy(alpha = 0.85f),
+                contentColor = AccessoryKeyContent
+            )
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                 contentDescription = "Left Arrow",
-                tint = AccessoryKeyContent
+                modifier = Modifier.size(16.dp)
             )
         }
 
         // Arrow Up
-        IconButton(
+        FilledTonalIconButton(
             onClick = { onKeyPress("UP") },
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(30.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = Color(0xFF21262D).copy(alpha = 0.85f),
+                contentColor = AccessoryKeyContent
+            )
         ) {
             Icon(
                 imageVector = Icons.Default.KeyboardArrowUp,
                 contentDescription = "Up Arrow",
-                tint = AccessoryKeyContent
+                modifier = Modifier.size(16.dp)
             )
         }
 
         // Arrow Down
-        IconButton(
+        FilledTonalIconButton(
             onClick = { onKeyPress("DOWN") },
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(30.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = Color(0xFF21262D).copy(alpha = 0.85f),
+                contentColor = AccessoryKeyContent
+            )
         ) {
             Icon(
                 imageVector = Icons.Default.KeyboardArrowDown,
                 contentDescription = "Down Arrow",
-                tint = AccessoryKeyContent
+                modifier = Modifier.size(16.dp)
             )
         }
 
         // Arrow Right
-        IconButton(
+        FilledTonalIconButton(
             onClick = { onKeyPress("RIGHT") },
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(30.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = Color(0xFF21262D).copy(alpha = 0.85f),
+                contentColor = AccessoryKeyContent
+            )
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "Right Arrow",
-                tint = AccessoryKeyContent
+                modifier = Modifier.size(16.dp)
             )
         }
 
@@ -349,12 +369,12 @@ internal fun AccessoryKeyboardBar(
             Button(
                 onClick = { onKeyPress(token) },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = AccessoryKeyBg,
+                    containerColor = Color(0xFF21262D).copy(alpha = 0.70f),
                     contentColor = AccessoryKeyContent
                 ),
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                shape = RoundedCornerShape(4.dp),
-                modifier = Modifier.height(28.dp)
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.height(30.dp)
             ) {
                 Text(
                     text = token,
