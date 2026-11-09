@@ -436,6 +436,47 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 }
 
 @Composable
+private fun LiquidGlassCard(
+    modifier: Modifier = Modifier,
+    shape: RoundedCornerShape = RoundedCornerShape(18.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF161B22).copy(alpha = 0.75f),
+                        Color(0xFF0D1117).copy(alpha = 0.85f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = GlassDesign.microGlassBorder(topAlpha = 0.24f, bottomAlpha = 0.06f),
+                shape = shape
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(18.dp)
+                .background(GlassDesign.internalGlassSheen())
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
 private fun ActiveProviderBanner(
     activeProvider: ProviderUiModel?,
     onEditClick: (ProviderUiModel) -> Unit,
@@ -497,19 +538,35 @@ private fun ActiveProviderBanner(
                 }
 
                 if (activeProvider != null) {
-                    FilledTonalButton(
-                        onClick = { onEditClick(activeProvider) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF21262D),
-                            contentColor = Color(0xFFF0F6FC)
-                        )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .springPressClickable { onEditClick(activeProvider) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Edit", style = MaterialTheme.typography.labelSmall)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = Color(0xFF79C0FF),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                "Edit",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                        }
                     }
                 }
             }
@@ -631,38 +688,48 @@ private fun ProvidersSection(
             ) {
                 Text(
                     text = "AI Providers",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFFF0F6FC)
                 )
                 if (providers.isNotEmpty()) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ) { Text(providers.size.toString()) }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1F6FEB).copy(alpha = 0.20f))
+                            .border(0.75.dp, Color(0xFF388BFD).copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = providers.size.toString(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF79C0FF)
+                        )
+                    }
                 }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                    .border(
+                        width = 0.75.dp,
+                        brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .springPressClickable(onClick = onAddProvider)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                OutlinedButton(
-                    onClick = onScanQrCode,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    modifier = Modifier.height(36.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Scan QR", style = MaterialTheme.typography.labelMedium)
-                }
-
-                Button(
-                    onClick = onAddProvider,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add Provider", style = MaterialTheme.typography.labelMedium)
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(15.dp))
+                    Text(
+                        "Add Provider",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
+                    )
                 }
             }
         }
@@ -782,11 +849,32 @@ private fun ProviderCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Radio Indicator
-            RadioButton(
-                selected = isActive,
-                onClick = onSelect
-            )
+            // Active Liquid Indicator
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (isActive) Modifier.background(Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                        else Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = if (isActive) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.85f, dispersionAlpha = 0.40f)
+                        else GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.08f),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isActive) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Active",
+                        tint = Color(0xFF79C0FF),
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
 
             // Provider Info
             Column(modifier = Modifier.weight(1f)) {
@@ -946,24 +1034,16 @@ private fun AgentPreferencesCard(
     systemPrompt: String,
     onSystemPromptChange: (String) -> Unit
 ) {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
+    LiquidGlassCard {
+        // Header Row (Toggleable)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .springPressClickable { onToggleExpand() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Row (Toggleable)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggleExpand() },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1104,7 +1184,6 @@ private fun AgentPreferencesCard(
             }
         }
     }
-}
 
 @Composable
 private fun TerminalPreferencesCard(
@@ -1113,220 +1192,262 @@ private fun TerminalPreferencesCard(
     fontSizeSp: Int,
     onFontSizeChange: (Int) -> Unit
 ) {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
+    LiquidGlassCard {
+        // Header Row (Toggleable)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .springPressClickable { onToggleExpand() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Row (Toggleable)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggleExpand() },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Terminal,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                Icon(
+                    imageVector = Icons.Default.Terminal,
+                    contentDescription = null,
+                    tint = Color(0xFF58A6FF),
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        text = "Terminal Display & Font",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
                     )
-                    Column {
-                        Text(
-                            text = "Terminal Display & Font",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Text(
-                            text = "Text scale, readability & terminal zoom ($fontSizeSp sp)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(onClick = onToggleExpand) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand"
+                    Text(
+                        text = "Text scale, readability & terminal zoom ($fontSizeSp sp)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF8B949E)
                     )
                 }
             }
 
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            IconButton(onClick = onToggleExpand) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = Color(0xFFC9D1D9)
+                )
+            }
+        }
 
-                    // Font Size Steppers + Slider
-                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                HorizontalDivider(color = Color(0xFF30363D).copy(alpha = 0.5f))
+
+                // Font Size Steppers + Slider
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Font Size",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFF0F6FC)
+                        )
+                        val label = when {
+                            fontSizeSp <= 11 -> "Compact"
+                            fontSizeSp == 14 -> "Default"
+                            fontSizeSp in 15..17 -> "Medium"
+                            fontSizeSp in 18..21 -> "Large"
+                            else -> "Extra Large"
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1F6FEB).copy(alpha = 0.20f))
+                                .border(0.75.dp, Color(0xFF388BFD).copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "Font Size",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                text = "$fontSizeSp sp · $label",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF79C0FF)
                             )
-                            val label = when {
-                                fontSizeSp <= 11 -> "Compact"
-                                fontSizeSp == 14 -> "Default"
-                                fontSizeSp in 15..17 -> "Medium"
-                                fontSizeSp in 18..21 -> "Large"
-                                else -> "Extra Large"
-                            }
-                            Surface(
-                                shape = MaterialTheme.shapes.extraSmall,
-                                color = MaterialTheme.colorScheme.secondaryContainer
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable(enabled = fontSizeSp > 9) { onFontSizeChange(fontSizeSp - 1) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Remove,
+                                contentDescription = "Decrease font size",
+                                tint = if (fontSizeSp > 9) Color(0xFFC9D1D9) else Color(0xFF484F58),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Slider(
+                            value = fontSizeSp.toFloat(),
+                            onValueChange = { onFontSizeChange(it.toInt()) },
+                            valueRange = 9f..28f,
+                            steps = 18,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .springPressClickable(enabled = fontSizeSp < 28) { onFontSizeChange(fontSizeSp + 1) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Increase font size",
+                                tint = if (fontSizeSp < 28) Color(0xFFC9D1D9) else Color(0xFF484F58),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Presets
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            11 to "Compact",
+                            14 to "Default",
+                            16 to "Medium",
+                            18 to "Large",
+                            22 to "Huge"
+                        ).forEach { (size, presetLabel) ->
+                            val isSelected = fontSizeSp == size
+                            val chipShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .clip(chipShape)
+                                    .then(
+                                        if (isSelected) Modifier.background(Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                        else Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                    )
+                                    .border(
+                                        width = 0.75.dp,
+                                        brush = if (isSelected) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.75f, dispersionAlpha = 0.35f)
+                                        else GlassDesign.microGlassBorder(topAlpha = 0.22f, bottomAlpha = 0.06f),
+                                        shape = chipShape
+                                    )
+                                    .springPressClickable { onFontSizeChange(size) }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = "$fontSizeSp sp · $label",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    text = "$size sp ($presetLabel)",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium),
+                                    color = if (isSelected) Color(0xFF79C0FF) else Color(0xFFC9D1D9)
                                 )
                             }
                         }
+                    }
+                }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilledTonalIconButton(
-                                onClick = { onFontSizeChange(fontSizeSp - 1) },
-                                enabled = fontSizeSp > 9,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Remove, contentDescription = "Decrease font size", modifier = Modifier.size(18.dp))
-                            }
-
-                            Slider(
-                                value = fontSizeSp.toFloat(),
-                                onValueChange = { onFontSizeChange(it.toInt()) },
-                                valueRange = 9f..28f,
-                                steps = 18,
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            FilledTonalIconButton(
-                                onClick = { onFontSizeChange(fontSizeSp + 1) },
-                                enabled = fontSizeSp < 28,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Increase font size", modifier = Modifier.size(18.dp))
-                            }
-                        }
-
-                        // Presets
-                        Row(
+                // Live Interactive Preview Box
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Live Terminal Preview",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFF8B949E)
+                    )
+                    Surface(
+                        color = Color(0xFF0D1117),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(0.75.dp, Color(0xFF30363D)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            listOf(
-                                11 to "Compact",
-                                14 to "Default",
-                                16 to "Medium",
-                                18 to "Large",
-                                22 to "Huge"
-                            ).forEach { (size, presetLabel) ->
-                                FilterChip(
-                                    selected = fontSizeSp == size,
-                                    onClick = { onFontSizeChange(size) },
-                                    label = { Text("$size sp ($presetLabel)", fontSize = 11.sp) }
-                                )
-                            }
-                        }
-                    }
-
-                    // Live Interactive Preview Box
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Live Terminal Preview",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Surface(
-                            color = Color(0xFF0D1117),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "koda:~/workspace$ ",
-                                        color = Color(0xFF39D353),
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "ls -la",
-                                        color = Color.White,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp
-                                    )
-                                }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "drwxr-xr-x 4 user user 4096 Oct 2 17:40 src/\n-rw-r--r-- 1 user user 1820 Oct 2 17:40 main.py",
-                                    color = Color(0xFFC9D1D9),
+                                    text = "koda:~/workspace$ ",
+                                    color = Color(0xFF39D353),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = fontSizeSp.sp
+                                    fontSize = fontSizeSp.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "koda:~/workspace$ ",
-                                        color = Color(0xFF39D353),
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "python3 main.py",
-                                        color = Color.White,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = fontSizeSp.sp
-                                    )
-                                }
                                 Text(
-                                    text = "Ready to code! Terminal render OK.",
-                                    color = Color(0xFF58A6FF),
+                                    text = "ls -la",
+                                    color = Color.White,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = fontSizeSp.sp
                                 )
                             }
+                            Text(
+                                text = "drwxr-xr-x 4 user user 4096 Oct 2 17:40 src/\n-rw-r--r-- 1 user user 1820 Oct 2 17:40 main.py",
+                                color = Color(0xFFC9D1D9),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = fontSizeSp.sp
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "koda:~/workspace$ ",
+                                    color = Color(0xFF39D353),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = fontSizeSp.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "python3 main.py",
+                                    color = Color.White,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = fontSizeSp.sp
+                                )
+                            }
+                            Text(
+                                text = "Ready to code! Terminal render OK.",
+                                color = Color(0xFF58A6FF),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = fontSizeSp.sp
+                            )
                         }
                     }
-
-                    Text(
-                        text = "Tip: Inside the terminal screen, you can also pinch-to-zoom with two fingers or tap the 'TT' text size icon in the top bar to adjust text on the fly.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
+
+                Text(
+                    text = "Tip: Inside the terminal screen, you can also pinch-to-zoom with two fingers or tap the 'TT' text size icon in the top bar to adjust text on the fly.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF8B949E)
+                )
             }
         }
     }
@@ -1334,37 +1455,28 @@ private fun TerminalPreferencesCard(
 
 @Composable
 private fun AboutPrivacyCard() {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+    LiquidGlassCard {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = "Security & Storage Overview",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = Color(0xFF58A6FF),
+                modifier = Modifier.size(18.dp)
+            )
             Text(
-                text = "• API keys are encrypted via Android EncryptedSharedPreferences (Hardware Keystore).\n• Each provider maintains its own separate API key and endpoint configuration.\n• Projects, code, and chat history remain strictly local on device.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Security & Storage Overview",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = Color(0xFFF0F6FC)
             )
         }
+        Text(
+            text = "• API keys are encrypted via Android EncryptedSharedPreferences (Hardware Keystore).\n• Each provider maintains its own separate API key and endpoint configuration.\n• Projects, code, and chat history remain strictly local on device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF8B949E)
+        )
     }
 }
 
@@ -1851,53 +1963,47 @@ private fun WebSearchPreferencesCard(
     var keyInput by remember(apiKey, currentEngine) { mutableStateOf(apiKey) }
     var showPassword by remember { mutableStateOf(false) }
 
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(
+    LiquidGlassCard {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .springPressClickable { onToggleExpand() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggleExpand() },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Public,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                Icon(
+                    imageVector = Icons.Default.Public,
+                    contentDescription = null,
+                    tint = Color(0xFF58A6FF),
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        text = "Web Search & Live Docs",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFF0F6FC)
                     )
-                    Column {
-                        Text(
-                            text = "Web Search & Live Docs",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Text(
-                            text = if (enabled) "${currentEngine.displayName} · Active" else "Disabled",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(onClick = onToggleExpand) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand"
+                    Text(
+                        text = if (enabled) "${currentEngine.displayName} · Active" else "Disabled",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF8B949E)
                     )
                 }
             }
+
+            IconButton(onClick = onToggleExpand) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = Color(0xFFC9D1D9)
+                )
+            }
+        }
 
             AnimatedVisibility(
                 visible = isExpanded,
@@ -2010,7 +2116,6 @@ private fun WebSearchPreferencesCard(
             }
         }
     }
-}
 
 @Composable
 private fun CloudSyncCard(
@@ -2022,25 +2127,13 @@ private fun CloudSyncCard(
     onDisconnectClick: () -> Unit,
     onBackupClick: () -> Unit
 ) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+    LiquidGlassCard {
+        // Header: Icon + Title + Status Badge
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header: Icon + Title + Status Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
                 Row(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
@@ -2209,7 +2302,6 @@ private fun CloudSyncCard(
             }
         }
     }
-}
 
 @Composable
 private fun ConnectSyncDialog(
