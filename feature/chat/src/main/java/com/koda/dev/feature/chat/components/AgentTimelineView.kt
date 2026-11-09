@@ -270,14 +270,19 @@ private fun TerminalOutputCard(
     modifier: Modifier = Modifier
 ) {
     val horizontalScroll = rememberScrollState()
+    val cardShape = RoundedCornerShape(10.dp)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF141618))
-            .border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
+            .clip(cardShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+            .border(
+                width = 0.75.dp,
+                brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                shape = cardShape
+            )
             .padding(10.dp)
     ) {
         Column(
