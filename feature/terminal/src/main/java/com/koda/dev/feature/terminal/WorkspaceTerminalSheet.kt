@@ -64,6 +64,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.springPressClickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -152,16 +157,36 @@ fun WorkspaceTerminalSheet(
             )
         }
 
-        // Terminal Surface Panel
-        Surface(
+        // Terminal Liquid Glass Sheet Panel
+        val sheetShape = if (isExpanded) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(sheetHeightFraction),
-            shape = if (isExpanded) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-            color = TerminalBg,
-            border = if (!isExpanded) BorderStroke(1.dp, Color(0xFF30363D)) else null,
-            shadowElevation = 16.dp
+                .fillMaxHeight(sheetHeightFraction)
+                .shadow(
+                    elevation = if (isExpanded) 0.dp else 24.dp,
+                    shape = sheetShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(sheetShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = if (isExpanded) 0.dp else 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                    shape = sheetShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            if (!isExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(GlassDesign.internalGlassSheen())
+                )
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -184,7 +209,7 @@ fun WorkspaceTerminalSheet(
                         modifier = Modifier
                             .width(36.dp)
                             .height(4.dp)
-                            .background(Color(0xFF484F58), CircleShape)
+                            .background(Color(0xFF8B949E).copy(alpha = 0.6f), CircleShape)
                     )
                 }
 
@@ -192,7 +217,12 @@ fun WorkspaceTerminalSheet(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFF161B22))
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                        .border(
+                            width = 0.5.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                            shape = androidx.compose.ui.graphics.RectangleShape
+                        )
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -203,12 +233,21 @@ fun WorkspaceTerminalSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Terminal,
-                            contentDescription = null,
-                            tint = TerminalPrompt,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = null,
+                                tint = TerminalPrompt,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
 
                         Column(modifier = Modifier.weight(1f, fill = false)) {
                             Row(
@@ -289,82 +328,107 @@ fun WorkspaceTerminalSheet(
                     // Right: Actions (Fullscreen toggle, Keyboard, Font size, Restart, Close)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         // Toggle Fullscreen / Half-height
-                        IconButton(
-                            onClick = { isFullScreen = !isFullScreen },
-                            modifier = Modifier.size(32.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), CircleShape)
+                                .springPressClickable { isFullScreen = !isFullScreen },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                                 contentDescription = if (isFullScreen) "Collapse to half screen" else "Expand to full screen",
                                 tint = Color(0xFFC9D1D9),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
                         // Soft keyboard toggle
-                        IconButton(
-                            onClick = {
-                                if (isKeyboardOpen) {
-                                    keyboardController?.hide()
-                                } else {
-                                    val view = terminalViewInstance
-                                    if (view != null) {
-                                        view.isFocusable = true
-                                        view.isFocusableInTouchMode = true
-                                        view.requestFocus()
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), CircleShape)
+                                .springPressClickable {
+                                    if (isKeyboardOpen) {
+                                        keyboardController?.hide()
+                                    } else {
+                                        val view = terminalViewInstance
+                                        if (view != null) {
+                                            view.isFocusable = true
+                                            view.isFocusableInTouchMode = true
+                                            view.requestFocus()
+                                        }
+                                        keyboardController?.show()
                                     }
-                                    keyboardController?.show()
-                                }
-                            },
-                            modifier = Modifier.size(32.dp)
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Keyboard,
                                 contentDescription = "Toggle Keyboard",
                                 tint = if (isKeyboardOpen) Color(0xFF58A6FF) else Color(0xFFC9D1D9),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
                         // Font size adjuster
-                        IconButton(
-                            onClick = { showFontSizeDialog = true },
-                            modifier = Modifier.size(32.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), CircleShape)
+                                .springPressClickable { showFontSizeDialog = true },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.FormatSize,
                                 contentDescription = "Adjust Font Size",
                                 tint = Color(0xFFC9D1D9),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
                         // Restart session
-                        IconButton(
-                            onClick = { viewModel.restartSession() },
-                            modifier = Modifier.size(32.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), CircleShape)
+                                .springPressClickable { viewModel.restartSession() },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = "Restart Session",
                                 tint = Color(0xFFC9D1D9),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
                         // Close sheet
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.size(32.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), CircleShape)
+                                .springPressClickable(onClick = onDismiss),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close Terminal",
                                 tint = Color(0xFFC9D1D9),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }

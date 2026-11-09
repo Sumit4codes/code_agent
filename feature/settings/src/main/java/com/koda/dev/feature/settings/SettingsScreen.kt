@@ -403,36 +403,163 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         )
     }
 
-    // DELETE CONFIRMATION DIALOG
+    // DELETE CONFIRMATION DIALOG (Liquid Glass Modal)
     val deletingProvider = providerToDelete
     if (deletingProvider != null) {
-        AlertDialog(
+        val deleteDialogShape = RoundedCornerShape(24.dp)
+        Dialog(
             onDismissRequest = { providerToDelete = null },
-            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Delete Provider?") },
-            text = {
-                Text(
-                    "Are you sure you want to delete '${deletingProvider.name}' and its stored API key? " +
-                    if (deletingProvider.isDefault) "Another provider will automatically become active." else ""
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.88f)
+                    .shadow(
+                        elevation = 24.dp,
+                        shape = deleteDialogShape,
+                        ambientColor = Color(0x40000000),
+                        spotColor = Color(0x800F172A)
+                    )
+                    .clip(deleteDialogShape)
+                    .background(GlassDesign.liquidGlassBackground())
+                    .border(
+                        width = 1.dp,
+                        brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.35f),
+                        shape = deleteDialogShape
+                    )
+            ) {
+                // Internal Top Refraction Sheen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(GlassDesign.internalGlassSheen())
                 )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteProvider(deletingProvider.id)
-                        providerToDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { providerToDelete = null }) {
-                    Text("Cancel")
+                    // Header with Danger Icon Disc
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFDA3633).copy(alpha = 0.16f))
+                                .border(
+                                    width = 0.75.dp,
+                                    color = Color(0xFFF85149).copy(alpha = 0.40f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFFF85149),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "Delete Provider?",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "This action cannot be undone",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Warning Body
+                    Text(
+                        text = "Are you sure you want to delete '${deletingProvider.name}' and its stored API key?" +
+                                if (deletingProvider.isDefault) " Another configured provider will automatically become active." else "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFC9D1D9)
+                    )
+
+                    // Footer Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Cancel pill button
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .springPressClickable { providerToDelete = null }
+                                .padding(horizontal = 16.dp, vertical = 9.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+
+                        Spacer(Modifier.width(10.dp))
+
+                        // Delete button
+                        val deleteBtnShape = RoundedCornerShape(12.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(deleteBtnShape)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFFDA3633).copy(alpha = 0.75f),
+                                            Color(0xFF8E1515).copy(alpha = 0.85f)
+                                        )
+                                    )
+                                )
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.80f, dispersionAlpha = 0.30f),
+                                    shape = deleteBtnShape
+                                )
+                                .springPressClickable {
+                                    viewModel.deleteProvider(deletingProvider.id)
+                                    providerToDelete = null
+                                }
+                                .padding(horizontal = 16.dp, vertical = 9.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFFFF7B72),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Delete",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                        }
+                    }
                 }
             }
-        )
+        }
     }
 }
 
