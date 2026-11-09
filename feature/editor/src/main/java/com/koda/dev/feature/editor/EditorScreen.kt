@@ -282,6 +282,7 @@ fun EditorScreen(
                             EditorCanvasPane(
                                 state = state,
                                 wrapLines = wrapLines,
+                                isSplitView = true,
                                 onContentChange = { viewModel.updateActiveContent(it) },
                                 onSave = { viewModel.saveActiveFile() },
                                 onUndo = { viewModel.undoActiveTab() },
@@ -310,6 +311,7 @@ fun EditorScreen(
                             EditorCanvasPane(
                                 state = state,
                                 wrapLines = wrapLines,
+                                isSplitView = false,
                                 onContentChange = { viewModel.updateActiveContent(it) },
                                 onSave = { viewModel.saveActiveFile() },
                                 onUndo = { viewModel.undoActiveTab() },
@@ -752,6 +754,7 @@ private fun EditorTopAppBar(
 private fun EditorCanvasPane(
     state: EditorState,
     wrapLines: Boolean,
+    isSplitView: Boolean = false,
     onContentChange: (String) -> Unit,
     onSave: () -> Unit,
     onUndo: () -> Unit,
@@ -769,7 +772,7 @@ private fun EditorCanvasPane(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(20.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -797,44 +800,144 @@ private fun EditorCanvasPane(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    "Select a file from the explorer to edit, or create a new file.",
+                    if (isSplitView) "Select a file from the explorer, or create a new file."
+                    else "Select a file from the explorer to edit, or create a new file.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
-                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.12f), RoundedCornerShape(12.dp))
-                            .springPressClickable(onClick = onOpenDrawer)
-                            .padding(horizontal = 14.dp, vertical = 9.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                BoxWithConstraints {
+                    val isNarrow = maxWidth < 270.dp
+                    if (isSplitView) {
+                        // In split view, the File Explorer is already pinned on screen; show prominent primary New File button
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD))))
+                                .border(0.75.dp, GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.30f), RoundedCornerShape(12.dp))
+                                .springPressClickable(onClick = onNewFile)
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFFF0F6FC))
-                            Text("Browse Files", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color(0xFFF0F6FC))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                                Text(
+                                    "New File",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD))))
-                            .border(0.75.dp, GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.30f), RoundedCornerShape(12.dp))
-                            .springPressClickable(onClick = onNewFile)
-                            .padding(horizontal = 14.dp, vertical = 9.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    } else if (isNarrow) {
+                        // Narrow width in single-pane mode: stack buttons vertically
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
-                            Text("New File", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD))))
+                                    .border(0.75.dp, GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.30f), RoundedCornerShape(12.dp))
+                                    .springPressClickable(onClick = onNewFile)
+                                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                                    Text(
+                                        "New File",
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.12f), RoundedCornerShape(12.dp))
+                                    .springPressClickable(onClick = onOpenDrawer)
+                                    .padding(horizontal = 16.dp, vertical = 9.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFFF0F6FC))
+                                    Text(
+                                        "Browse Files",
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                                        color = Color(0xFFF0F6FC),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Wide width: horizontal Row
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.12f), RoundedCornerShape(12.dp))
+                                    .springPressClickable(onClick = onOpenDrawer)
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFFF0F6FC))
+                                    Text(
+                                        "Browse Files",
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                                        color = Color(0xFFF0F6FC),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD))))
+                                    .border(0.75.dp, GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.70f, dispersionAlpha = 0.30f), RoundedCornerShape(12.dp))
+                                    .springPressClickable(onClick = onNewFile)
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                                    Text(
+                                        "New File",
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
                         }
                     }
                 }
