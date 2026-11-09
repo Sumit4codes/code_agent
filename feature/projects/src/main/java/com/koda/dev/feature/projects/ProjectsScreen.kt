@@ -9,6 +9,7 @@ import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -271,7 +273,7 @@ fun ProjectsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Frosted Terminal Avatar Disc
+                        // Frosted Koda Dev App Icon Logo Disc
                         Box(
                             modifier = Modifier.size(36.dp),
                             contentAlignment = Alignment.Center
@@ -280,19 +282,18 @@ fun ProjectsScreen(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(CircleShape)
-                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
                                     .border(
                                         width = 0.75.dp,
-                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
+                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.15f),
                                         shape = CircleShape
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Terminal,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color(0xFF58A6FF)
+                                Image(
+                                    painter = painterResource(id = com.koda.dev.app.core.ui.R.drawable.ic_koda_logo),
+                                    contentDescription = "Koda Dev Logo",
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
