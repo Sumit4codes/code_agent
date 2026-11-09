@@ -3025,20 +3025,45 @@ private fun ConnectSyncDialog(
         }
     }
 
-    Dialog(onDismissRequest = {
-        if (deviceAuthState.isAuthorizing) {
-            onCancelDeviceFlow()
-        }
-        onDismiss()
-    }) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    val dialogShape = RoundedCornerShape(26.dp)
+
+    Dialog(
+        onDismissRequest = {
+            if (deviceAuthState.isAuthorizing) {
+                onCancelDeviceFlow()
+            }
+            onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3046,141 +3071,250 @@ private fun ConnectSyncDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Header with Frosted CloudSync Disc & Close Button
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudSync,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "GitHub Cloud Sync",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val discShape = CircleShape
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(discShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.15f), discShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "GitHub Cloud Sync",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "Encrypted Vault Synchronization",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Circular Close Button
+                    val closeShape = CircleShape
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(closeShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), closeShape)
+                            .springPressClickable {
+                                if (deviceAuthState.isAuthorizing) {
+                                    onCancelDeviceFlow()
+                                }
+                                onDismiss()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
                 if (!deviceAuthState.isAuthorizing) {
-                    PrimaryTabRow(selectedTabIndex = tabIndex) {
-                        Tab(
-                            selected = tabIndex == 0,
-                            onClick = { tabIndex = 0 },
-                            text = { Text("1-Tap Browser Sign-In") }
-                        )
-                        Tab(
-                            selected = tabIndex == 1,
-                            onClick = { tabIndex = 1 },
-                            text = { Text("Personal Token") }
-                        )
+                    val tabShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(tabShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), tabShape)
+                            .padding(3.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            listOf("1-Tap Browser Sign-In", "Personal Token").forEachIndexed { idx, label ->
+                                val isSelected = tabIndex == idx
+                                val itemShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(itemShape)
+                                        .background(if (isSelected) Color(0x3358A6FF) else Color.Transparent)
+                                        .border(
+                                            0.75.dp,
+                                            if (isSelected) GlassDesign.liquidGlassBorder(0.60f, 0.25f) else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)),
+                                            itemShape
+                                        )
+                                        .springPressClickable { tabIndex = idx }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) Color(0xFF58A6FF) else Color(0xFF8B949E)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
                 if (deviceAuthState.isAuthorizing) {
                     // ACTIVE DEVICE FLOW IN PROGRESS
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth()
+                    val authBoxShape = RoundedCornerShape(16.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(authBoxShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(1.dp, GlassDesign.liquidGlassBorder(0.60f, 0.25f), authBoxShape)
+                            .padding(16.dp)
                     ) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Text(
                                 text = "Your GitHub Authorization Code",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFF8B949E)
                             )
 
                             val code = deviceAuthState.userCode ?: "..."
-                            Surface(
-                                color = MaterialTheme.colorScheme.surface,
-                                shape = MaterialTheme.shapes.small,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                            val codePillShape = RoundedCornerShape(12.dp)
+                            Box(
+                                modifier = Modifier
+                                    .clip(codePillShape)
+                                    .background(Color(0x330D1117))
+                                    .border(1.dp, Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF58A6FF))), codePillShape)
+                                    .padding(horizontal = 20.dp, vertical = 10.dp)
                             ) {
                                 Text(
                                     text = code,
                                     style = MaterialTheme.typography.headlineMedium.copy(
                                         fontWeight = FontWeight.Bold,
-                                        letterSpacing = 2.sp
+                                        letterSpacing = 2.sp,
+                                        fontFamily = FontFamily.Monospace
                                     ),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    color = Color(0xFF58A6FF)
                                 )
                             }
 
                             Text(
                                 text = if (codeCopied) "Code copied to clipboard! Paste it on GitHub." else "Copy the code and enter it on GitHub.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFFC9D1D9)
                             )
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(code))
-                                        codeCopied = true
-                                    }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val copyBtnShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .clip(copyBtnShape)
+                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), copyBtnShape)
+                                        .springPressClickable {
+                                            clipboardManager.setText(AnnotatedString(code))
+                                            codeCopied = true
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Copy Code")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFC9D1D9))
+                                        Text("Copy Code", style = MaterialTheme.typography.labelMedium, color = Color(0xFFC9D1D9))
+                                    }
                                 }
 
-                                Button(
-                                    onClick = {
-                                        val uri = deviceAuthState.verificationUri ?: "https://github.com/login/device"
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-                                        context.startActivity(intent)
-                                    }
+                                val openBtnShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .height(40.dp)
+                                        .clip(openBtnShape)
+                                        .background(Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD))))
+                                        .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), openBtnShape)
+                                        .springPressClickable {
+                                            val uri = deviceAuthState.verificationUri ?: "https://github.com/login/device"
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                                            context.startActivity(intent)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Open GitHub")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                        Text("Open GitHub", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = Color.White)
+                                    }
                                 }
                             }
 
-                            Spacer(Modifier.height(6.dp))
-
-                            // Immediate Check button so user can trigger verification directly upon returning from browser
-                            Button(
-                                onClick = onCheckDeviceFlowNow,
-                                enabled = !isSyncing,
-                                modifier = Modifier.fillMaxWidth()
+                            val checkBtnShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                                    .clip(checkBtnShape)
+                                    .background(Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043))))
+                                    .border(1.dp, GlassDesign.liquidGlassBorder(0.70f, 0.35f), checkBtnShape)
+                                    .springPressClickable(enabled = !isSyncing, onClick = onCheckDeviceFlowNow),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("I've Approved on GitHub (Check Now)")
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Text("I've Approved on GitHub (Check Now)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                                }
                             }
 
                             val activeErr = deviceAuthState.error ?: errorMessage
                             if (!activeErr.isNullOrBlank()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.errorContainer,
-                                    shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier.fillMaxWidth()
+                                val errShape = RoundedCornerShape(10.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(errShape)
+                                        .background(Color(0x22F85149))
+                                        .border(0.75.dp, Color(0x55F85149), errShape)
+                                        .padding(10.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Default.Info,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Text(
-                                            text = activeErr,
-                                            color = MaterialTheme.colorScheme.onErrorContainer,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
+                                        Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFFF7B72), modifier = Modifier.size(18.dp))
+                                        Text(text = activeErr, color = Color(0xFFFF7B72), style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
                             }
@@ -3190,14 +3324,11 @@ private fun ConnectSyncDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp
-                                    )
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF58A6FF))
                                     Text(
                                         text = "Waiting for authorization in browser...",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = Color(0xFF8B949E)
                                     )
                                 }
                             }
@@ -3208,8 +3339,18 @@ private fun ConnectSyncDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
-                        TextButton(onClick = onCancelDeviceFlow) {
-                            Text("Cancel")
+                        val cancelShape = RoundedCornerShape(10.dp)
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(cancelShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                                .springPressClickable(onClick = onCancelDeviceFlow)
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Cancel", style = MaterialTheme.typography.labelMedium, color = Color(0xFFC9D1D9))
                         }
                     }
                 } else if (tabIndex == 0) {
@@ -3217,7 +3358,18 @@ private fun ConnectSyncDialog(
                     Text(
                         text = "Sign in via GitHub in your browser with zero manual token generation. Set your encryption passphrase below to secure your API keys with AES-256-GCM.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
+                    )
+
+                    val textFieldColors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x330D1117),
+                        unfocusedContainerColor = Color(0x220D1117),
+                        focusedBorderColor = Color(0xFF58A6FF),
+                        unfocusedBorderColor = Color(0x3330363D),
+                        focusedTextColor = Color(0xFFF0F6FC),
+                        unfocusedTextColor = Color(0xFFF0F6FC),
+                        focusedLabelColor = Color(0xFF58A6FF),
+                        unfocusedLabelColor = Color(0xFF8B949E)
                     )
 
                     // Sync Passphrase Field
@@ -3230,13 +3382,16 @@ private fun ConnectSyncDialog(
                         label = { Text("Encryption Passphrase (min 6 chars)") },
                         placeholder = { Text("Secret passphrase for E2EE") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showPassphrase) "Hide" else "Show"
+                                    contentDescription = if (showPassphrase) "Hide" else "Show",
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
@@ -3252,30 +3407,40 @@ private fun ConnectSyncDialog(
                         label = { Text("Confirm Encryption Passphrase") },
                         placeholder = { Text("Re-enter your secret passphrase") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation()
                     )
 
                     // Expandable Advanced OAuth Configuration
-                    Row(
+                    val advShape = RoundedCornerShape(12.dp)
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showAdvancedOAuth = !showAdvancedOAuth }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clip(advShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f), advShape)
+                            .springPressClickable { showAdvancedOAuth = !showAdvancedOAuth }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = "OAuth App Client ID (Advanced)",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Icon(
-                            imageVector = if (showAdvancedOAuth) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "OAuth App Client ID (Advanced)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF58A6FF)
+                            )
+                            Icon(
+                                imageVector = if (showAdvancedOAuth) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
                     AnimatedVisibility(visible = showAdvancedOAuth) {
@@ -3283,7 +3448,7 @@ private fun ConnectSyncDialog(
                             Text(
                                 text = "GitHub Device Flow requires a registered GitHub OAuth App with 'Enable Device Flow' checked. Enter your Client ID below, or create one for free.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFF8B949E)
                             )
 
                             OutlinedTextField(
@@ -3292,66 +3457,110 @@ private fun ConnectSyncDialog(
                                 label = { Text("Custom GitHub OAuth Client ID") },
                                 placeholder = { Text(com.koda.dev.core.data.sync.GitHubGistSyncClient.DEFAULT_CLIENT_ID) },
                                 singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = textFieldColors,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            OutlinedButton(
-                                onClick = {
-                                    val url = "https://github.com/settings/applications/new"
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                            val regShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(38.dp)
+                                    .clip(regShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), regShape)
+                                    .springPressClickable {
+                                        val url = "https://github.com/settings/applications/new"
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        context.startActivity(intent)
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Register Free OAuth App on GitHub", style = MaterialTheme.typography.labelSmall)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF58A6FF))
+                                    Text("Register Free OAuth App on GitHub", style = MaterialTheme.typography.labelSmall, color = Color(0xFF58A6FF))
+                                }
                             }
                         }
                     }
 
                     val activeError = localValidation ?: errorMessage
                     if (!activeError.isNullOrBlank()) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.fillMaxWidth()
+                        val errShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(errShape)
+                                .background(Color(0x22F85149))
+                                .border(0.75.dp, Color(0x55F85149), errShape)
+                                .padding(12.dp)
                         ) {
                             Text(
                                 text = activeError,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(10.dp)
+                                color = Color(0xFFFF7B72),
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        TextButton(onClick = onDismiss, enabled = !isSyncing) {
-                            Text("Cancel")
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (passphrase.length < 6) {
-                                    localValidation = "Passphrase must be at least 6 characters"
-                                    return@Button
-                                }
-                                if (passphrase != confirmPassphrase) {
-                                    localValidation = "Passphrases do not match"
-                                    return@Button
-                                }
-                                onStartDeviceFlow(passphrase, customClientId.trim().ifBlank { null })
-                            },
-                            enabled = !isSyncing
+                        val cancelShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(cancelShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                                .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Sign in with GitHub")
+                            Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color(0xFFC9D1D9))
+                        }
+
+                        val submitShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(44.dp)
+                                .clip(submitShape)
+                                .background(
+                                    if (!isSyncing) Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                    else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (!isSyncing) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                    else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                    submitShape
+                                )
+                                .springPressClickable(enabled = !isSyncing) {
+                                    if (passphrase.length < 6) {
+                                        localValidation = "Passphrase must be at least 6 characters"
+                                        return@springPressClickable
+                                    }
+                                    if (passphrase != confirmPassphrase) {
+                                        localValidation = "Passphrases do not match"
+                                        return@springPressClickable
+                                    }
+                                    onStartDeviceFlow(passphrase, customClientId.trim().ifBlank { null })
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Text("Sign in with GitHub", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                            }
                         }
                     }
                 } else {
@@ -3359,25 +3568,43 @@ private fun ConnectSyncDialog(
                     Text(
                         text = "Instant 10-second setup with 100% reliability! Paste an existing GitHub Personal Access Token (PAT) with 'gist' scope.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
 
-                    OutlinedButton(
-                        onClick = {
-                            val url = "https://github.com/settings/tokens/new?scopes=gist&description=KodaDev%20Sync"
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    val patShape = RoundedCornerShape(10.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .clip(patShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), patShape)
+                            .springPressClickable {
+                                val url = "https://github.com/settings/tokens/new?scopes=gist&description=KodaDev%20Sync"
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                context.startActivity(intent)
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Create Token on GitHub (gist scope)", style = MaterialTheme.typography.labelSmall)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF58A6FF))
+                            Text("Create Token on GitHub (gist scope)", style = MaterialTheme.typography.labelSmall, color = Color(0xFF58A6FF))
+                        }
                     }
+
+                    val textFieldColors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x330D1117),
+                        unfocusedContainerColor = Color(0x220D1117),
+                        focusedBorderColor = Color(0xFF58A6FF),
+                        unfocusedBorderColor = Color(0x3330363D),
+                        focusedTextColor = Color(0xFFF0F6FC),
+                        unfocusedTextColor = Color(0xFFF0F6FC),
+                        focusedLabelColor = Color(0xFF58A6FF),
+                        unfocusedLabelColor = Color(0xFF8B949E)
+                    )
 
                     OutlinedTextField(
                         value = manualToken,
@@ -3388,13 +3615,16 @@ private fun ConnectSyncDialog(
                         label = { Text("GitHub Personal Access Token") },
                         placeholder = { Text("ghp_xxxxxxxxxxxx") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showManualToken) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showManualToken = !showManualToken }) {
                                 Icon(
                                     imageVector = if (showManualToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showManualToken) "Hide" else "Show"
+                                    contentDescription = if (showManualToken) "Hide" else "Show",
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
@@ -3409,13 +3639,16 @@ private fun ConnectSyncDialog(
                         label = { Text("Encryption Passphrase (min 6 chars)") },
                         placeholder = { Text("Secret passphrase for E2EE") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showPassphrase) "Hide" else "Show"
+                                    contentDescription = if (showPassphrase) "Hide" else "Show",
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
@@ -3423,44 +3656,71 @@ private fun ConnectSyncDialog(
 
                     val activeError = localValidation ?: errorMessage
                     if (!activeError.isNullOrBlank()) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.fillMaxWidth()
+                        val errShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(errShape)
+                                .background(Color(0x22F85149))
+                                .border(0.75.dp, Color(0x55F85149), errShape)
+                                .padding(12.dp)
                         ) {
                             Text(
                                 text = activeError,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(10.dp)
+                                color = Color(0xFFFF7B72),
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        TextButton(onClick = onDismiss, enabled = !isSyncing) {
-                            Text("Cancel")
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (manualToken.isBlank()) {
-                                    localValidation = "Token cannot be empty"
-                                    return@Button
-                                }
-                                if (passphrase.length < 6) {
-                                    localValidation = "Passphrase must be at least 6 characters"
-                                    return@Button
-                                }
-                                onManualConnect(manualToken, passphrase)
-                            },
-                            enabled = !isSyncing
+                        val cancelShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(cancelShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                                .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("Connect & Sync")
+                            Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color(0xFFC9D1D9))
+                        }
+
+                        val connectShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(44.dp)
+                                .clip(connectShape)
+                                .background(
+                                    if (!isSyncing) Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                    else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (!isSyncing) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                    else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                    connectShape
+                                )
+                                .springPressClickable(enabled = !isSyncing) {
+                                    if (manualToken.isBlank()) {
+                                        localValidation = "Token cannot be empty"
+                                        return@springPressClickable
+                                    }
+                                    if (passphrase.length < 6) {
+                                        localValidation = "Passphrase must be at least 6 characters"
+                                        return@springPressClickable
+                                    }
+                                    onManualConnect(manualToken, passphrase)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Connect & Sync", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
                         }
                     }
                 }
@@ -3478,24 +3738,106 @@ private fun PassphrasePromptDialog(
 ) {
     var passphrase by remember { mutableStateOf("") }
     var showPassphrase by remember { mutableStateOf(false) }
+    val dialogShape = RoundedCornerShape(26.dp)
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = if (action == SyncAction.SYNC) "Encrypt & Sync Vault" else "Decrypt & Restore Vault",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                // Header with Frosted Avatar Disc & Close Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val discShape = CircleShape
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(discShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.15f), discShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (action == SyncAction.SYNC) Icons.Default.CloudSync else Icons.Default.LockReset,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = if (action == SyncAction.SYNC) "Encrypt & Sync Vault" else "Decrypt & Restore Vault",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "Zero-Knowledge AES-256-GCM",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Circular Close Button
+                    val closeShape = CircleShape
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(closeShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), closeShape)
+                            .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
 
                 Text(
                     text = if (action == SyncAction.SYNC)
@@ -3503,7 +3845,7 @@ private fun PassphrasePromptDialog(
                     else
                         "Enter your sync passphrase to decrypt your providers from GitHub.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color(0xFFC9D1D9)
                 )
 
                 OutlinedTextField(
@@ -3511,13 +3853,25 @@ private fun PassphrasePromptDialog(
                     onValueChange = { passphrase = it },
                     label = { Text("Passphrase") },
                     singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x330D1117),
+                        unfocusedContainerColor = Color(0x220D1117),
+                        focusedBorderColor = Color(0xFF58A6FF),
+                        unfocusedBorderColor = Color(0x3330363D),
+                        focusedTextColor = Color(0xFFF0F6FC),
+                        unfocusedTextColor = Color(0xFFF0F6FC),
+                        focusedLabelColor = Color(0xFF58A6FF),
+                        unfocusedLabelColor = Color(0xFF8B949E)
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
                         IconButton(onClick = { showPassphrase = !showPassphrase }) {
                             Icon(
                                 imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showPassphrase) "Hide" else "Show"
+                                contentDescription = if (showPassphrase) "Hide" else "Show",
+                                tint = Color(0xFF8B949E)
                             )
                         }
                     }
@@ -3525,20 +3879,56 @@ private fun PassphrasePromptDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    TextButton(onClick = onDismiss, enabled = !isSyncing) {
-                        Text("Cancel")
+                    val cancelShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(cancelShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), cancelShape)
+                            .springPressClickable(enabled = !isSyncing) { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFC9D1D9)
+                        )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = { onSubmit(passphrase) },
-                        enabled = passphrase.isNotBlank() && !isSyncing
+
+                    val submitShape = RoundedCornerShape(12.dp)
+                    val canSubmit = passphrase.isNotBlank() && !isSyncing
+                    Box(
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(44.dp)
+                            .clip(submitShape)
+                            .background(
+                                if (canSubmit) {
+                                    Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                } else {
+                                    Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                                }
+                            )
+                            .border(
+                                1.dp,
+                                if (canSubmit) GlassDesign.liquidGlassBorder(0.70f, 0.35f) else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                submitShape
+                            )
+                            .springPressClickable(enabled = canSubmit) { onSubmit(passphrase) },
+                        contentAlignment = Alignment.Center
                     ) {
                         if (isSyncing) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                         } else {
-                            Text(if (action == SyncAction.SYNC) "Sync" else "Restore")
+                            Text(
+                                text = if (action == SyncAction.SYNC) "Sync Vault" else "Restore Vault",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = if (canSubmit) Color.White else Color(0xFF484F58)
+                            )
                         }
                     }
                 }
@@ -3561,16 +3951,40 @@ private fun BackupDialog(
     var showPassphrase by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
+    val dialogShape = RoundedCornerShape(26.dp)
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
+                .fillMaxWidth(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3578,30 +3992,124 @@ private fun BackupDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(
-                    text = "Encrypted Vault Backup",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                // Header with Frosted Avatar Disc & Close Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val discShape = CircleShape
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(discShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.15f), discShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                PrimaryTabRow(selectedTabIndex = tabIndex) {
-                    Tab(
-                        selected = tabIndex == 0,
-                        onClick = { tabIndex = 0 },
-                        text = { Text("Export") }
-                    )
-                    Tab(
-                        selected = tabIndex == 1,
-                        onClick = { tabIndex = 1 },
-                        text = { Text("Import") }
-                    )
+                        Column {
+                            Text(
+                                text = "Encrypted Vault Backup",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "Zero-Knowledge Local Export / Import",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Circular Close Button
+                    val closeShape = CircleShape
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(closeShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), closeShape)
+                            .springPressClickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color(0xFF8B949E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
+
+                // Micro-glass Segmented Tabs: Export / Import
+                val tabShape = RoundedCornerShape(12.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(tabShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), tabShape)
+                        .padding(3.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        listOf("Export", "Import").forEachIndexed { idx, label ->
+                            val isSelected = tabIndex == idx
+                            val itemShape = RoundedCornerShape(10.dp)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(itemShape)
+                                    .background(if (isSelected) Color(0x3358A6FF) else Color.Transparent)
+                                    .border(
+                                        0.75.dp,
+                                        if (isSelected) GlassDesign.liquidGlassBorder(0.60f, 0.25f) else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)),
+                                        itemShape
+                                    )
+                                    .springPressClickable { tabIndex = idx }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                    ),
+                                    color = if (isSelected) Color(0xFF58A6FF) else Color(0xFF8B949E)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val textFieldColors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color(0x330D1117),
+                    unfocusedContainerColor = Color(0x220D1117),
+                    focusedBorderColor = Color(0xFF58A6FF),
+                    unfocusedBorderColor = Color(0x3330363D),
+                    focusedTextColor = Color(0xFFF0F6FC),
+                    unfocusedTextColor = Color(0xFFF0F6FC),
+                    focusedLabelColor = Color(0xFF58A6FF),
+                    unfocusedLabelColor = Color(0xFF8B949E)
+                )
 
                 if (tabIndex == 0) {
                     // EXPORT TAB
                     Text(
                         text = "Generate a zero-knowledge encrypted backup payload. You can transfer this text to another device offline.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
 
                     OutlinedTextField(
@@ -3609,26 +4117,48 @@ private fun BackupDialog(
                         onValueChange = { passphrase = it },
                         label = { Text("Encryption Passphrase (min 6 chars)") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = null
+                                    contentDescription = null,
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
                     )
 
-                    Button(
-                        onClick = { onExport(passphrase) },
-                        enabled = passphrase.length >= 6,
-                        modifier = Modifier.fillMaxWidth()
+                    val canExport = passphrase.length >= 6
+                    val exportBtnShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(exportBtnShape)
+                            .background(
+                                if (canExport) Brush.horizontalGradient(listOf(Color(0xFF1F6FEB), Color(0xFF388BFD)))
+                                else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                            )
+                            .border(
+                                1.dp,
+                                if (canExport) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                exportBtnShape
+                            )
+                            .springPressClickable(enabled = canExport) { onExport(passphrase) },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Generate Encrypted Payload")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (canExport) Color.White else Color(0xFF484F58))
+                            Text("Generate Encrypted Payload", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (canExport) Color.White else Color(0xFF484F58))
+                        }
                     }
 
                     if (!exportJsonText.isNullOrBlank()) {
@@ -3637,21 +4167,34 @@ private fun BackupDialog(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Encrypted Payload JSON") },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = textFieldColors,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp)
                         )
 
-                        Button(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(exportJsonText))
-                                copied = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
+                        val copyBtnShape = RoundedCornerShape(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(copyBtnShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                .border(1.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), copyBtnShape)
+                                .springPressClickable {
+                                    clipboardManager.setText(AnnotatedString(exportJsonText))
+                                    copied = true
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (copied) "Copied to Clipboard!" else "Copy Encrypted Payload")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF58A6FF))
+                                Text(if (copied) "Copied to Clipboard!" else "Copy Encrypted Payload", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = Color(0xFF58A6FF))
+                            }
                         }
                     }
                 } else {
@@ -3659,7 +4202,7 @@ private fun BackupDialog(
                     Text(
                         text = "Paste an encrypted backup payload from another device and provide the passphrase used to encrypt it.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
 
                     OutlinedTextField(
@@ -3667,6 +4210,8 @@ private fun BackupDialog(
                         onValueChange = { importJson = it },
                         label = { Text("Encrypted Payload JSON") },
                         placeholder = { Text("Paste payload JSON here") },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp)
@@ -3677,40 +4222,65 @@ private fun BackupDialog(
                         onValueChange = { passphrase = it },
                         label = { Text("Decryption Passphrase") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { showPassphrase = !showPassphrase }) {
                                 Icon(
                                     imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = null
+                                    contentDescription = null,
+                                    tint = Color(0xFF8B949E)
                                 )
                             }
                         }
                     )
 
-                    Button(
-                        onClick = { onImport(importJson, passphrase) },
-                        enabled = importJson.isNotBlank() && passphrase.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth()
+                    val canImport = importJson.isNotBlank() && passphrase.isNotBlank()
+                    val importBtnShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(importBtnShape)
+                            .background(
+                                if (canImport) Brush.horizontalGradient(listOf(Color(0xFF238636), Color(0xFF2EA043)))
+                                else Brush.horizontalGradient(listOf(Color(0x3321262D), Color(0x3321262D)))
+                            )
+                            .border(
+                                1.dp,
+                                if (canImport) GlassDesign.liquidGlassBorder(0.70f, 0.35f)
+                                else Brush.verticalGradient(listOf(Color(0x2230363D), Color(0x1130363D))),
+                                importBtnShape
+                            )
+                            .springPressClickable(enabled = canImport) { onImport(importJson, passphrase) },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Decrypt & Restore Providers")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (canImport) Color.White else Color(0xFF484F58))
+                            Text("Decrypt & Restore Providers", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (canImport) Color.White else Color(0xFF484F58))
+                        }
                     }
                 }
 
                 if (!errorMessage.isNullOrBlank()) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.fillMaxWidth()
+                    val errShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(errShape)
+                            .background(Color(0x22F85149))
+                            .border(0.75.dp, Color(0x55F85149), errShape)
+                            .padding(12.dp)
                     ) {
                         Text(
                             text = errorMessage,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp)
+                            color = Color(0xFFFF7B72),
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
@@ -3719,8 +4289,18 @@ private fun BackupDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Close")
+                    val closeBtnShape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .height(40.dp)
+                            .clip(closeBtnShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), closeBtnShape)
+                            .springPressClickable { onDismiss() }
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Close", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = Color(0xFFC9D1D9))
                     }
                 }
             }
