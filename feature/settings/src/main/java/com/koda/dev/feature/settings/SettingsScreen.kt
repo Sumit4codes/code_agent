@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koda.dev.core.data.sync.SyncAccountInfo
@@ -1502,19 +1503,62 @@ private fun ProviderEditorDialog(
     val context = LocalContext.current
     val currentTemplate = PopularProviders.findById(editorState.selectedTemplateId)
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    val dialogShape = RoundedCornerShape(26.dp)
+    val textFieldShape = RoundedCornerShape(12.dp)
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Color(0xFF58A6FF),
+        unfocusedBorderColor = Color(0xFF30363D),
+        focusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.90f),
+        unfocusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.75f),
+        focusedTextColor = Color(0xFFF0F6FC),
+        unfocusedTextColor = Color(0xFFF0F6FC),
+        focusedLabelColor = Color(0xFF58A6FF),
+        unfocusedLabelColor = Color(0xFF8B949E),
+        focusedPlaceholderColor = Color(0xFF6E7681),
+        unfocusedPlaceholderColor = Color(0xFF6E7681),
+        focusedLeadingIconColor = Color(0xFF58A6FF),
+        unfocusedLeadingIconColor = Color(0xFF8B949E),
+        focusedTrailingIconColor = Color(0xFF58A6FF),
+        unfocusedTrailingIconColor = Color(0xFF8B949E)
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.92f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp, vertical = 18.dp)
             ) {
                 // Dialog Header
                 Row(
@@ -1522,16 +1566,82 @@ private fun ProviderEditorDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (editorState.isEditing) "Edit AI Provider" else "Add AI Provider",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (editorState.isEditing) Icons.Default.Tune else Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFF58A6FF)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = if (editorState.isEditing) "Edit AI Provider" else "Add AI Provider",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = if (editorState.isEditing) "Configure endpoint & credentials" else "Connect a new LLM provider",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Close Button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close dialog",
+                            tint = Color(0xFFC9D1D9),
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .height(1.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color(0xFF30363D).copy(alpha = 0.6f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
 
                 // Scrollable Form Content
                 Column(
@@ -1543,8 +1653,8 @@ private fun ProviderEditorDialog(
                     // Popular Providers Preset Selector
                     Text(
                         text = "Choose Provider Preset",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = Color(0xFF8B949E)
                     )
                     Row(
                         modifier = Modifier
@@ -1554,27 +1664,80 @@ private fun ProviderEditorDialog(
                     ) {
                         PopularProviders.allPopular.forEach { preset ->
                             val isSelected = editorState.selectedTemplateId == preset.id
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { onSelectTemplate(preset) },
-                                label = { Text(preset.name) },
-                                leadingIcon = if (isSelected) {
-                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                } else null
-                            )
+                            val chipShape = RoundedCornerShape(10.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .clip(chipShape)
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier
+                                                .background(Color(0xFF1F6FEB).copy(alpha = 0.28f))
+                                                .border(
+                                                    width = 1.dp,
+                                                    brush = Brush.verticalGradient(
+                                                        listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                    ),
+                                                    shape = chipShape
+                                                )
+                                        } else {
+                                            Modifier
+                                                .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                                .border(
+                                                    width = 0.75.dp,
+                                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                                                    shape = chipShape
+                                                )
+                                        }
+                                    )
+                                    .springPressClickable { onSelectTemplate(preset) }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF58A6FF),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Text(
+                                    text = preset.name,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                    ),
+                                    color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
+                                )
+                            }
                         }
                     }
 
                     // Antiroute QR Scan Action
                     if (editorState.selectedTemplateId == "antiroute" || editorState.providerType == ProviderType.ANTIROUTE) {
-                        OutlinedButton(
-                            onClick = onScanQrCode,
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        val qrBtnShape = RoundedCornerShape(12.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(qrBtnShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
+                                    shape = qrBtnShape
+                                )
+                                .springPressClickable(onClick = onScanQrCode)
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Scan Antiroute Tunnel QR Code", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                "Scan Antiroute Tunnel QR Code",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                                color = Color(0xFF79C0FF)
+                            )
                         }
                     }
 
@@ -1585,6 +1748,8 @@ private fun ProviderEditorDialog(
                         label = { Text("Provider Name") },
                         placeholder = { Text("e.g. OpenAI") },
                         singleLine = true,
+                        shape = textFieldShape,
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -1601,6 +1766,8 @@ private fun ProviderEditorDialog(
                             }
                         },
                         singleLine = true,
+                        shape = textFieldShape,
+                        colors = textFieldColors,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -1608,20 +1775,62 @@ private fun ProviderEditorDialog(
                     if (editorState.selectedTemplateId == "custom") {
                         Text(
                             text = "API Protocol",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFF8B949E)
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = editorState.providerType == ProviderType.OPENAI_COMPATIBLE,
-                                onClick = { onProviderTypeChange(ProviderType.OPENAI_COMPATIBLE) },
-                                label = { Text("OpenAI Compatible") }
-                            )
-                            FilterChip(
-                                selected = editorState.providerType == ProviderType.ANTHROPIC,
-                                onClick = { onProviderTypeChange(ProviderType.ANTHROPIC) },
-                                label = { Text("Anthropic") }
-                            )
+                            listOf(
+                                ProviderType.OPENAI_COMPATIBLE to "OpenAI Compatible",
+                                ProviderType.ANTHROPIC to "Anthropic"
+                            ).forEach { (type, label) ->
+                                val isSelected = editorState.providerType == type
+                                val chipShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier
+                                        .clip(chipShape)
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier
+                                                    .background(Color(0xFF1F6FEB).copy(alpha = 0.28f))
+                                                    .border(
+                                                        width = 1.dp,
+                                                        brush = Brush.verticalGradient(
+                                                            listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                        ),
+                                                        shape = chipShape
+                                                    )
+                                            } else {
+                                                Modifier
+                                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                                    .border(
+                                                        width = 0.75.dp,
+                                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                                                        shape = chipShape
+                                                    )
+                                            }
+                                        )
+                                        .springPressClickable { onProviderTypeChange(type) }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF58A6FF),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -1644,6 +1853,8 @@ private fun ProviderEditorDialog(
                             visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             singleLine = true,
+                            shape = textFieldShape,
+                            colors = textFieldColors,
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -1653,34 +1864,49 @@ private fun ProviderEditorDialog(
                             Text(
                                 text = "No API key required. Connects directly to Kilo free models (~200 req/hr per IP).",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
+                                color = Color(0xFF79C0FF)
                             )
                         } else if (!helpUrl.isNullOrBlank()) {
-                            TextButton(
-                                onClick = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(helpUrl))
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {}
-                                },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .springPressClickable {
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(helpUrl))
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {}
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 4.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Get API key from ${currentTemplate.name}", style = MaterialTheme.typography.labelSmall)
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Get API key from ${currentTemplate.name}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF58A6FF)
+                                )
                             }
                         }
                     }
 
                     // DYNAMIC MODEL SELECTION & FETCH
-                    OutlinedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium
+                    val modelCardShape = RoundedCornerShape(16.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(modelCardShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                                shape = modelCardShape
+                            )
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(
@@ -1690,23 +1916,58 @@ private fun ProviderEditorDialog(
                             ) {
                                 Text(
                                     text = "Model Selection",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color(0xFFF0F6FC)
                                 )
 
-                                FilledTonalButton(
-                                    onClick = onFetchModels,
-                                    enabled = !editorState.isFetchingModels && editorState.baseUrl.isNotBlank(),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp)
+                                // Frosted Fetch Models Pill Button
+                                val fetchEnabled = !editorState.isFetchingModels && editorState.baseUrl.isNotBlank()
+                                val fetchPillShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier
+                                        .clip(fetchPillShape)
+                                        .then(
+                                            if (fetchEnabled) Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                            else Modifier.background(Color(0xFF21262D).copy(alpha = 0.4f))
+                                        )
+                                        .border(
+                                            width = 0.75.dp,
+                                            brush = if (fetchEnabled) GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f)
+                                                    else Brush.linearGradient(listOf(Color(0xFF30363D), Color(0xFF21262D))),
+                                            shape = fetchPillShape
+                                        )
+                                        .then(
+                                            if (fetchEnabled) Modifier.springPressClickable(onClick = onFetchModels)
+                                            else Modifier
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
                                     if (editorState.isFetchingModels) {
-                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Fetching…", style = MaterialTheme.typography.labelSmall)
-                                    } else {
-                                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(13.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF79C0FF)
+                                        )
                                         Spacer(Modifier.width(4.dp))
-                                        Text("Fetch Models", style = MaterialTheme.typography.labelSmall)
+                                        Text(
+                                            "Fetching…",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF8B949E)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = if (fetchEnabled) Color(0xFF79C0FF) else Color(0xFF484F58)
+                                        )
+                                        Text(
+                                            "Fetch Models",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                            color = if (fetchEnabled) Color(0xFF79C0FF) else Color(0xFF484F58)
+                                        )
                                     }
                                 }
                             }
@@ -1720,11 +1981,13 @@ private fun ProviderEditorDialog(
                                 trailingIcon = {
                                     if (editorState.availableModels.isNotEmpty()) {
                                         IconButton(onClick = { showModelSelectorSheet = true }) {
-                                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose model")
+                                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose model", tint = Color(0xFF79C0FF))
                                         }
                                     }
                                 },
                                 singleLine = true,
+                                shape = textFieldShape,
+                                colors = textFieldColors,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
@@ -1733,7 +1996,7 @@ private fun ProviderEditorDialog(
                                 Text(
                                     text = "Available Models (${editorState.availableModels.size}):",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Color(0xFF8B949E)
                                 )
                                 Row(
                                     modifier = Modifier
@@ -1743,17 +2006,64 @@ private fun ProviderEditorDialog(
                                 ) {
                                     editorState.availableModels.take(8).forEach { modelName ->
                                         val isChosen = editorState.model == modelName
-                                        FilterChip(
-                                            selected = isChosen,
-                                            onClick = { onModelChange(modelName) },
-                                            label = { Text(modelName, style = MaterialTheme.typography.labelSmall) }
-                                        )
+                                        val chipShape = RoundedCornerShape(8.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(chipShape)
+                                                .then(
+                                                    if (isChosen) {
+                                                        Modifier
+                                                            .background(Color(0xFF1F6FEB).copy(alpha = 0.30f))
+                                                            .border(
+                                                                width = 1.dp,
+                                                                brush = Brush.verticalGradient(
+                                                                    listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                                ),
+                                                                shape = chipShape
+                                                            )
+                                                    } else {
+                                                        Modifier
+                                                            .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
+                                                            .border(
+                                                                width = 0.75.dp,
+                                                                brush = GlassDesign.microGlassBorder(topAlpha = 0.25f, bottomAlpha = 0.06f),
+                                                                shape = chipShape
+                                                            )
+                                                    }
+                                                )
+                                                .springPressClickable { onModelChange(modelName) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = modelName,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isChosen) FontWeight.SemiBold else FontWeight.Normal,
+                                                    fontFamily = FontFamily.Monospace
+                                                ),
+                                                color = if (isChosen) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
+                                            )
+                                        }
                                     }
                                     if (editorState.availableModels.size > 8) {
-                                        AssistChip(
-                                            onClick = { showModelSelectorSheet = true },
-                                            label = { Text("+${editorState.availableModels.size - 8} more", style = MaterialTheme.typography.labelSmall) }
-                                        )
+                                        val moreShape = RoundedCornerShape(8.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(moreShape)
+                                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                                .border(
+                                                    width = 0.75.dp,
+                                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                                    shape = moreShape
+                                                )
+                                                .springPressClickable { showModelSelectorSheet = true }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "+${editorState.availableModels.size - 8} more",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                                color = Color(0xFF58A6FF)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1761,28 +2071,35 @@ private fun ProviderEditorDialog(
                             // Connection / Fetch Result Banner
                             if (editorState.connectionTestMessage != null) {
                                 val isSuccess = editorState.connectionTestSuccess == true
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = if (isSuccess) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-                                    modifier = Modifier.fillMaxWidth()
+                                val bannerShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(bannerShape)
+                                        .background(
+                                            if (isSuccess) Color(0xFF238636).copy(alpha = 0.18f)
+                                            else Color(0xFFDA3633).copy(alpha = 0.18f)
+                                        )
+                                        .border(
+                                            width = 0.75.dp,
+                                            color = if (isSuccess) Color(0xFF3FB950).copy(alpha = 0.40f) else Color(0xFFF85149).copy(alpha = 0.40f),
+                                            shape = bannerShape
+                                        )
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
-                                            contentDescription = null,
-                                            tint = if (isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = editorState.connectionTestMessage,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (isSuccess) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = if (isSuccess) Color(0xFF3FB950) else Color(0xFFF85149),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = editorState.connectionTestMessage,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isSuccess) Color(0xFF7EE787) else Color(0xFFFF7B72)
+                                    )
                                 }
                             }
                         }
@@ -1796,16 +2113,37 @@ private fun ProviderEditorDialog(
                     ) {
                         Text(
                             text = "Set as active provider",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFFF0F6FC)
                         )
                         Switch(
                             checked = editorState.isDefault,
-                            onCheckedChange = onIsDefaultChange
+                            onCheckedChange = onIsDefaultChange,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF1F6FEB),
+                                uncheckedThumbColor = Color(0xFF8B949E),
+                                uncheckedTrackColor = Color(0xFF21262D)
+                            )
                         )
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .height(1.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color(0xFF30363D).copy(alpha = 0.6f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
 
                 // Action Buttons
                 Row(
@@ -1813,20 +2151,96 @@ private fun ProviderEditorDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                    // Cancel button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .springPressClickable(onClick = onDismiss)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF8B949E)
+                        )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = onSave,
-                        enabled = !isSaving && editorState.name.isNotBlank() && editorState.baseUrl.isNotBlank()
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // Save Provider button
+                    val canSave = !isSaving && editorState.name.isNotBlank() && editorState.baseUrl.isNotBlank()
+                    val saveBtnShape = RoundedCornerShape(14.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .clip(saveBtnShape)
+                            .background(
+                                if (canSave) {
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFF1F6FEB).copy(alpha = 0.65f),
+                                            Color(0xFF238636).copy(alpha = 0.50f)
+                                        )
+                                    )
+                                } else {
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFF21262D).copy(alpha = 0.40f),
+                                            Color(0xFF161B22).copy(alpha = 0.40f)
+                                        )
+                                    )
+                                }
+                            )
+                            .border(
+                                width = 0.75.dp,
+                                brush = if (canSave) {
+                                    GlassDesign.liquidGlassBorder(
+                                        topSpecularAlpha = 0.80f,
+                                        dispersionAlpha = 0.40f
+                                    )
+                                } else {
+                                    Brush.linearGradient(listOf(Color(0xFF30363D), Color(0xFF21262D)))
+                                },
+                                shape = saveBtnShape
+                            )
+                            .then(
+                                if (canSave) Modifier.springPressClickable(onClick = onSave)
+                                else Modifier
+                            )
+                            .padding(horizontal = 18.dp, vertical = 10.dp)
                     ) {
                         if (isSaving) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color(0xFFF0F6FC)
+                            )
                             Spacer(Modifier.width(6.dp))
-                            Text("Saving…")
+                            Text(
+                                "Saving…",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
                         } else {
-                            Text("Save Provider")
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (canSave) Color(0xFF79C0FF) else Color(0xFF6E7681)
+                            )
+                            Text(
+                                text = "Save Provider",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = if (canSave) Color(0xFFF0F6FC) else Color(0xFF6E7681)
+                            )
                         }
                     }
                 }
@@ -1861,81 +2275,222 @@ private fun ModelSelectorDialog(
         else models.filter { it.contains(searchQuery.trim(), ignoreCase = true) }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+    val dialogShape = RoundedCornerShape(26.dp)
+    val textFieldShape = RoundedCornerShape(12.dp)
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Color(0xFF58A6FF),
+        unfocusedBorderColor = Color(0xFF30363D),
+        focusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.90f),
+        unfocusedContainerColor = Color(0xFF0D1117).copy(alpha = 0.75f),
+        focusedTextColor = Color(0xFFF0F6FC),
+        unfocusedTextColor = Color(0xFFF0F6FC),
+        focusedLabelColor = Color(0xFF58A6FF),
+        unfocusedLabelColor = Color(0xFF8B949E),
+        focusedPlaceholderColor = Color(0xFF6E7681),
+        unfocusedPlaceholderColor = Color(0xFF6E7681),
+        focusedLeadingIconColor = Color(0xFF58A6FF),
+        unfocusedLeadingIconColor = Color(0xFF8B949E),
+        focusedTrailingIconColor = Color(0xFF58A6FF),
+        unfocusedTrailingIconColor = Color(0xFF8B949E)
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.92f)
                 .fillMaxHeight(0.85f)
+                .shadow(
+                    elevation = 24.dp,
+                    shape = dialogShape,
+                    ambientColor = Color(0x40000000),
+                    spotColor = Color(0x800F172A)
+                )
+                .clip(dialogShape)
+                .background(GlassDesign.liquidGlassBackground())
+                .border(
+                    width = 1.dp,
+                    brush = GlassDesign.liquidGlassBorder(
+                        topSpecularAlpha = 0.70f,
+                        dispersionAlpha = 0.35f
+                    ),
+                    shape = dialogShape
+                )
         ) {
+            // Internal Top Refraction Sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(20.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Choose Model (${models.size})",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.22f, bottomAlpha = 0.08f))
+                                .border(
+                                    width = 0.75.dp,
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.45f, bottomAlpha = 0.12f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFF58A6FF)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "Choose Model",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC)
+                            )
+                            Text(
+                                text = "${filteredModels.size} of ${models.size} models available",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+
+                    // Close Button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close dialog",
+                            tint = Color(0xFFC9D1D9),
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(14.dp))
 
+                // Search Bar
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = { Text("Search models…") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search", tint = Color(0xFF8B949E))
+                            }
+                        }
+                    } else null,
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = textFieldShape,
+                    colors = textFieldColors
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                // Model Items in LazyColumn
+                val listShape = RoundedCornerShape(16.dp)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clip(listShape)
+                        .background(Color(0xFF0D1117).copy(alpha = 0.75f))
+                        .border(1.dp, Color(0xFF30363D).copy(alpha = 0.7f), listShape)
                 ) {
-                    items(filteredModels) { modelName ->
-                        val isSelected = modelName == selectedModel
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(modelName) }
+                    if (filteredModels.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = modelName,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    ),
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
+                            Text(
+                                "No models found matching '$searchQuery'",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(filteredModels) { modelName ->
+                                val isSelected = modelName == selectedModel
+                                val itemShape = RoundedCornerShape(10.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(itemShape)
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier
+                                                    .background(Color(0xFF1F6FEB).copy(alpha = 0.28f))
+                                                    .border(
+                                                        width = 1.dp,
+                                                        brush = Brush.verticalGradient(
+                                                            listOf(Color(0xFF58A6FF).copy(alpha = 0.75f), Color(0xFF1F6FEB).copy(alpha = 0.35f))
+                                                        ),
+                                                        shape = itemShape
+                                                    )
+                                            } else {
+                                                Modifier.background(Color.Transparent)
+                                            }
+                                        )
+                                        .springPressClickable { onSelect(modelName) }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = modelName,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                            fontFamily = FontFamily.Monospace
+                                        ),
+                                        color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFFC9D1D9)
                                     )
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF58A6FF),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
