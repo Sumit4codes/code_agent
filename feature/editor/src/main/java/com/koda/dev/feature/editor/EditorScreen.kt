@@ -105,11 +105,17 @@ fun EditorScreen(
             drawerState = drawerState,
             gesturesEnabled = !isSplitView,
             drawerContent = {
+                val drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)
                 ModalDrawerSheet(
                     modifier = Modifier
                         .widthIn(max = minOf(320.dp, totalMaxWidth * 0.85f))
-                        .fillMaxHeight(),
-                    drawerContainerColor = MaterialTheme.colorScheme.surface
+                        .fillMaxHeight()
+                        .shadow(elevation = 20.dp, shape = drawerShape)
+                        .clip(drawerShape)
+                        .background(GlassDesign.liquidGlassBackground(topAlpha = 0.94f, midAlpha = 0.90f, bottomAlpha = 0.84f))
+                        .border(1.dp, GlassDesign.liquidGlassBorder(0.65f, 0.25f), drawerShape),
+                    drawerContainerColor = Color.Transparent,
+                    drawerShape = drawerShape
                 ) {
                     FileExplorerPane(
                         state = state,

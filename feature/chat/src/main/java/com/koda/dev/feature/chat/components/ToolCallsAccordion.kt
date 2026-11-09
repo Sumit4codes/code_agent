@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,13 +42,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koda.dev.core.model.ChangeStatus
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.model.ToolCallData
+import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.core.model.ToolNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -119,54 +125,81 @@ fun ToolCallsAccordion(
     val isRunning = isLive && toolCalls.any { it.result == null }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        // Summary Header Pill
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
-            border = BorderStroke(
-                1.dp,
-                when {
-                    hasFailure -> MaterialTheme.colorScheme.error.copy(alpha = 0.45f)
-                    pendingReviewCount > 0 -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f)
-                    else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                }
-            ),
+        // Summary Header Pill - Micro Glass Accordion
+        val headerShape = RoundedCornerShape(12.dp)
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .clickable {
+                .clip(headerShape)
+                .then(
+                    if (hasFailure) Modifier.background(Color(0x22F85149))
+                    else Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                )
+                .border(
+                    width = 0.75.dp,
+                    brush = when {
+                        hasFailure -> Brush.verticalGradient(listOf(Color(0x88F85149), Color(0x44F85149)))
+                        pendingReviewCount > 0 -> Brush.verticalGradient(listOf(Color(0x88D29922), Color(0x44D29922)))
+                        else -> GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f)
+                    },
+                    shape = headerShape
+                )
+                .springPressClickable {
                     userToggled = true
                     isExpanded = !isExpanded
                 }
+                .padding(horizontal = 12.dp, vertical = 9.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Leading status indicator
-                if (isRunning) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                } else if (hasFailure) {
-                    Icon(
-                        imageVector = Icons.Default.Error,
-                        contentDescription = "Tool failure",
-                        modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                // Leading status indicator in frosted micro-disc
+                val discShape = CircleShape
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(discShape)
+                        .background(
+                            when {
+                                hasFailure -> Color(0x33F85149)
+                                isRunning -> Color(0x3358A6FF)
+                                else -> Color(0x2239D353)
+                            }
+                        )
+                        .border(
+                            0.75.dp,
+                            when {
+                                hasFailure -> Color(0x66F85149)
+                                isRunning -> Color(0x6658A6FF)
+                                else -> Color(0x4439D353)
+                            },
+                            discShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isRunning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp,
+                            color = Color(0xFF58A6FF)
+                        )
+                    } else if (hasFailure) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = "Tool failure",
+                            modifier = Modifier.size(13.dp),
+                            tint = Color(0xFFFF7B72)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = Color(0xFF39D353)
+                        )
+                    }
                 }
 
                 // Title and Tool names preview
@@ -177,20 +210,25 @@ fun ToolCallsAccordion(
                     ) {
                         Text(
                             text = if (isRunning) "Running tools..." else toolLabel,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFFF0F6FC)
                         )
                         if (pendingReviewCount > 0) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.tertiaryContainer,
-                                modifier = Modifier.padding(start = 2.dp)
+                            val badgeShape = RoundedCornerShape(6.dp)
+                            Box(
+                                modifier = Modifier
+                                    .clip(badgeShape)
+                                    .background(Color(0x33D29922))
+                                    .border(0.75.dp, Color(0x66D29922), badgeShape)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
                                     text = "$pendingReviewCount pending review",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = Color(0xFFE3B341)
                                 )
                             }
                         }
@@ -202,20 +240,29 @@ fun ToolCallsAccordion(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF8B949E),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                // Expand/collapse arrow indicator
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Expand/collapse arrow indicator in micro-glass disc
+                val chevronDisc = CircleShape
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(chevronDisc)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFF8B949E)
+                    )
+                }
             }
         }
 
