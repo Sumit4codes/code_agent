@@ -1,8 +1,6 @@
-• Koda Dev v1.1.0: Full IDE Code Editor & Apple Liquid Glass Design
-• Full IDE Code Editor: multi-tab file viewer/editor, syntax highlighting, gutter line numbering, mobile accessory bar, and split view
-• Liquid Glass Design System: hardware RenderEffect backdrop blur, AGSL lens refraction, floating navigation docks, and tactile spring physics
-• In-Workspace Terminal: slide-up Ubuntu 24.04 PRoot terminal sheet directly accessible within Chat and Editor
-• Context Window Gauge & Compaction: real-time token usage meter and autonomous 80% boundary protection
-• Live Mid-Run Steering: steer agent actions in real time without aborting the run
-• Keyless Free AI: out-of-the-box Kilo Free provider and official NVIDIA NIM integration
-• Edge-to-Edge: dynamic system navigation bar insets and responsive layouts across all Android devices
+• Full IDE Code Editor: multi-tab editor, syntax highlighting, and mobile accessory bar
+• Liquid Glass UI: backdrop blur, lens refraction, and fluid spring physics
+• In-Workspace Terminal: slide-up Ubuntu 24.04 PRoot terminal sheet in Chat & Editor
+• Context Compaction: real-time token meter and autonomous 80% boundary protection
+• Live Steering: steer agent actions in real time
+• Keyless Free AI: Kilo Free provider & NVIDIA NIM support
