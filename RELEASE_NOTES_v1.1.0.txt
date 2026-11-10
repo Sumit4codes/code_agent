@@ -1,0 +1,83 @@
+# 🚀 Koda Dev v1.1.0: Full IDE Code Editor & Liquid Glass Design
+
+> **Koda Dev v1.1.0** is our largest milestone yet! This release transforms Koda Dev into a complete mobile IDE with a built-in multi-tab code editor, debuts the **Apple-inspired Liquid Glass design system** with hardware backdrop blur and AGSL lens refraction, introduces an **in-workspace terminal sheet**, real-time **context window meter & auto-compaction**, and **live mid-run agent steering**.
+
+---
+
+## 🌟 Highlights
+
+### 📝 Full IDE Code Editor
+- **Multi-Tab Workspace**: Open, edit, and switch between files with tab state indicators and quick close actions.
+- **Synchronized Gutter & Syntax**: Clean monospace coding canvas with synchronized line number gutters.
+- **Mobile Accessory Bar**: Fast access to essential code syntax symbols (`{ }`, `( )`, `;`, `->`, `=`, `[ ]`, `"`, `'`, `$`).
+- **Responsive Split View**: Seamless transition between single-pane mobile view and dual-pane split view on landscape and large screens.
+- **File Explorer**: Integrated file tree, breadcrumbs, search, and new file/folder management.
+
+### 💎 Liquid Glass Design System
+- **Hardware Optics**: Hardware-accelerated `RenderEffect` backdrop blur, AGSL signed distance field (SDF) lens refraction, and internal specular highlight sheens.
+- **Floating Capsule UI**: Floating TopAppBars, docked bottom navigation bars, and unified input capsules with frosted micro-glass cards.
+- **Tactile Physics**: Interactive spring-press animations (`springPressClickable`) matching modern physical fluid design.
+- **Dynamic Edge-to-Edge**: Full system bar insets and translucent navigation bars across all Android 8.0–15+ devices.
+
+### 💻 In-Workspace Terminal Bottom Sheet
+- **Instant Linux Terminal**: Slide-up Ubuntu 24.04 PRoot terminal accessible right from Chat and Editor without losing your flow.
+- **Keyboard-Aware Elevation**: The terminal dynamically lifts above the soft keyboard and supports multi-session tabs.
+- **Frosted Accessory Keys**: Ergonomic keys (`ESC`, `TAB`, `CTRL`, `CTRL-C`, arrow keys, pipe `|`).
+
+### 🧠 Autonomous Agent Upgrades
+- **Real-Time Context Window Meter**: Live token gauge inside the input capsule displaying active memory consumption (e.g. `22k/256k`).
+- **Autonomous Auto-Compaction Guard**: Proactively compacts conversation history at 80% capacity to prevent LLM context blowouts.
+- **Live Mid-Run Steering**: Provide guidance or adjust agent direction mid-generation without cancelling the session.
+- **Interactive Diff Review**: In-chat inline diff cards and bottom sheet diff inspector for visual code review before saving to disk.
+- **Foreground Service Host**: Unbounded agent runs protected with CPU wake locks against Android OS background kills.
+- **Command Timeline & Log Truncation**: Explicit command execution display in the activity timeline with expandable "Show more" logs.
+
+### 🤖 AI Providers & Connectivity
+- **Koda Community Free (Keyless)**: Out-of-the-box free AI provider (Kilo Free) pre-configured with zero setup required.
+- **Official NVIDIA NIM Integration**: Instant access to fast Nemotron reasoning and vision models.
+- **Antiroute QR Scanner**: 1-tap CameraX QR code pairing for local Ollama / Antiroute tunnels.
+
+---
+
+## 🛠️ Detailed Changelog
+
+### 🎨 UI & UX Design
+- `feat(ui)`: Implement Liquid Glass design language across Chat, Projects, Editor, Settings, and Terminal.
+- `feat(ui)`: Add hardware backdrop blur and AGSL lens refraction shaders.
+- `feat(ui)`: Dynamic edge-to-edge system navigation bar and safe drawing insets.
+- `feat(navigation)`: Floating liquid glass bottom navigation bar with spring-press tabs.
+- `feat(chat)`: Floating top capsule bar with model selector and session history quick-access.
+- `feat(chat)`: Streamline input bar placeholder to `"Ask anything..."`.
+
+### 📝 Code Editor
+- `feat(editor)`: Implement full IDE code editor, tab bar, accessory toolbar, and file management.
+- `fix(editor)`: Synchronize gutter line numbers and baseline alignment with text field.
+- `perf(editor)`: Eliminate navigation jank and optimize file loading on Android devices.
+- `feat(editor)`: Streamline top bar with overflow menu to prevent title truncation.
+- `fix(editor)`: Responsive empty-state new file button in split view.
+
+### 🐧 Terminal & PRoot
+- `feat(terminal)`: Add in-workspace terminal bottom sheet in Chat and Editor.
+- `fix(terminal)`: Lift workspace terminal sheet above keyboard and expand smoothly on typing.
+- `feat(terminal)`: Align terminal canvas with 14dp gutter and upgrade accessory keys to frosted micro-glass.
+- `fix(terminal)`: Prevent keyboard from opening automatically on terminal page entry.
+
+### 🤖 AI Agent & Orchestrator
+- `feat(agent)`: Live mid-run steering via `SteeringInbox` with immediate UI feedback.
+- `feat(context)`: Real-time context meter, hygiene estimation, and autonomous 80% auto-compaction guard.
+- `feat(chat)`: In-chat inline diff cards and bottom sheet diff review.
+- `feat(chat)`: Display executed command in timeline and truncate long log outputs with "Show more".
+- `feat(chat)`: Background foreground service and wake lock host for unbounded tasks.
+- `fix(agent)`: Support glob brace patterns and regex alternation in `search_code`.
+- `feat(projects)`: Add liquid glass confirmation modal before deleting a project.
+
+---
+
+## 📦 Technical Specifications
+
+- **Release Tag**: `v1.1.0`
+- **Version Code**: `2`
+- **Min Android Version**: Android 8.0 (API 26+)
+- **Target Android Version**: Android 16 (API 37)
+- **Supported ABIs**: `arm64-v8a`, `armeabi-v7a`, `x86_64`
+- **Build Output**: `app/build/outputs/apk/release/app-release-unsigned.apk` (or signed `koda-dev-v1.1.0.apk`)
