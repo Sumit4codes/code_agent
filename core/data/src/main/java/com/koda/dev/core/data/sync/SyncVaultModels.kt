@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class SyncVault(
     val version: Int = 1,
     val exportedAt: Long = System.currentTimeMillis(),
-    val appVersion: String = "1.0.0",
+    val appVersion: String = "1.1.0",
     val items: List<SyncProviderItem> = emptyList()
 )
 

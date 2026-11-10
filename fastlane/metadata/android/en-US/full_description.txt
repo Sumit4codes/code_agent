@@ -1,0 +1,23 @@
+Koda Dev is an Android-native autonomous AI coding agent and complete Linux development environment powered by Ubuntu 24.04 LTS and PRoot.
+
+Turn your Android device into a self-contained software engineering workstation capable of building, testing, and editing code on-device.
+
+Key Features:
+
+• Autonomous Coding Agent
+Loops autonomously through multi-turn tool calling: reading files, searching codebases, executing terminal commands, and managing background tasks. Every file modification is presented through an interactive diff review before touching disk.
+
+• Real Ubuntu Linux Environment
+Runs an authentic Ubuntu 24.04 LTS userland inside PRoot without requiring root permissions. Install real compilers and tools using apt: GCC, Clang, Python 3, OpenJDK 21, Node.js, Rust, Git, and Make.
+
+• High-Performance Terminal
+Built on the Termux terminal engine with 24-bit truecolor support, alternate screen buffers (vim, nano, htop), pinch-to-zoom, dynamic font scaling, and multi-session tabs. Features an ergonomic mobile programmer keyboard with Esc, Ctrl, Tab, and arrow keys.
+
+• Local & Cloud AI Connectivity
+Connect to local offline models running via Ollama or Antiroute tunnels with 1-tap QR scanning, or use standard cloud providers including Anthropic Claude, OpenAI, OpenRouter, and DeepSeek.
+
+• Web Intelligence
+Equipped with web search and web page retrieval capabilities so the agent can look up documentation and error traces in real time.
+
+• 100% Free & Open Source
+Released under the GNU General Public License v3.0 (GPL-3.0) with zero ads, zero proprietary analytics, and no tracking.

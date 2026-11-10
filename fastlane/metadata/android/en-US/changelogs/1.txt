@@ -1,0 +1,7 @@
+• Initial release of Koda Dev v1.0.0
+• Autonomous coding agent with multi-turn tool calling and visual diff review
+• Embedded Ubuntu 24.04 LTS (Noble) userland in PRoot
+• VT100 terminal engine with 24-bit truecolor and mobile programmer keyboard
+• Antiroute tunnel QR pairing and multi-provider AI support (Ollama, Anthropic, OpenAI, OpenRouter, DeepSeek)
+• Real-time web search and documentation fetching
+• Obsidian dark theme and JetBrains Mono developer typography
