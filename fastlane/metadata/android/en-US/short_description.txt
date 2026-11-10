@@ -1,1 +1,1 @@
-On-device AI coding agent & full Linux development environment.
+On-device AI coding agent & full Linux development environment
