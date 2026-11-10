@@ -1,3 +1,5 @@
+AntiFeatures:
+  - NonFreeNet
 Categories:
   - Development
   - System
@@ -9,43 +11,24 @@ IssueTracker: https://github.com/Sumit4codes/code_agent/issues
 Changelog: https://github.com/Sumit4codes/code_agent/releases
 
 AutoName: Koda Dev
-Summary: On-device AI coding agent & full Linux development environment.
-Description: |-
-  Koda Dev is an Android-native autonomous AI coding agent and complete
-  Linux development environment powered by Ubuntu 24.04 LTS and PRoot.
-
-  Turn your Android device into a self-contained software engineering
-  workstation capable of building, testing, and editing code on-device.
-
-  Key Features:
-  * Autonomous Coding Agent with multi-turn tool calling and visual diff review
-  * Authentic Ubuntu 24.04 LTS userland in PRoot with apt package manager
-  * VT100 terminal engine with 24-bit truecolor and mobile programmer keyboard
-  * Connect to local models (Ollama, Antiroute) or remote APIs (Claude, OpenAI, DeepSeek)
-  * Web search and documentation lookup tools
-  * 100% Free & Open Source under GPL-3.0 with no ads, tracking, or proprietary analytics
 
 RepoType: git
 Repo: https://github.com/Sumit4codes/code_agent.git
 
-AntiFeatures:
-  - NonFreeNet
-
 Builds:
-  - versionName: '1.1.0'
+  - versionName: 1.1.0
     versionCode: 2
     commit: f94c4a5c117d9671f76d8b89ab2a2d2b04af1334
     subdir: app
     gradle:
-      - 'yes'
-    scandelete:
-      - tools/bin/arm64-v8a/aapt2
+      - yes
+    prebuild: sed -i -e '/tools\/bin\/arm64-v8a\/aapt2/d' ../settings.gradle.kts
     scanignore:
       - app/src/main/jniLibs
-    prebuild:
-      - sed -i -e '/tools\/bin\/arm64-v8a\/aapt2/d' ../settings.gradle.kts
+    scandelete:
+      - tools/bin/arm64-v8a/aapt2
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: '1.1.0'
+CurrentVersion: 1.1.0
 CurrentVersionCode: 2
