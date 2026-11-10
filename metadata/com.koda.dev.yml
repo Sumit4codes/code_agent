@@ -32,31 +32,20 @@ AntiFeatures:
   - NonFreeNet
 
 Builds:
-  - versionName: '1.0'
-    versionCode: 1
-    commit: v1.0.0
-    subdir: app
-    gradle:
-      - yes
-    init:
-      # Remove bundled arm64 AAPT2 binary so F-Droid's precompiled binary scanner passes
-      - rm -rf tools/bin
-    prebuild:
-      - sed -i -e '/tools\/bin\/arm64-v8a\/aapt2/d' ../settings.gradle.kts
-
   - versionName: '1.1.0'
     versionCode: 2
-    commit: v1.1.0
+    commit: f94c4a5c117d9671f76d8b89ab2a2d2b04af1334
     subdir: app
     gradle:
-      - yes
-    init:
-      # Remove bundled arm64 AAPT2 binary so F-Droid's precompiled binary scanner passes
-      - rm -rf tools/bin
+      - 'yes'
+    scandelete:
+      - tools/bin/arm64-v8a/aapt2
+    scanignore:
+      - app/src/main/jniLibs
     prebuild:
       - sed -i -e '/tools\/bin\/arm64-v8a\/aapt2/d' ../settings.gradle.kts
 
-AutoUpdateMode: Version v%v
+AutoUpdateMode: Version
 UpdateCheckMode: Tags
 CurrentVersion: '1.1.0'
 CurrentVersionCode: 2
