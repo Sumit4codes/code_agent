@@ -90,4 +90,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
     ksp(libs.hilt.android.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

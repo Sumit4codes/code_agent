@@ -197,13 +197,18 @@ class ToolExecutor @Inject constructor(
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
             ?: return ToolResult(false, "File not found: $rawPath")
 
-        // 1. Enforce 100 MB max file size limit
+        if (!fs.exists(fileUri)) {
+            return ToolResult(false, "File not found: $rawPath")
+        }
+
+        // Reject large/unknown files before materializing their contents in memory.
         val size = fs.fileSize(fileUri)
-        if (size != null && size > MAX_FILE_SIZE_BYTES) {
+            ?: return ToolResult(false, "Cannot determine the size of '$relPath'; refusing to read it safely.")
+        if (size > MAX_FILE_SIZE_BYTES) {
             val sizeMb = size / (1024 * 1024)
             return ToolResult(
                 false,
-                "File '$relPath' exceeds maximum allowed size (${sizeMb} MB > 100 MB). Files larger than 100 MB cannot be opened."
+                "File '$relPath' exceeds maximum allowed size (${sizeMb} MB > ${MAX_FILE_SIZE_MB} MB). Files larger than ${MAX_FILE_SIZE_MB} MB cannot be opened."
             )
         }
 
@@ -457,6 +462,15 @@ class ToolExecutor @Inject constructor(
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
             ?: return ToolResult(false, "File not found: $rawPath")
 
+        if (!fs.exists(fileUri)) {
+            return ToolResult(false, "File not found: $rawPath")
+        }
+
+        val size = fs.fileSize(fileUri)
+            ?: return ToolResult(false, "Cannot determine the size of '$relPath'; refusing to summarize it safely.")
+        if (size > MAX_FILE_SIZE_BYTES) {
+            return ToolResult(false, "File '$relPath' exceeds maximum allowed size (${size / (1024 * 1024)} MB > ${MAX_FILE_SIZE_MB} MB).")
+        }
         val content = fs.readTextFile(fileUri)
             ?: return ToolResult(false, "Cannot read file: $rawPath")
 
@@ -497,6 +511,10 @@ class ToolExecutor @Inject constructor(
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
             ?: return ToolResult(false, "File not found: $rawPath")
+
+        if (!fs.exists(fileUri)) {
+            return ToolResult(false, "File not found: $rawPath")
+        }
 
         val originalContent = fs.readTextFile(fileUri) ?: ""
 
@@ -539,18 +557,18 @@ class ToolExecutor @Inject constructor(
         val relPath = normalizeAgentPath(rawPath) ?: return ToolResult(false, "Invalid path: $rawPath")
 
         val rootUri = projectRootUri ?: return ToolResult(false, "No project root")
+        // create_file must never silently overwrite an existing file: a CREATE change has no
+        // original-content snapshot to restore during rejection.
+        val existingUri = fs.resolveRelativeUri(rootUri, relPath)
+        if (existingUri != null && fs.exists(existingUri)) {
+            return ToolResult(false, "File already exists: $relPath. Use propose_file_edit to change it.")
+        }
         val parentUri = resolveOrCreateParent(fs, rootUri, relPath)
             ?: return ToolResult(false, "Cannot resolve or create parent directory for: $rawPath")
 
         val fileName = relPath.substringAfterLast("/")
-        val existingUri = fs.resolveRelativeUri(rootUri, relPath)
-        val targetUri = if (existingUri != null) {
-            existingUri
-        } else {
-            val mimeType = mimeTypeForFileName(fileName)
-            fs.createFile(parentUri, fileName, mimeType)
-                ?: return ToolResult(false, "Failed to create file: $rawPath")
-        }
+        val targetUri = fs.createFile(parentUri, fileName, mimeTypeForFileName(fileName))
+            ?: return ToolResult(false, "Failed to create file: $rawPath")
 
         // Write content directly to the file in the workspace
         fs.writeTextFile(targetUri, content)
@@ -581,10 +599,22 @@ class ToolExecutor @Inject constructor(
         val fileUri = fs.resolveRelativeUri(rootUri, relPath)
             ?: return ToolResult(false, "File not found: $rawPath")
 
-        val originalContent = fs.readTextFile(fileUri)
+        if (!fs.exists(fileUri)) {
+            return ToolResult(false, "File not found: $rawPath")
+        }
 
-        // Delete from workspace filesystem
-        fs.deleteFile(fileUri)
+        // Deletion is currently reversible only for text files captured by readTextFile. Refuse
+        // unreadable/binary content instead of deleting data that rejection cannot restore.
+        val originalContent = fs.readTextFile(fileUri)
+            ?: return ToolResult(false, "Cannot safely delete '$relPath': original content is unreadable, so it could not be restored on rejection.")
+        if (!isSafeTextContent(originalContent)) {
+            return ToolResult(false, "Cannot safely delete '$relPath': content appears binary and cannot be restored losslessly by text rollback.")
+        }
+
+        // Delete from workspace filesystem and report failures rather than recording a false success.
+        if (!fs.deleteFile(fileUri)) {
+            return ToolResult(false, "Failed to delete file: $relPath")
+        }
 
         val change = PendingChange(
             id = java.util.UUID.randomUUID().toString(),
@@ -601,6 +631,10 @@ class ToolExecutor @Inject constructor(
             output = "Deleted $relPath from workspace. Staged for user review.",
             pendingChange = change
         )
+    }
+
+    private fun isSafeTextContent(content: String): Boolean = content.none { char ->
+        char == '\uFFFD' || (char != '\t' && char != '\n' && char != '\r' && char.isISOControl())
     }
 
     private fun languageFromPath(path: String): String {
@@ -758,6 +792,7 @@ class ToolExecutor @Inject constructor(
     companion object {
         const val MAX_LINES_PER_READ = 800
         const val MAX_BYTES_PER_READ = 46_080 // 45 KB (46,080 bytes)
-        const val MAX_FILE_SIZE_BYTES = 100L * 1024L * 1024L // 100 MB
+        const val MAX_FILE_SIZE_MB = 10
+        const val MAX_FILE_SIZE_BYTES = 10L * 1024L * 1024L
     }
 }

@@ -124,6 +124,13 @@ class OpenAiCompatibleProvider(
                 }
                 try {
                     val json = Json.parseToJsonElement(data).jsonObject
+                    val usage = json["usage"]?.jsonObject
+                    val promptTokens = usage?.get("prompt_tokens")?.jsonPrimitive?.intOrNull
+                    val completionTokens = usage?.get("completion_tokens")?.jsonPrimitive?.intOrNull
+                    if (promptTokens != null && completionTokens != null) {
+                        trySend(Usage(promptTokens, completionTokens))
+                    }
+                    // Some streaming providers send usage in a final chunk with no choices.
                     val choices = json["choices"]?.jsonArray ?: return
                     for (choice in choices) {
                         val delta = choice.jsonObject["delta"]?.jsonObject ?: continue

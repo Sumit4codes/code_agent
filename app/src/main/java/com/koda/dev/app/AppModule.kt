@@ -6,8 +6,9 @@ import com.koda.dev.core.ai.ChatStreamEvent
 import com.koda.dev.core.ai.FakeAiProvider
 import com.koda.dev.core.ai.ModelInfo
 import com.koda.dev.core.ai.OpenAiCompatibleProvider
-import com.koda.dev.core.data.SecureKeyStore
+import com.koda.dev.core.ai.UnsupportedAiProvider
 import com.koda.dev.core.data.SettingsRepository
+import com.koda.dev.core.model.ProviderConfig
 import com.koda.dev.core.model.ProviderType
 import dagger.Module
 import dagger.Provides
@@ -31,15 +32,7 @@ class DynamicAiProvider @Inject constructor(
     private suspend fun getDelegate(): AiProvider = withContext(Dispatchers.IO) {
         val config = settingsRepository.getActiveProvider() ?: return@withContext FakeAiProvider()
         val apiKey = settingsRepository.getApiKey(config.id) ?: ""
-        when (config.providerType) {
-            ProviderType.OPENAI_COMPATIBLE, ProviderType.ANTIROUTE -> OpenAiCompatibleProvider(
-                baseUrl = config.baseUrl,
-                apiKey = apiKey,
-                client = client,
-                sseFactory = sseFactory
-            )
-            ProviderType.ANTHROPIC -> FakeAiProvider()
-        }
+        createAiProvider(config, apiKey, client, sseFactory)
     }
 
     override suspend fun streamChat(request: ChatRequest): Flow<ChatStreamEvent> = withContext(Dispatchers.IO) {
@@ -49,6 +42,24 @@ class DynamicAiProvider @Inject constructor(
     override suspend fun listModels(): List<ModelInfo> = withContext(Dispatchers.IO) {
         getDelegate().listModels()
     }
+}
+
+/** Pure provider routing, kept separate so configured protocol behavior is unit-testable. */
+internal fun createAiProvider(
+    config: ProviderConfig,
+    apiKey: String,
+    client: OkHttpClient,
+    sseFactory: EventSource.Factory
+): AiProvider = when (config.providerType) {
+    ProviderType.OPENAI_COMPATIBLE, ProviderType.ANTIROUTE -> OpenAiCompatibleProvider(
+        baseUrl = config.baseUrl,
+        apiKey = apiKey,
+        client = client,
+        sseFactory = sseFactory
+    )
+    ProviderType.ANTHROPIC -> UnsupportedAiProvider(
+        "Anthropic chat protocol is not implemented yet. Choose an OpenAI-compatible provider or proxy in Settings."
+    )
 }
 
 @Module

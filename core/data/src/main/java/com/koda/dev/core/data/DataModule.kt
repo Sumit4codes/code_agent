@@ -79,7 +79,6 @@ object DataModule {
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "kodadev.db")
             .addMigrations(MIGRATION_1_2)
-            .fallbackToDestructiveMigration()
             .build()
 
     @Provides

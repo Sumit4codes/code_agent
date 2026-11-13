@@ -43,7 +43,6 @@ object ToolNames {
         GET_FILE_SUMMARY,
         PROPOSE_FILE_EDIT,
         CREATE_FILE,
-        RENAME_FILE,
         DELETE_FILE,
         EXECUTE_COMMAND,
         MANAGE_TASK,

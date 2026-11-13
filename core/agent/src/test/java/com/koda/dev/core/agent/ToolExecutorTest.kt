@@ -125,7 +125,7 @@ class ToolExecutorTest {
     }
 
     @Test
-    fun `execute read_file rejects files exceeding 100MB`() = runTest {
+    fun `execute read_file rejects files exceeding 10MB`() = runTest {
         val baseFs = FakeProjectFileSystem("content://test/root")
         baseFs.putFile("giant.iso", "fake content")
         val customFs = object : com.koda.dev.core.files.ProjectFileSystem by baseFs {
@@ -137,7 +137,7 @@ class ToolExecutorTest {
         val result = customExecutor.execute("read_file", """{"path":"giant.iso"}""")
         assertFalse(result.success)
         assertTrue(result.output.contains("exceeds maximum allowed size"))
-        assertTrue(result.output.contains("100 MB"))
+        assertTrue(result.output.contains("10 MB"))
     }
 
     @Test
@@ -239,6 +239,139 @@ class ToolExecutorTest {
         // Verifies the file is written immediately so terminal commands can run
         val fileUri = fs.resolveRelativeUri(rootUri, "new_file.kt")!!
         assertEquals("val newVar = true", fs.readTextFile(fileUri))
+    }
+
+    @Test
+    fun `execute create_file refuses to overwrite existing file`() = runTest {
+        fs.putFile("existing.txt", "keep original")
+
+        val result = executor.execute(
+            "create_file",
+            """{"path":"existing.txt","content":"replacement"}"""
+        )
+
+        assertFalse(result.success)
+        assertTrue(result.output.contains("already exists"))
+        val fileUri = fs.resolveRelativeUri(rootUri, "existing.txt")!!
+        assertEquals("keep original", fs.readTextFile(fileUri))
+        assertEquals(null, result.pendingChange)
+    }
+
+    @Test
+    fun `execute create_file succeeds on filesystem that resolves non-existent paths`() = runTest {
+        val resolvingFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun resolveRelativeUri(rootUri: android.net.Uri, relPath: String): android.net.Uri =
+                FakeUri("$rootUri/$relPath")
+        }
+        val customExecutor = ToolExecutor()
+        customExecutor.bind(resolvingFs, rootUri, tempDir)
+
+        val result = customExecutor.execute(
+            "create_file",
+            """{"path":"brand_new.kt","content":"println(\"hi\")"}"""
+        )
+        assertTrue(result.success)
+        assertNotNull(result.pendingChange)
+    }
+
+    @Test
+    fun `execute read_file returns not found when file does not exist even if URI resolves`() = runTest {
+        val resolvingFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun resolveRelativeUri(rootUri: android.net.Uri, relPath: String): android.net.Uri =
+                FakeUri("$rootUri/$relPath")
+        }
+        val customExecutor = ToolExecutor()
+        customExecutor.bind(resolvingFs, rootUri, tempDir)
+
+        val result = customExecutor.execute("read_file", """{"path":"does_not_exist.txt"}""")
+        assertFalse(result.success)
+        assertTrue(result.output.contains("File not found"))
+    }
+
+    @Test
+    fun `execute delete_file refuses unreadable content so rejection can restore it`() = runTest {
+        fs.putFile("binary.bin", "opaque bytes")
+        val unreadableFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun readTextFile(uri: android.net.Uri): String? = null
+        }
+        val safeExecutor = ToolExecutor()
+        safeExecutor.bind(unreadableFs, rootUri, tempDir)
+
+        val result = safeExecutor.execute("delete_file", """{"path":"binary.bin"}""")
+
+        assertFalse(result.success)
+        assertTrue(result.output.contains("could not be restored"))
+        assertNotNull(fs.resolveRelativeUri(rootUri, "binary.bin"))
+    }
+
+    @Test
+    fun `execute delete_file refuses text-decoded binary content containing control bytes`() = runTest {
+        fs.putFile("binary.bin", "header\u0000\u0001payload")
+
+        val result = executor.execute("delete_file", """{"path":"binary.bin"}""")
+
+        assertFalse(result.success)
+        assertTrue(result.output.contains("appears binary"))
+        assertNotNull(fs.resolveRelativeUri(rootUri, "binary.bin"))
+    }
+
+    @Test
+    fun `execute delete_file reports filesystem delete failure`() = runTest {
+        fs.putFile("undeletable.txt", "still here")
+        val failingFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun deleteFile(uri: android.net.Uri): Boolean = false
+        }
+        val safeExecutor = ToolExecutor()
+        safeExecutor.bind(failingFs, rootUri, tempDir)
+
+        val result = safeExecutor.execute("delete_file", """{"path":"undeletable.txt"}""")
+
+        assertFalse(result.success)
+        assertTrue(result.output.contains("Failed to delete"))
+        assertEquals(null, result.pendingChange)
+        assertNotNull(fs.resolveRelativeUri(rootUri, "undeletable.txt"))
+    }
+
+    @Test
+    fun `read_file and get_file_summary reject large files before reading contents`() = runTest {
+        fs.putFile("too-large.txt", "small fake body")
+        var readCount = 0
+        val largeFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun fileSize(uri: android.net.Uri): Long = 11L * 1024L * 1024L
+            override suspend fun readTextFile(uri: android.net.Uri): String? {
+                readCount++
+                return fs.readTextFile(uri)
+            }
+        }
+        val boundedExecutor = ToolExecutor()
+        boundedExecutor.bind(largeFs, rootUri, tempDir)
+
+        val read = boundedExecutor.execute("read_file", """{"path":"too-large.txt"}""")
+        val summary = boundedExecutor.execute("get_file_summary", """{"path":"too-large.txt"}""")
+
+        assertFalse(read.success)
+        assertFalse(summary.success)
+        assertEquals("Oversized file contents must not be materialized", 0, readCount)
+    }
+
+    @Test
+    fun `read_file refuses files with unknown size before reading`() = runTest {
+        fs.putFile("unknown-size.txt", "content")
+        var readCount = 0
+        val unknownSizeFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun fileSize(uri: android.net.Uri): Long? = null
+            override suspend fun readTextFile(uri: android.net.Uri): String? {
+                readCount++
+                return fs.readTextFile(uri)
+            }
+        }
+        val boundedExecutor = ToolExecutor()
+        boundedExecutor.bind(unknownSizeFs, rootUri, tempDir)
+
+        val result = boundedExecutor.execute("read_file", """{"path":"unknown-size.txt"}""")
+
+        assertFalse(result.success)
+        assertEquals(0, readCount)
     }
 
     @Test

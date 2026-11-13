@@ -1,5 +1,6 @@
 package com.koda.dev.core.ai
 
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
@@ -121,6 +122,39 @@ class OpenAiCompatibleProviderTest {
         assertEquals("Bearer sk-test-secret", capturedAuth)
         assertEquals(1, models.size)
         assertEquals("gpt-4o", models[0].id)
+    }
+
+    @Test
+    fun `streamChat emits usage metadata from final usage-only SSE chunk`() = runTest {
+        val usageSseFactory = object : EventSource.Factory {
+            override fun newEventSource(request: Request, listener: EventSourceListener): EventSource {
+                val source = object : EventSource {
+                    override fun cancel() = Unit
+                    override fun request(): Request = request
+                }
+                listener.onEvent(
+                    source,
+                    null,
+                    null,
+                    """{"usage":{"prompt_tokens":321,"completion_tokens":45},"choices":[]}"""
+                )
+                listener.onEvent(source, null, null, "[DONE]")
+                return source
+            }
+        }
+        val provider = OpenAiCompatibleProvider(
+            baseUrl = "https://example.com/v1",
+            apiKey = "key",
+            client = OkHttpClient(),
+            sseFactory = usageSseFactory
+        )
+
+        val events = provider.streamChat(
+            ChatRequest(messages = listOf(ChatMessage(ChatMessage.Role.USER, "hi")), model = "test")
+        ).toList()
+
+        assertTrue(events.contains(ChatStreamEvent.Usage(321, 45)))
+        assertTrue(events.contains(ChatStreamEvent.Done))
     }
 
     @Test

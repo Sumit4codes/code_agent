@@ -11,7 +11,7 @@ import org.junit.Test
 class ContextEstimatorTest {
 
     @Test
-    fun estimatesTokensAccuratelyFromCharacters() {
+    fun estimatesTokensUsingDocumentedFourCharactersPerTokenHeuristic() {
         val messages = listOf(
             ChatMessage(role = ChatMessage.Role.USER, content = "a".repeat(400)),
             ChatMessage(role = ChatMessage.Role.ASSISTANT, content = "b".repeat(800))

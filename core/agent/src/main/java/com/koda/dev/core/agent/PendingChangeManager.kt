@@ -56,31 +56,45 @@ class PendingChangeManager @Inject constructor(
             when (change.changeType) {
                 ChangeType.EDIT -> {
                     val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                        ?: return Result.failure(IllegalArgumentException("File not found: ${change.filePath}"))
-                    fs.writeTextFile(fileUri, change.proposedContent ?: "")
+                    if (fileUri == null || !fs.exists(fileUri)) {
+                        return Result.failure(IllegalArgumentException("File not found: ${change.filePath}"))
+                    }
+                    val current = fs.readTextFile(fileUri)
+                        ?: return Result.failure(IllegalStateException("Cannot safely apply edit to ${change.filePath}: current contents are unreadable"))
+                    val proposed = change.proposedContent ?: ""
+                    when (current) {
+                        proposed -> Unit // ToolExecutor already applied this change.
+                        change.originalContent -> fs.writeTextFile(fileUri, proposed)
+                        else -> return Result.failure(IllegalStateException("Cannot safely apply edit to ${change.filePath}: file changed since the proposal"))
+                    }
                     pendingChangeDao.updateStatus(change.id, ChangeStatus.APPLIED.name)
                     Result.success("Applied edit to ${change.filePath}")
                 }
                 ChangeType.CREATE -> {
-                    val parentUri = resolveOrCreateParent(fs, rootUri, change.filePath)
-                        ?: return Result.failure(IllegalArgumentException("Cannot resolve or create parent directory for: ${change.filePath}"))
                     val fileName = change.filePath.substringAfterLast("/")
                     val existingUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                    val targetUri = if (existingUri != null) {
-                        existingUri
+                    if (existingUri != null && fs.exists(existingUri)) {
+                        val current = fs.readTextFile(existingUri)
+                            ?: return Result.failure(IllegalStateException("Cannot safely approve ${change.filePath}: existing contents are unreadable"))
+                        if (current != change.proposedContent) {
+                            return Result.failure(IllegalStateException("Cannot safely approve ${change.filePath}: a different file exists at that path"))
+                        }
+                        // The agent wrote the proposed file immediately; do not overwrite a path here.
                     } else {
-                        val mimeType = mimeTypeForFileName(fileName)
-                        fs.createFile(parentUri, fileName, mimeType)
+                        val parentUri = resolveOrCreateParent(fs, rootUri, change.filePath)
+                            ?: return Result.failure(IllegalArgumentException("Cannot resolve or create parent directory for: ${change.filePath}"))
+                        val targetUri = fs.createFile(parentUri, fileName, mimeTypeForFileName(fileName))
                             ?: return Result.failure(IllegalArgumentException("Failed to create file: ${change.filePath}"))
+                        fs.writeTextFile(targetUri, change.proposedContent ?: "")
                     }
-                    fs.writeTextFile(targetUri, change.proposedContent ?: "")
                     pendingChangeDao.updateStatus(change.id, ChangeStatus.APPLIED.name)
                     Result.success("Created ${change.filePath}")
                 }
                 ChangeType.DELETE -> {
                     val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                        ?: return Result.failure(IllegalArgumentException("File not found: ${change.filePath}"))
-                    if (!fs.deleteFile(fileUri)) {
+                    // ToolExecutor applies deletes immediately. A missing target means the desired
+                    // state is already present; if it still exists, delete it and check the result.
+                    if (fileUri != null && fs.exists(fileUri) && !fs.deleteFile(fileUri)) {
                         return Result.failure(IOException("Failed to delete ${change.filePath}"))
                     }
                     pendingChangeDao.updateStatus(change.id, ChangeStatus.APPLIED.name)
@@ -96,49 +110,58 @@ class PendingChangeManager @Inject constructor(
         val fs = fileSystem
         val rootUri = projectRootUri
         if (fs == null || rootUri == null) {
-            return Result.failure(IllegalStateException("No project is open"))
+            return Result.failure(IllegalStateException("Cannot roll back ${change.filePath}: no project is open"))
         }
 
         return try {
             val orig = change.originalContent
             when (change.changeType) {
                 ChangeType.CREATE -> {
-                    // Rollback creation: delete the newly created file from disk
                     val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                    if (fileUri != null && !fs.deleteFile(fileUri)) {
-                        return Result.failure(IOException("Failed to delete ${change.filePath}"))
+                    if (fileUri != null && fs.exists(fileUri)) {
+                        val currentContent = fs.readTextFile(fileUri)
+                            ?: return Result.failure(IllegalStateException("Cannot safely roll back ${change.filePath}: current contents are unreadable"))
+                        if (currentContent != change.proposedContent) {
+                            return Result.failure(IllegalStateException("Cannot safely roll back ${change.filePath}: it changed after the agent created it"))
+                        }
+                        if (!fs.deleteFile(fileUri)) {
+                            return Result.failure(IOException("Failed to remove created file ${change.filePath}"))
+                        }
                     }
                 }
                 ChangeType.EDIT -> {
-                    // Rollback edit: revert file content back to originalContent
-                    if (orig == null) {
-                        return Result.failure(IllegalStateException("Missing original content for ${change.filePath}"))
-                    }
+                    val original = orig
+                        ?: return Result.failure(IllegalStateException("Cannot restore ${change.filePath}: original contents were not recorded"))
                     val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                        ?: return Result.failure(IllegalArgumentException("File not found: ${change.filePath}"))
-                    fs.writeTextFile(fileUri, orig)
+                    if (fileUri == null || !fs.exists(fileUri)) {
+                        return Result.failure(IllegalStateException("Cannot restore ${change.filePath}: file is missing"))
+                    }
+                    val currentContent = fs.readTextFile(fileUri)
+                        ?: return Result.failure(IllegalStateException("Cannot safely restore ${change.filePath}: current contents are unreadable"))
+                    if (currentContent != change.proposedContent) {
+                        return Result.failure(IllegalStateException("Cannot safely restore ${change.filePath}: it changed after the agent edited it"))
+                    }
+                    fs.writeTextFile(fileUri, original)
                 }
                 ChangeType.DELETE -> {
-                    // Rollback deletion: recreate the file with originalContent
-                    if (orig == null) {
-                        return Result.failure(IllegalStateException("Missing original content for ${change.filePath}"))
+                    val original = orig
+                        ?: return Result.failure(IllegalStateException("Cannot restore deleted ${change.filePath}: original contents were not recorded"))
+                    val existingUri = fs.resolveRelativeUri(rootUri, change.filePath)
+                    if (existingUri != null && fs.exists(existingUri)) {
+                        return Result.failure(IllegalStateException("Cannot restore deleted ${change.filePath}: a file now exists at that path"))
                     }
                     val parentUri = resolveOrCreateParent(fs, rootUri, change.filePath)
-                        ?: return Result.failure(IllegalArgumentException("Cannot resolve or create parent directory for: ${change.filePath}"))
+                        ?: return Result.failure(IllegalStateException("Cannot resolve or create parent directory for ${change.filePath}"))
                     val fileName = change.filePath.substringAfterLast("/")
-                    val targetUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                        ?: run {
-                            val mimeType = mimeTypeForFileName(fileName)
-                            fs.createFile(parentUri, fileName, mimeType)
-                        }
-                        ?: return Result.failure(IOException("Failed to recreate ${change.filePath}"))
-                    fs.writeTextFile(targetUri, orig)
+                    val targetUri = fs.createFile(parentUri, fileName, mimeTypeForFileName(fileName))
+                        ?: return Result.failure(IOException("Failed to recreate deleted file ${change.filePath}"))
+                    fs.writeTextFile(targetUri, original)
                 }
             }
             pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
             Result.success("Reverted change for ${change.filePath}")
         } catch (e: Exception) {
-            // Leave the change PENDING so the user can retry after the rollback failure.
+            // Preserve PENDING so the UI can tell the user that rollback did not complete and retry.
             Result.failure(e)
         }
     }

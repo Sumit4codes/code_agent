@@ -110,6 +110,51 @@ class PendingChangeManagerTest {
     }
 
     @Test
+    fun `approve create refuses to overwrite a different existing file`() = runTest {
+        fs.putFile("new.txt", "user content")
+        val change = PendingChange(
+            id = "c_create_conflict",
+            sessionId = "s1",
+            filePath = "new.txt",
+            changeType = ChangeType.CREATE,
+            originalContent = null,
+            proposedContent = "agent content",
+            createdAt = 3500L
+        )
+        manager.addChange(change)
+
+        val result = manager.approve(change)
+
+        assertFalse(result.isSuccess)
+        assertEquals("user content", fs.readTextFile(fs.resolveRelativeUri(rootUri, "new.txt")!!))
+        assertEquals(ChangeStatus.PENDING.name, dao.getAllBySession("s1").first().first().status)
+    }
+
+    @Test
+    fun `approve delete leaves change pending when filesystem delete fails`() = runTest {
+        fs.putFile("cannot-delete.txt", "keep")
+        val failingFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun deleteFile(uri: android.net.Uri): Boolean = false
+        }
+        manager.bind(failingFs, rootUri)
+        val change = PendingChange(
+            id = "c_delete_failure",
+            sessionId = "s1",
+            filePath = "cannot-delete.txt",
+            changeType = ChangeType.DELETE,
+            originalContent = "keep",
+            proposedContent = null,
+            createdAt = 3600L
+        )
+        manager.addChange(change)
+
+        val result = manager.approve(change)
+
+        assertFalse(result.isSuccess)
+        assertEquals(ChangeStatus.PENDING.name, dao.getAllBySession("s1").first().first().status)
+    }
+
+    @Test
     fun `reject edit reverts file content to originalContent and marks status REJECTED`() = runTest {
         // File has the agent's staged modified content
         fs.putFile("keep.txt", "modified")
@@ -184,6 +229,134 @@ class PendingChangeManagerTest {
 
         val all = dao.getAllBySession("s1").first()
         assertEquals(ChangeStatus.REJECTED.name, all.first().status)
+    }
+
+    @Test
+    fun `reject create preserves file changed by user after agent created it`() = runTest {
+        fs.putFile("created.txt", "user's later edit")
+        val change = PendingChange(
+            id = "c_create_modified",
+            sessionId = "s1",
+            filePath = "created.txt",
+            changeType = ChangeType.CREATE,
+            originalContent = null,
+            proposedContent = "agent's initial content",
+            createdAt = 4300L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+
+        assertFalse(result.isSuccess)
+        assertEquals("user's later edit", fs.readTextFile(fs.resolveRelativeUri(rootUri, "created.txt")!!))
+        assertEquals(ChangeStatus.PENDING.name, dao.getAllBySession("s1").first().first().status)
+    }
+
+    @Test
+    fun `reject edit does not overwrite user changes made after agent edit`() = runTest {
+        fs.putFile("edited.txt", "user's later edit")
+        val change = PendingChange(
+            id = "c_edit_modified",
+            sessionId = "s1",
+            filePath = "edited.txt",
+            changeType = ChangeType.EDIT,
+            originalContent = "before agent",
+            proposedContent = "agent version",
+            createdAt = 4400L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+
+        assertFalse(result.isSuccess)
+        assertEquals("user's later edit", fs.readTextFile(fs.resolveRelativeUri(rootUri, "edited.txt")!!))
+        assertEquals(ChangeStatus.PENDING.name, dao.getAllBySession("s1").first().first().status)
+    }
+
+    @Test
+    fun `reject delete fails visibly when original bytes were not captured`() = runTest {
+        val change = PendingChange(
+            id = "c_del_binary",
+            sessionId = "s1",
+            filePath = "binary.dat",
+            changeType = ChangeType.DELETE,
+            originalContent = null,
+            proposedContent = null,
+            createdAt = 4500L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+
+        assertFalse(result.isSuccess)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("original contents were not recorded"))
+        assertEquals(ChangeStatus.PENDING.name, dao.getAllBySession("s1").first().first().status)
+    }
+
+    @Test
+    fun `reject delete refuses to overwrite a replacement created at the deleted path`() = runTest {
+        fs.putFile("restored.txt", "new file from another actor")
+        val change = PendingChange(
+            id = "c_del_conflict",
+            sessionId = "s1",
+            filePath = "restored.txt",
+            changeType = ChangeType.DELETE,
+            originalContent = "deleted original",
+            proposedContent = null,
+            createdAt = 4600L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+
+        assertFalse(result.isSuccess)
+        assertEquals("new file from another actor", fs.readTextFile(fs.resolveRelativeUri(rootUri, "restored.txt")!!))
+        assertEquals(ChangeStatus.PENDING.name, dao.getAllBySession("s1").first().first().status)
+    }
+
+    @Test
+    fun `reject delete restores file when filesystem resolves non-existent paths`() = runTest {
+        val resolvingFs = object : com.koda.dev.core.files.ProjectFileSystem by fs {
+            override suspend fun resolveRelativeUri(rootUri: android.net.Uri, relPath: String): android.net.Uri =
+                FakeUri("$rootUri/$relPath")
+        }
+        manager.bind(resolvingFs, rootUri)
+        val change = PendingChange(
+            id = "c_del_resolving",
+            sessionId = "s1",
+            filePath = "deleted_path.txt",
+            changeType = ChangeType.DELETE,
+            originalContent = "restored content",
+            proposedContent = null,
+            createdAt = 4800L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+
+        assertTrue(result.isSuccess)
+        assertEquals("restored content", fs.readTextFile(fs.resolveRelativeUri(rootUri, "deleted_path.txt")!!))
+        assertEquals(ChangeStatus.REJECTED.name, dao.getAllBySession("s1").first().first().status)
+    }
+
+    @Test
+    fun `reject fails and leaves change pending when project is unbound`() = runTest {
+        val change = PendingChange(
+            id = "c_unbound_reject",
+            sessionId = "s1",
+            filePath = "file.txt",
+            changeType = ChangeType.EDIT,
+            originalContent = "old",
+            proposedContent = "new",
+            createdAt = 4700L
+        )
+        manager.addChange(change)
+        manager.unbind()
+
+        val result = manager.reject(change)
+
+        assertFalse(result.isSuccess)
+        assertEquals(ChangeStatus.PENDING.name, dao.getAllBySession("s1").first().first().status)
     }
 
     @Test

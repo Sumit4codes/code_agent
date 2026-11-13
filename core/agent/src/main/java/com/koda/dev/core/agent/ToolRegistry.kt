@@ -42,7 +42,7 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = "read_file",
-                description = "Read the contents of a text file in the project. Returns up to 800 lines or 45 KB (46,080 bytes) at a time. If the file is larger, specify 'start_line' and 'end_line' to paginate through subsequent chunks. Maximum supported file size is 100 MB.",
+                description = "Read the contents of a text file in the project. Returns up to 800 lines or 45 KB (46,080 bytes) at a time. If the file is larger, specify 'start_line' and 'end_line' to paginate through subsequent chunks. Maximum supported file size is 10 MB.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "path" to PropertyDef("string", "Relative file path from project root."),
@@ -71,7 +71,7 @@ object ToolRegistry {
         register(
             ToolSpec(
                 name = "get_file_summary",
-                description = "Get a summary of a file: line count, language, and first/last few lines.",
+                description = "Get a summary of a text file: line count, language, and first/last few lines. Maximum supported file size is 10 MB.",
                 parameters = ToolParameters(
                     properties = mapOf(
                         "path" to PropertyDef("string", "Relative file path from project root.")

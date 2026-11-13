@@ -17,7 +17,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B%20(API%2026%2B)-3DDC84?logo=android&logoColor=white&style=flat-square" alt="Android Support" />
   <img src="https://img.shields.io/badge/PRoot-Ubuntu%2024.04%20Noble-E95420?logo=ubuntu&logoColor=white&style=flat-square" alt="Ubuntu in PRoot" />
-  <img src="https://img.shields.io/badge/Unit%20Tests-176%20Passed-10B981?style=flat-square" alt="Tests Passed" />
   <img src="https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?logo=kotlin&logoColor=white&style=flat-square" alt="Kotlin" />
   <img src="https://img.shields.io/badge/Theme-Liquid%20Glass%20%26%20Obsidian-161B22?style=flat-square" alt="Liquid Glass & Obsidian" />
 </p>
@@ -91,8 +90,8 @@
 ### 🤖 Autonomous Coding Agent
 - **Unbounded Multi-Turn Execution**: The agent autonomously loops through tool calls—reading files, searching code, proposing edits, and running commands—without artificial iteration caps.
 - **Background Task Manager (`manage_task`)**: Agent manages long-running commands (dev servers, test runners, builds) in the background with `list`, `status`, `kill`, and `send_input` controls, protected by a reactive stall watchdog and a 5-task concurrency ceiling.
-- **Safety-Bounded File Reading**: 800-line pagination limit, 45 KB byte limit, and 100 MB max file size safeguards prevent LLM context blowups while giving the agent explicit next-page guidance.
-- **Diff Review System**: Every proposed code modification is presented as a colored side-by-side / unified diff for manual approval or rejection before anything touches disk.
+- **Safety-Bounded File Reading**: 800-line pagination limit, 45 KB output limit, and 10 MB pre-read file-size cap prevent LLM context blowups and excessive memory use while giving the agent explicit next-page guidance.
+- **Diff Review System**: Agent file edits are applied to the workspace immediately so builds/tests can run; each change is recorded and shown as a colored diff that users can approve or roll back. Shell commands can also mutate files outside this review tracking.
 
 ### 🐧 Real Linux Terminal (Ubuntu 24.04 PRoot)
 - **Standard glibc Linux Userland**: Runs Ubuntu 24.04 LTS (Noble) inside PRoot without root access or Android API 29+ `W^X` SELinux restrictions.
@@ -102,7 +101,7 @@
 
 ### 🌐 Antiroute Tunnel & Web Intelligence
 - **Antiroute Tunnel Provider**: Built-in 1-tap CameraX QR code scanner to instantly connect to local/remote Antiroute LLM tunnels without typing keys or URLs.
-- **Multi-Provider & Live Model Discovery**: Switch between OpenAI, Anthropic, OpenRouter, DeepSeek, Ollama, and custom proxies with dynamic `/models` queries.
+- **Multi-Provider & Live Model Discovery**: OpenAI-compatible providers, OpenRouter, DeepSeek, Ollama, Antiroute, and custom proxies support dynamic `/models` queries. Anthropic chat is not yet implemented; selecting Anthropic returns a clear unsupported-provider error rather than simulated responses.
 - **Agent Web Intelligence**: Jsoup-powered `web_search` and `fetch_web_page` tools allow the agent to look up real-time documentation and debugging solutions.
 
 ### 💎 Liquid Glass Design System & Typography
@@ -171,7 +170,7 @@
 | Tool | Version | Install Guide |
 |---|---|---|
 | **JDK** | 21 (Temurin) | `sdk install java 21.0.12-tem` |
-| **Android SDK** | API 36+ | Android Studio SDK Manager |
+| **Android SDK** | API 37 | Android Studio SDK Manager |
 | **Gradle** | 9.7+ | `./gradlew` wrapper bundled |
 
 ### Build Options
@@ -193,7 +192,7 @@ Release APK output: `app/build/outputs/apk/release/app-release-unsigned.apk` (or
 ### Run Unit Tests
 
 ```bash
-# Run all 176 unit tests across all 9 modules:
+# Run the unit test suites across the core and feature modules:
 ./test.sh
 
 # Run specific module or test class:
