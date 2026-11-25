@@ -1,6 +1,8 @@
 package com.koda.dev.core.data.web
 
+import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.test.runTest
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
@@ -9,8 +11,57 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.util.concurrent.TimeUnit
 
 class WebPageFetcherTest {
+
+    private val redirectTestHost = "koda-ssrf-test.invalid"
+
+    private fun startRedirectServer(): HttpServer {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/redirect") { exchange ->
+            exchange.responseHeaders.add(
+                "Location",
+                "http://127.0.0.1:${server.address.port}/secret"
+            )
+            exchange.sendResponseHeaders(302, -1)
+            exchange.close()
+        }
+        server.createContext("/secret") { exchange ->
+            val body = "INTERNAL-SECRET".toByteArray()
+            exchange.responseHeaders.add("Content-Type", "text/plain")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.createContext("/redirect-safe") { exchange ->
+            exchange.responseHeaders.add("Location", "/final")
+            exchange.sendResponseHeaders(302, -1)
+            exchange.close()
+        }
+        server.createContext("/final") { exchange ->
+            val body = "SAFE-REDIRECT".toByteArray()
+            exchange.responseHeaders.add("Content-Type", "text/plain")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+        return server
+    }
+
+    private fun redirectTestClient(connectTimeoutSeconds: Long = 5): OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
+            .dns(object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> =
+                    if (hostname == redirectTestHost) {
+                        listOf(InetAddress.getByName("127.0.0.1"))
+                    } else {
+                        Dns.SYSTEM.lookup(hostname)
+                    }
+            })
+            .build()
 
     @Test
     fun `fetch rejects unsupported protocols`() = runTest {
@@ -30,6 +81,62 @@ class WebPageFetcherTest {
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is SecurityException)
         assertTrue(result.exceptionOrNull()?.message?.contains("cloud metadata") == true)
+    }
+
+    @Test
+    fun `fetch blocks redirects to loopback addresses`() = runTest {
+        val server = startRedirectServer()
+        try {
+            val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient())
+            val result = fetcher.fetch("http://$redirectTestHost:${server.address.port}/redirect")
+
+            assertTrue(result.isFailure)
+            assertTrue(result.exceptionOrNull() is SecurityException)
+            assertFalse(result.getOrNull()?.contains("INTERNAL-SECRET") == true)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `fetch follows redirects to allowed hosts`() = runTest {
+        val server = startRedirectServer()
+        try {
+            val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient())
+            val result = fetcher.fetch("http://$redirectTestHost:${server.address.port}/redirect-safe")
+
+            assertTrue(result.isSuccess)
+            assertTrue(result.getOrThrow().contains("SAFE-REDIRECT"))
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `fetch rejects unspecified addresses`() = runTest {
+        val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient(connectTimeoutSeconds = 1))
+        val result = fetcher.fetch("http://0.0.0.0:1/")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SecurityException)
+    }
+
+    @Test
+    fun `fetch rejects IPv6 unique local addresses`() = runTest {
+        val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient(connectTimeoutSeconds = 1))
+        val result = fetcher.fetch("http://[fc00::1]/")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SecurityException)
+    }
+
+    @Test
+    fun `fetch rejects carrier-grade NAT addresses`() = runTest {
+        val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient(connectTimeoutSeconds = 1))
+        val result = fetcher.fetch("http://100.64.0.1/")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SecurityException)
     }
 
     @Test

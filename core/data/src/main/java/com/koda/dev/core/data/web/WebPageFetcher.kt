@@ -4,11 +4,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
+import java.io.IOException
+import java.net.Inet4Address
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
 import java.util.concurrent.TimeUnit
@@ -47,7 +51,12 @@ class DefaultWebPageFetcher(
             .build()
 
         try {
-            httpClient.newCall(request).execute().use { response ->
+            val client = httpClient.newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+
+            executeFollowingRedirects(client, request).use { response ->
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(Exception("HTTP request failed with status ${response.code}: ${response.message.ifBlank { "Error" }}"))
                 }
@@ -138,6 +147,45 @@ class DefaultWebPageFetcher(
         }
     }
 
+    private fun executeFollowingRedirects(client: OkHttpClient, initialRequest: Request): Response {
+        var request = initialRequest
+        var redirectCount = 0
+
+        while (true) {
+            val response = client.newCall(request).execute()
+            if (!isFollowableRedirect(response.code)) return response
+
+            val location = response.header("Location")
+            if (location.isNullOrBlank()) return response
+
+            try {
+                if (redirectCount >= MAX_REDIRECTS) {
+                    throw IOException("Too many redirects (max $MAX_REDIRECTS)")
+                }
+
+                val nextUrl = request.url.resolve(location)
+                    ?: throw IOException("Invalid redirect location: $location")
+
+                if (nextUrl.scheme != "http" && nextUrl.scheme != "https") {
+                    throw SecurityException("Redirect to unsupported protocol blocked: $nextUrl")
+                }
+
+                val ssrfError = validateSsrfSafety(nextUrl.toString())
+                if (ssrfError != null) {
+                    throw SecurityException(ssrfError)
+                }
+
+                request = request.newBuilder().url(nextUrl).get().build()
+                redirectCount++
+            } finally {
+                response.close()
+            }
+        }
+    }
+
+    private fun isFollowableRedirect(code: Int): Boolean =
+        code == 301 || code == 302 || code == 303 || code == 307 || code == 308
+
     private fun validateSsrfSafety(url: String): String? {
         return try {
             val uri = URI(url)
@@ -151,14 +199,9 @@ class DefaultWebPageFetcher(
             // Resolve host IP
             val addresses = InetAddress.getAllByName(host)
             for (addr in addresses) {
-                if (addr.isLoopbackAddress) {
-                    return "Access to loopback address ($host) is blocked: ${addr.hostAddress}"
-                }
-                if (addr.isLinkLocalAddress) {
-                    return "Access to link-local address ($host) is blocked: ${addr.hostAddress}"
-                }
-                if (addr.isSiteLocalAddress) {
-                    return "Access to private local network address ($host) is blocked: ${addr.hostAddress}"
+                val reason = blockedAddressReason(addr)
+                if (reason != null) {
+                    return "Access to $reason ($host) is blocked: ${addr.hostAddress}"
                 }
             }
             null
@@ -166,6 +209,27 @@ class DefaultWebPageFetcher(
             // If DNS resolution fails, let OkHttp produce the exact connect error
             null
         }
+    }
+
+    private fun blockedAddressReason(addr: InetAddress): String? {
+        if (addr.isAnyLocalAddress) return "unspecified address"
+        if (addr.isLoopbackAddress) return "loopback address"
+        if (addr.isLinkLocalAddress) return "link-local address"
+        if (addr.isSiteLocalAddress) return "private local network address"
+        if (addr.isMulticastAddress) return "multicast address"
+
+        val bytes = addr.address
+        if (addr is Inet4Address && bytes.size == 4) {
+            val first = bytes[0].toInt() and 0xFF
+            val second = bytes[1].toInt() and 0xFF
+            if (first == 0) return "reserved address"
+            if (first == 100 && second in 64..127) return "carrier-grade NAT address"
+        }
+        if (addr is Inet6Address && bytes.size == 16) {
+            val first = bytes[0].toInt() and 0xFF
+            if ((first and 0xFE) == 0xFC) return "unique local address"
+        }
+        return null
     }
 
     private fun htmlToMarkdown(html: String, baseUrl: String): String {
@@ -348,12 +412,14 @@ class DefaultWebPageFetcher(
         const val MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024 // 5 MB
         const val MAX_LINES_PER_READ = 600
         const val MAX_BYTES_PER_READ = 46_080 // 45 KB
+        const val MAX_REDIRECTS = 10
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
+            // Redirects are validated and followed manually in fetch().
+            .followRedirects(false)
+            .followSslRedirects(false)
             .build()
     }
 }

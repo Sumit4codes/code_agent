@@ -13,6 +13,7 @@
 | ID | Severity | Status | Area |
 |---|---|---|---|
 | BUG-001 | S2 | Fixed | Pending-change approval/rollback |
+| BUG-002 | S1 | Fixed | Web fetch SSRF redirect bypass |
 
 ---
 
@@ -92,3 +93,82 @@ The first three failed before the fix and pass after it; the unbound case covers
 
 - The file write and the database status update are still not atomic. A process death between them can leave an applied file with a `PENDING` row. This is a separate recovery/transaction design issue.
 - The bulk UI state behavior is covered indirectly by the manager API change but does not yet have a dedicated `ChatViewModel` test.
+
+---
+
+## BUG-002: Web fetch SSRF protection can be bypassed with an HTTP redirect
+
+- Severity: S1
+- Status: fixed
+- Area: `core/data` web page fetching (agent `fetch_web_page` tool)
+
+### Files
+
+- `core/data/src/main/java/com/koda/dev/core/data/web/WebPageFetcher.kt`
+- `core/data/src/test/java/com/koda/dev/core/data/web/WebPageFetcherTest.kt`
+
+### Repro
+
+1. Start a local HTTP server that returns `302 Found` with `Location: http://127.0.0.1:<port>/secret`.
+2. Fetch the redirect URL through `DefaultWebPageFetcher`.
+3. The fetcher returns the contents of the loopback-only `/secret` endpoint.
+
+The test uses a `.invalid` hostname plus a custom test DNS entry to simulate a host that passes the initial check, then reaches the local redirect server.
+
+### Expected
+
+- Every redirect hop is validated against the SSRF rules, not just the first URL.
+- Redirects to loopback, link-local, private, unspecified, multicast, IPv6 ULA, and CGNAT addresses are rejected.
+- Redirect chains are bounded.
+
+### Actual
+
+- `validateSsrfSafety` ran once on the original URL.
+- The client had `followRedirects(true)`, so OkHttp followed any subsequent `Location` without revalidation.
+- `0.0.0.0`, IPv6 ULA (`fc00::/7`), and CGNAT (`100.64.0.0/10`) also passed the address check.
+
+### Root cause
+
+The SSRF check was applied only to the caller-supplied URL. Redirect handling was delegated to OkHttp, which has no knowledge of the application's address policy.
+
+### Fix
+
+- Disable automatic redirects for the fetch call and follow `301`, `302`, `303`, `307`, and `308` manually.
+- Re-run protocol and SSRF validation on every redirect target.
+- Resolve relative `Location` values against the current URL.
+- Limit redirect chains to 10 hops.
+- Expand blocked-address classification:
+  - unspecified (`0.0.0.0`, `::`)
+  - loopback, link-local, site-local
+  - multicast
+  - IPv4 `0.0.0.0/8`
+  - CGNAT `100.64.0.0/10`
+  - IPv6 unique-local `fc00::/7`
+
+### Regression tests
+
+Added to `WebPageFetcherTest`:
+
+- `fetch blocks redirects to loopback addresses`
+- `fetch follows redirects to allowed hosts`
+- `fetch rejects unspecified addresses`
+- `fetch rejects IPv6 unique local addresses`
+- `fetch rejects carrier-grade NAT addresses`
+
+The redirect-bypass and three address-classification tests failed before the fix. The safe-redirect test passed before and after and guards against breaking legitimate redirects.
+
+### Verification
+
+```text
+./test.sh -c WebPageFetcherTest  -> 10 passed
+./test.sh -m core:data           -> 23 passed
+./test.sh                        -> 255 passed, 0 failed
+./build.sh                       -> BUILD SUCCESSFUL
+```
+
+### Residual risk
+
+- **DNS rebinding remains possible.** `validateSsrfSafety` resolves the host once, then OkHttp resolves it again when connecting. A custom `Dns` that validates the addresses actually used for the connection would close this gap.
+- DNS resolution failures are still fail-open (the code lets OkHttp produce the connect error). This is intentional for transient resolver failures but means validation and connection can disagree.
+- The final redirect URL is not shown in the fetched output; only the original URL is reported.
+- Redirect-chain length is not covered by a dedicated test.
