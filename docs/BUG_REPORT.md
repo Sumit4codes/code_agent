@@ -14,6 +14,7 @@
 |---|---|---|---|
 | BUG-001 | S2 | Fixed | Pending-change approval/rollback |
 | BUG-002 | S1 | Fixed | Web fetch SSRF redirect bypass |
+| BUG-003 | S3 | Fixed | Sync-vault PBKDF2 CPU denial of service |
 
 ---
 
@@ -172,3 +173,65 @@ The redirect-bypass and three address-classification tests failed before the fix
 - DNS resolution failures are still fail-open (the code lets OkHttp produce the connect error). This is intentional for transient resolver failures but means validation and connection can disagree.
 - The final redirect URL is not shown in the fetched output; only the original URL is reported.
 - Redirect-chain length is not covered by a dedicated test.
+
+---
+
+## BUG-003: Untrusted sync-vault iteration count allows PBKDF2 CPU denial of service
+
+- Severity: S3
+- Status: fixed
+- Area: `core/data` encrypted sync vault import/restore
+- Files:
+  - `core/data/src/main/java/com/koda/dev/core/data/sync/VaultCrypto.kt`
+  - `core/data/src/test/java/com/koda/dev/core/data/sync/VaultCryptoTest.kt`
+
+### Repro
+
+1. Export an encrypted vault, then edit the JSON so `"iterations": 100000` becomes a very large value (the regression test uses `1_000_001` to keep the pre-fix run bounded).
+2. Import the payload with `importEncryptedPayloadJson` or restore it from a Gist.
+3. Before the fix, `decryptVault` passed the attacker-chosen value straight to `PBEKeySpec` and spent that many PBKDF2 rounds on the IO dispatcher before discovering that the payload could not be authenticated.
+
+At `Int.MAX_VALUE` iterations, a device would burn a CPU core for days; the sync worker stays busy and the UI reports only a generic failure after the work completes.
+
+### Expected
+
+- The payload's KDF cost is bounded before any key derivation.
+- Non-positive values are rejected with a clear message instead of leaking a `PBEKeySpec` exception.
+
+### Actual
+
+- `iterations` came from `EncryptedSyncPayload`, which is deserialized from an untrusted Gist/imported JSON.
+- It was used unvalidated as the PBKDF2 iteration count.
+
+### Root cause
+
+The encrypted payload is attacker-controlled input, but its cost parameter was trusted. Encryption always writes `100_000`, so any other value is either a future format or hostile input and should be bounded.
+
+### Fix
+
+- Validate `payload.iterations` against `1..1_000_000` at the start of `decryptVault`, before Base64 decoding and key derivation.
+- Keep the existing encryption output (`100_000`) unchanged.
+
+### Regression tests
+
+Added to `VaultCryptoTest`:
+
+- `decrypt rejects excessive iteration counts` (`1_000_001`)
+- `decrypt rejects non-positive iteration counts` (`0`)
+
+Both failed before the fix: the excessive value derived a key and then failed with `AEADBadTagException`, and the zero value surfaced the low-level `PBEKeySpec` error.
+
+### Verification
+
+```text
+./test.sh -c VaultCryptoTest  -> 5 passed
+./test.sh -m core:data        -> 25 passed
+./test.sh                     -> 257 passed, 0 failed
+./build.sh                    -> BUILD SUCCESSFUL
+```
+
+### Residual risk
+
+- The upper bound still permits roughly 0.6 s of PBKDF2 work per import on a fast JVM, and more on low-end devices. That is acceptable for a deliberate sync operation but is not free.
+- Ciphertext, salt, and IV sizes are still unbounded; a very large payload is limited mainly by the Gist/import size.
+- The `algorithm` and `kdf` fields are informational and ignored; only the hard-coded AES-GCM/PBKDF2 combination is supported.

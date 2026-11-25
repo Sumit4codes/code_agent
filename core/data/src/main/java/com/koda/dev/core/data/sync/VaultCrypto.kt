@@ -14,6 +14,9 @@ object VaultCrypto {
     private const val ALGORITHM = "AES/GCM/NoPadding"
     private const val KDF_ALGORITHM = "PBKDF2WithHmacSHA256"
     private const val ITERATIONS = 100_000
+    // Bound untrusted payload values to avoid a CPU denial of service during decryption.
+    private const val MIN_ITERATIONS = 1
+    private const val MAX_ITERATIONS = 1_000_000
     private const val KEY_LENGTH_BITS = 256
     private const val SALT_LENGTH_BYTES = 16
     private const val IV_LENGTH_BYTES = 12
@@ -58,6 +61,10 @@ object VaultCrypto {
 
     fun decryptVault(payload: EncryptedSyncPayload, passphrase: String): SyncVault {
         require(passphrase.isNotBlank()) { "Sync passphrase must not be blank" }
+        require(payload.iterations in MIN_ITERATIONS..MAX_ITERATIONS) {
+            "Unsupported sync payload iteration count: ${payload.iterations} " +
+                "(allowed $MIN_ITERATIONS..$MAX_ITERATIONS)"
+        }
 
         val salt = Base64.getDecoder().decode(payload.saltBase64)
         val iv = Base64.getDecoder().decode(payload.ivBase64)

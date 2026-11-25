@@ -5,6 +5,7 @@ import com.koda.dev.core.model.ProviderType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import javax.crypto.AEADBadTagException
@@ -97,5 +98,33 @@ class VaultCryptoTest {
         assertNotEquals(enc1.saltBase64, enc2.saltBase64)
         assertNotEquals(enc1.ivBase64, enc2.ivBase64)
         assertNotEquals(enc1.ciphertextBase64, enc2.ciphertextBase64)
+    }
+
+    @Test
+    fun `decrypt rejects excessive iteration counts`() {
+        val encrypted = VaultCrypto.encryptVault(
+            SyncVault(items = emptyList()),
+            "correct-passphrase"
+        )
+        val malicious = encrypted.copy(iterations = 1_000_001)
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            VaultCrypto.decryptVault(malicious, "correct-passphrase")
+        }
+        assertTrue(error.message?.contains("Unsupported sync payload iteration count") == true)
+    }
+
+    @Test
+    fun `decrypt rejects non-positive iteration counts`() {
+        val encrypted = VaultCrypto.encryptVault(
+            SyncVault(items = emptyList()),
+            "correct-passphrase"
+        )
+        val malicious = encrypted.copy(iterations = 0)
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            VaultCrypto.decryptVault(malicious, "correct-passphrase")
+        }
+        assertTrue(error.message?.contains("Unsupported sync payload iteration count") == true)
     }
 }
