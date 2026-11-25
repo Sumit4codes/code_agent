@@ -16,6 +16,7 @@ import com.koda.dev.core.data.SessionEntity
 import com.koda.dev.core.testing.FakeAiProvider
 import com.koda.dev.core.testing.FakePendingChangeDao
 import com.koda.dev.core.testing.FakeProjectFileSystem
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -24,6 +25,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,11 +36,18 @@ import org.junit.Test
 
 private class TestMessageDao : MessageDao {
     val messages = mutableListOf<MessageEntity>()
+
+    /** When set, [getBySessionList] snapshots the rows and then waits, simulating DB latency. */
+    var readGate: CompletableDeferred<Unit>? = null
+
     override fun getBySession(sessionId: String): Flow<List<MessageEntity>> =
         flowOf(messages.filter { it.sessionId == sessionId })
 
-    override suspend fun getBySessionList(sessionId: String): List<MessageEntity> =
-        messages.filter { it.sessionId == sessionId }
+    override suspend fun getBySessionList(sessionId: String): List<MessageEntity> {
+        val snapshot = messages.filter { it.sessionId == sessionId }
+        readGate?.await()
+        return snapshot
+    }
 
     override suspend fun insert(message: MessageEntity) {
         messages.removeAll { it.id == message.id }
@@ -287,6 +296,56 @@ class AgentWorkManagerTest {
         assertEquals("Autonomous Goal Objective", savedMessages[0].content)
         assertEquals("ASSISTANT", savedMessages[1].role)
         assertEquals("Goal fully achieved!", savedMessages[1].content)
+    }
+
+    @Test
+    fun `startTask does not duplicate a concurrently persisted user message`() = runTest(testDispatcher) {
+        aiProvider.enqueueResponse(
+            listOf(
+                ChatStreamEvent.TextDelta("Done!"),
+                ChatStreamEvent.Done
+            )
+        )
+
+        val readGate = CompletableDeferred<Unit>()
+        messageDao.readGate = readGate
+
+        workManager.startTask(
+            sessionId = "race-session",
+            projectId = "p1",
+            projectName = "RaceProj",
+            projectUri = rootUri,
+            prompt = "Race prompt",
+            model = "gpt-4o",
+            userMessageId = "shared-user-id"
+        )
+
+        // Let executeTask read an empty history, then hold it before the user-message insert.
+        runCurrent()
+        assertEquals(0, messageDao.messages.count { it.sessionId == "race-session" })
+
+        // Simulate ChatViewModel's delayed persistence of the same user turn.
+        messageDao.insert(
+            MessageEntity(
+                id = "shared-user-id",
+                sessionId = "race-session",
+                role = "USER",
+                content = "Race prompt",
+                toolCallsJson = null,
+                toolCallId = null,
+                timestamp = System.currentTimeMillis()
+            )
+        )
+
+        readGate.complete(Unit)
+        messageDao.readGate = null
+        advanceUntilIdle()
+
+        val userMessages = messageDao.messages.filter {
+            it.sessionId == "race-session" && it.role == "USER"
+        }
+        assertEquals(1, userMessages.size)
+        assertEquals("shared-user-id", userMessages.single().id)
     }
 
     @Test

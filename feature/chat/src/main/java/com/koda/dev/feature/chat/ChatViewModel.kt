@@ -846,6 +846,7 @@ class ChatViewModel @Inject constructor(
                     projectUri = projectUri,
                     prompt = promptToSend,
                     model = currentModel,
+                    userMessageId = userMsg.id,
                     isGoalMode = isGoal,
                     systemPrompt = effectiveSystemPrompt
                 )

@@ -49,6 +49,7 @@ data class AgentTaskState(
     val projectId: String,
     val projectName: String,
     val userPrompt: String,
+    val userMessageId: String? = null,
     val isGoalMode: Boolean = false,
     val stepCount: Int = 0,
     val currentAction: String = "Initializing...",
@@ -95,6 +96,7 @@ class AgentWorkManager @Inject constructor(
         projectUri: Uri?,
         prompt: String,
         model: String,
+        userMessageId: String? = null,
         isGoalMode: Boolean = false,
         systemPrompt: String? = null,
         temperature: Float = 0.7f
@@ -111,6 +113,7 @@ class AgentWorkManager @Inject constructor(
             projectId = projectId,
             projectName = projectName,
             userPrompt = prompt,
+            userMessageId = userMessageId,
             isGoalMode = isGoalMode,
             stepCount = 0,
             currentAction = if (isGoalMode) "Starting autonomous goal..." else "Thinking...",
@@ -181,16 +184,25 @@ class AgentWorkManager @Inject constructor(
         val streamBuffer = StringBuilder()
 
         try {
-            // Reconstruct chat history from DB
+            // Reconstruct chat history from DB. ChatViewModel may still be inserting the same
+            // user turn in parallel, so identify it by the shared ID when available.
             val existingEntities = messageDao.getBySessionList(task.sessionId)
-            val isUserMsgAlreadyPersisted = existingEntities.lastOrNull()?.let {
-                it.role == "USER" && (
-                    it.content.trim() == task.userPrompt.trim() ||
-                    it.content.trim().removePrefix("/goal").trim() == task.userPrompt.trim()
-                )
-            } ?: false
+            val persistedUserMessage = if (task.userMessageId != null) {
+                existingEntities.find { it.id == task.userMessageId }
+            } else {
+                existingEntities.lastOrNull()?.takeIf {
+                    it.role == "USER" && (
+                        it.content.trim() == task.userPrompt.trim() ||
+                        it.content.trim().removePrefix("/goal").trim() == task.userPrompt.trim()
+                    )
+                }
+            }
 
-            val historyEntities = if (isUserMsgAlreadyPersisted) existingEntities.dropLast(1) else existingEntities
+            val historyEntities = if (persistedUserMessage != null) {
+                existingEntities.filterNot { it.id == persistedUserMessage.id }
+            } else {
+                existingEntities
+            }
 
             val rawHistory = historyEntities.map { entity ->
                 val toolCalls = parseToolCalls(entity.toolCallsJson)
@@ -227,9 +239,9 @@ class AgentWorkManager @Inject constructor(
             }
 
             // Persist the user message if not already persisted
-            if (!isUserMsgAlreadyPersisted) {
+            if (persistedUserMessage == null) {
                 val userMsgEntity = MessageEntity(
-                    id = UUID.randomUUID().toString(),
+                    id = task.userMessageId ?: UUID.randomUUID().toString(),
                     sessionId = task.sessionId,
                     role = "USER",
                     content = task.userPrompt,

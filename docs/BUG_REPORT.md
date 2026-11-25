@@ -15,6 +15,7 @@
 | BUG-001 | S2 | Fixed | Pending-change approval/rollback |
 | BUG-002 | S1 | Fixed | Web fetch SSRF redirect bypass |
 | BUG-003 | S3 | Fixed | Sync-vault PBKDF2 CPU denial of service |
+| BUG-004 | S2 | Fixed | Duplicate persisted user message on task start |
 
 ---
 
@@ -235,3 +236,64 @@ Both failed before the fix: the excessive value derived a key and then failed wi
 - The upper bound still permits roughly 0.6 s of PBKDF2 work per import on a fast JVM, and more on low-end devices. That is acceptable for a deliberate sync operation but is not free.
 - Ciphertext, salt, and IV sizes are still unbounded; a very large payload is limited mainly by the Gist/import size.
 - The `algorithm` and `kdf` fields are informational and ignored; only the hard-coded AES-GCM/PBKDF2 combination is supported.
+
+---
+
+## BUG-004: Starting an agent task can persist the user message twice
+
+- Severity: S2
+- Status: fixed
+- Area: `feature/chat` send path; `core/agent` task history reconstruction
+- Files:
+  - `feature/chat/src/main/java/com/koda/dev/feature/chat/ChatViewModel.kt`
+  - `core/agent/src/main/java/com/koda/dev/core/agent/service/AgentWorkManager.kt`
+  - `core/agent/src/test/java/com/koda/dev/core/agent/service/AgentWorkManagerTest.kt`
+
+### Repro
+
+1. Send a normal chat message.
+2. `ChatViewModel.sendMessage` updates the UI and starts two independent `Dispatchers.IO` coroutines: one calls `persistMessage(userMsg)`, the other calls `agentWorkManager.startTask`.
+3. If `AgentWorkManager.executeTask` reads the session's messages before the persist coroutine inserts the user row, its content check does not find the turn.
+4. `executeTask` inserts its own copy with a fresh UUID, then the delayed `persistMessage` inserts the original row.
+5. Reloading the session shows the same user message twice, and the next agent turn receives a duplicated user turn in its history.
+
+### Expected
+
+- A single user message row per sent turn, regardless of which coroutine writes first.
+
+### Actual
+
+- Two rows with different IDs and identical content.
+
+### Root cause
+
+The persistence protocol relied on a check-then-insert by content in `AgentWorkManager`, while `ChatViewModel` wrote the same row asynchronously. The two writers had no shared identity, so an interleaving between the check and the insert produced duplicates.
+
+### Fix
+
+- Add `userMessageId` to `startTask` and `AgentTaskState`.
+- `ChatViewModel` passes the optimistic message's ID to `startTask`.
+- `executeTask` looks up the persisted turn by that ID (falling back to the old content check for callers without an ID) and inserts with the shared ID when it is missing.
+- Because `MessageDao.insert` uses `OnConflictStrategy.REPLACE`, the shared primary key keeps the row single no matter which writer lands first.
+
+### Regression test
+
+`AgentWorkManagerTest.startTask does not duplicate a concurrently persisted user message`
+
+The test DAO snapshots the message list and then blocks in `getBySessionList`, letting the test insert the ChatViewModel copy before `executeTask` resumes. Pre-fix the assertion found 2 USER rows; post-fix it finds 1 with the shared ID.
+
+### Verification
+
+```text
+./test.sh -c AgentWorkManagerTest  -> 8 passed
+./test.sh -m core:agent            -> 76 passed
+./test.sh -m feature:chat          -> 20 passed
+./test.sh                          -> 258 passed, 0 failed
+./build.sh                         -> BUILD SUCCESSFUL
+```
+
+### Residual risk
+
+- If both the ChatViewModel persist and the AgentWorkManager insert fail, the optimistic UI still shows the turn while the database has no row. The UI is not reconciled from the DB after a failed write.
+- `persistMessage` still reads `_state.value.sessionId` instead of `message.sessionId`. In the deferred `/goal` guidance path, switching sessions before that coroutine runs can persist the turn into the newly selected session. This is a separate misattribution race and is the next candidate.
+- Callers that do not pass `userMessageId` still use the content-based fallback, which remains race-prone.
