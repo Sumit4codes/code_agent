@@ -16,6 +16,7 @@
 | BUG-002 | S1 | Fixed | Web fetch SSRF redirect bypass |
 | BUG-003 | S3 | Fixed | Sync-vault PBKDF2 CPU denial of service |
 | BUG-004 | S2 | Fixed | Duplicate persisted user message on task start |
+| BUG-005 | S3 | Fixed | Deferred message write can land in the wrong session |
 
 ---
 
@@ -297,3 +298,63 @@ The test DAO snapshots the message list and then blocks in `getBySessionList`, l
 - If both the ChatViewModel persist and the AgentWorkManager insert fail, the optimistic UI still shows the turn while the database has no row. The UI is not reconciled from the DB after a failed write.
 - `persistMessage` still reads `_state.value.sessionId` instead of `message.sessionId`. In the deferred `/goal` guidance path, switching sessions before that coroutine runs can persist the turn into the newly selected session. This is a separate misattribution race and is the next candidate.
 - Callers that do not pass `userMessageId` still use the content-based fallback, which remains race-prone.
+
+---
+
+## BUG-005: A deferred message write can land in the wrong session
+
+- Severity: S3
+- Status: fixed
+- Area: `feature/chat` message persistence
+- Files:
+  - `feature/chat/src/main/java/com/koda/dev/feature/chat/ChatViewModel.kt`
+  - `feature/chat/src/test/java/com/koda/dev/feature/chat/ChatViewModelTest.kt`
+  - `feature/chat/build.gradle.kts` (test dependency on `core:testing`)
+
+### Repro
+
+1. Send `/goal` with no objective. The view model updates the active session and queues a coroutine that creates the session and persists the user prompt plus the guidance message.
+2. Before that coroutine runs, start a new session or switch to another one.
+3. The queued `persistMessage` calls read `_state.value.sessionId` at write time, so both messages are inserted into the newly active session instead of the session where they were composed.
+
+The regression test models the same contract directly: persist a message whose `sessionId` differs from the active session.
+
+### Expected
+
+- A persisted message always belongs to `message.sessionId`, independent of what is currently on screen.
+
+### Actual
+
+- `persistMessage` ignored the message's own session and read the global UI state.
+- The session lookup/creation used the same mutable state.
+
+### Root cause
+
+The write path treated the current UI session as the source of truth instead of the immutable session ID already carried by the message.
+
+### Fix
+
+- Bind the inserted row and the session-existence check to `message.sessionId`.
+- Capture `projectId` and `sessionTitle` when the write starts instead of re-reading state during it.
+- Split persistence into an `internal suspend fun persistMessage(message)` and a `private fun persistMessageAsync(message)` wrapper. The main send path keeps the fire-and-forget behavior; the deferred `/goal` path now calls the suspend function directly.
+
+### Regression test
+
+`ChatViewModelTest.persistMessage writes to the message session instead of the active session`
+
+Pre-fix the row was written to the active session's UUID; post-fix it is written to the message's session.
+
+### Verification
+
+```text
+./test.sh -c ChatViewModelTest  -> 1 passed
+./test.sh -m feature:chat       -> 21 passed
+./test.sh -m core:agent         -> 76 passed
+./test.sh                       -> 259 passed, 0 failed
+./build.sh                      -> BUILD SUCCESSFUL
+```
+
+### Residual risk
+
+- When the target session row does not exist yet, it is still created with the active project's ID and title. A project switch during the deferred `/goal` path can therefore create the session under the wrong project even though the message's session ID is correct.
+- The main send path is still fire-and-forget: a failed insert is only logged, and the optimistic UI is not reconciled with the database.

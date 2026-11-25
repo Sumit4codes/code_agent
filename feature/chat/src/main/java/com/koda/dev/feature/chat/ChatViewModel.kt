@@ -829,7 +829,7 @@ class ChatViewModel @Inject constructor(
         val promptToSend = if (isGoal) cleanGoalPrompt else text
         agentJob?.cancel()
         agentJob = null
-        persistMessage(userMsg)
+        persistMessageAsync(userMsg)
         chatHistory = chatHistory + ChatMessage(ChatMessage.Role.USER, promptToSend)
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -1090,51 +1090,59 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun persistMessage(message: Message) {
-        val sessionId = _state.value.sessionId ?: return
+    private fun persistMessageAsync(message: Message) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // Ensure session exists
-                if (sessionDao.getById(sessionId) == null) {
-                    sessionDao.upsert(
-                        SessionEntity(
-                            id = sessionId,
-                            projectId = _state.value.projectId,
-                            title = _state.value.sessionTitle.ifBlank { "New Chat" },
-                            createdAt = System.currentTimeMillis(),
-                            updatedAt = System.currentTimeMillis()
-                        )
-                    )
-                }
+            persistMessage(message)
+        }
+    }
 
-                val toolCallsJson = if (message.toolCalls.isNotEmpty()) {
-                    Json.encodeToString(
-                        kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.json.JsonElement.serializer()),
-                        message.toolCalls.map { tc ->
-                            buildJsonObject {
-                                put("id", tc.id)
-                                put("name", tc.name)
-                                put("arguments", tc.arguments)
-                                if (tc.result != null) put("result", tc.result)
-                            }
-                        }
-                    )
-                } else null
-
-                messageDao.insert(
-                    MessageEntity(
-                        id = message.id,
-                        sessionId = sessionId,
-                        role = message.role.name,
-                        content = message.content,
-                        toolCallsJson = toolCallsJson,
-                        toolCallId = message.toolCallId,
-                        timestamp = message.timestamp
+    internal suspend fun persistMessage(message: Message) {
+        // Bind the row to the message's own session. The active session may have changed while
+        // this write was queued (for example, the deferred /goal guidance path).
+        val sessionId = message.sessionId
+        val projectId = _state.value.projectId
+        val sessionTitle = _state.value.sessionTitle
+        try {
+            // Ensure session exists
+            if (sessionDao.getById(sessionId) == null) {
+                sessionDao.upsert(
+                    SessionEntity(
+                        id = sessionId,
+                        projectId = projectId,
+                        title = sessionTitle.ifBlank { "New Chat" },
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
                     )
                 )
-            } catch (e: Exception) {
-                Log.w("ChatViewModel", "Could not persist message", e)
             }
+
+            val toolCallsJson = if (message.toolCalls.isNotEmpty()) {
+                Json.encodeToString(
+                    kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.json.JsonElement.serializer()),
+                    message.toolCalls.map { tc ->
+                        buildJsonObject {
+                            put("id", tc.id)
+                            put("name", tc.name)
+                            put("arguments", tc.arguments)
+                            if (tc.result != null) put("result", tc.result)
+                        }
+                    }
+                )
+            } else null
+
+            messageDao.insert(
+                MessageEntity(
+                    id = message.id,
+                    sessionId = sessionId,
+                    role = message.role.name,
+                    content = message.content,
+                    toolCallsJson = toolCallsJson,
+                    toolCallId = message.toolCallId,
+                    timestamp = message.timestamp
+                )
+            )
+        } catch (e: Exception) {
+            Log.w("ChatViewModel", "Could not persist message", e)
         }
     }
 

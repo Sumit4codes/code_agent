@@ -50,4 +50,5 @@ dependencies {
     ksp(libs.hilt.android.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(project(":core:testing"))
 }
