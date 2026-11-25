@@ -1,6 +1,8 @@
 package com.koda.dev.core.agent
 
 import android.net.FakeUri
+import android.net.Uri
+import com.koda.dev.core.files.ProjectFileSystem
 import com.koda.dev.core.model.ChangeStatus
 import com.koda.dev.core.model.ChangeType
 import com.koda.dev.core.model.PendingChange
@@ -14,6 +16,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 
 class PendingChangeManagerTest {
 
@@ -199,5 +202,141 @@ class PendingChangeManagerTest {
 
         val result = manager.approve(change)
         assertFalse(result.isSuccess)
+    }
+
+    @Test
+    fun `reject fails when unbound and keeps change pending`() = runTest {
+        val change = PendingChange(
+            id = "c_unbound_reject",
+            sessionId = "s1",
+            filePath = "keep.txt",
+            changeType = ChangeType.EDIT,
+            originalContent = "original",
+            proposedContent = "modified",
+            createdAt = 5900L
+        )
+        manager.addChange(change)
+        manager.unbind()
+
+        val result = manager.reject(change)
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            ChangeStatus.PENDING.name,
+            dao.getAllBySession("s1").first().first().status
+        )
+    }
+
+    @Test
+    fun `reject edit keeps change pending when rollback write fails`() = runTest {
+        fs.putFile("keep.txt", "modified")
+        manager.bind(
+            RollbackFailingFileSystem(fs, failWrites = true),
+            rootUri
+        )
+
+        val change = PendingChange(
+            id = "c_fail_edit",
+            sessionId = "s1",
+            filePath = "keep.txt",
+            changeType = ChangeType.EDIT,
+            originalContent = "original",
+            proposedContent = "modified",
+            createdAt = 6000L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            ChangeStatus.PENDING.name,
+            dao.getAllBySession("s1").first().first().status
+        )
+        assertEquals(
+            "modified",
+            fs.readTextFile(fs.resolveRelativeUri(rootUri, "keep.txt")!!)
+        )
+    }
+
+    @Test
+    fun `reject create keeps change pending when delete fails`() = runTest {
+        fs.putFile("created.txt", "new file content")
+        manager.bind(
+            RollbackFailingFileSystem(fs, deleteSucceeds = false),
+            rootUri
+        )
+
+        val change = PendingChange(
+            id = "c_fail_create",
+            sessionId = "s1",
+            filePath = "created.txt",
+            changeType = ChangeType.CREATE,
+            originalContent = null,
+            proposedContent = "new file content",
+            createdAt = 6100L
+        )
+        manager.addChange(change)
+
+        val result = manager.reject(change)
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            ChangeStatus.PENDING.name,
+            dao.getAllBySession("s1").first().first().status
+        )
+        assertEquals(
+            "new file content",
+            fs.readTextFile(fs.resolveRelativeUri(rootUri, "created.txt")!!)
+        )
+    }
+
+    @Test
+    fun `approve delete keeps change pending when delete fails`() = runTest {
+        fs.putFile("old.txt", "deprecated")
+        manager.bind(
+            RollbackFailingFileSystem(fs, deleteSucceeds = false),
+            rootUri
+        )
+
+        val change = PendingChange(
+            id = "c_fail_delete",
+            sessionId = "s1",
+            filePath = "old.txt",
+            changeType = ChangeType.DELETE,
+            originalContent = "deprecated",
+            proposedContent = null,
+            createdAt = 6200L
+        )
+        manager.addChange(change)
+
+        val result = manager.approve(change)
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            ChangeStatus.PENDING.name,
+            dao.getAllBySession("s1").first().first().status
+        )
+        assertEquals(
+            "deprecated",
+            fs.readTextFile(fs.resolveRelativeUri(rootUri, "old.txt")!!)
+        )
+    }
+}
+
+private class RollbackFailingFileSystem(
+    private val delegate: FakeProjectFileSystem,
+    private val failWrites: Boolean = false,
+    private val deleteSucceeds: Boolean = true
+) : ProjectFileSystem by delegate {
+
+    override suspend fun writeTextFile(uri: Uri, content: String) {
+        if (failWrites) throw IOException("Simulated write failure")
+        delegate.writeTextFile(uri, content)
+    }
+
+    override suspend fun deleteFile(uri: Uri): Boolean {
+        if (!deleteSucceeds) return false
+        return delegate.deleteFile(uri)
     }
 }

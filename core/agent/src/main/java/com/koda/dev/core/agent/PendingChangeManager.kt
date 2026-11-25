@@ -10,8 +10,14 @@ import com.koda.dev.core.model.PendingChange
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class PendingChangeActionResult(
+    val change: PendingChange,
+    val result: Result<String>
+)
 
 @Singleton
 class PendingChangeManager @Inject constructor(
@@ -74,7 +80,9 @@ class PendingChangeManager @Inject constructor(
                 ChangeType.DELETE -> {
                     val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
                         ?: return Result.failure(IllegalArgumentException("File not found: ${change.filePath}"))
-                    fs.deleteFile(fileUri)
+                    if (!fs.deleteFile(fileUri)) {
+                        return Result.failure(IOException("Failed to delete ${change.filePath}"))
+                    }
                     pendingChangeDao.updateStatus(change.id, ChangeStatus.APPLIED.name)
                     Result.success("Deleted ${change.filePath}")
                 }
@@ -88,8 +96,7 @@ class PendingChangeManager @Inject constructor(
         val fs = fileSystem
         val rootUri = projectRootUri
         if (fs == null || rootUri == null) {
-            pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
-            return Result.success("Rejected change for ${change.filePath}")
+            return Result.failure(IllegalStateException("No project is open"))
         }
 
         return try {
@@ -98,53 +105,58 @@ class PendingChangeManager @Inject constructor(
                 ChangeType.CREATE -> {
                     // Rollback creation: delete the newly created file from disk
                     val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                    if (fileUri != null) {
-                        fs.deleteFile(fileUri)
+                    if (fileUri != null && !fs.deleteFile(fileUri)) {
+                        return Result.failure(IOException("Failed to delete ${change.filePath}"))
                     }
                 }
                 ChangeType.EDIT -> {
                     // Rollback edit: revert file content back to originalContent
-                    val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                    if (fileUri != null && orig != null) {
-                        fs.writeTextFile(fileUri, orig)
+                    if (orig == null) {
+                        return Result.failure(IllegalStateException("Missing original content for ${change.filePath}"))
                     }
+                    val fileUri = fs.resolveRelativeUri(rootUri, change.filePath)
+                        ?: return Result.failure(IllegalArgumentException("File not found: ${change.filePath}"))
+                    fs.writeTextFile(fileUri, orig)
                 }
                 ChangeType.DELETE -> {
                     // Rollback deletion: recreate the file with originalContent
-                    if (orig != null) {
-                        val parentUri = resolveOrCreateParent(fs, rootUri, change.filePath)
-                        if (parentUri != null) {
-                            val fileName = change.filePath.substringAfterLast("/")
-                            val targetUri = fs.resolveRelativeUri(rootUri, change.filePath)
-                                ?: run {
-                                    val mimeType = mimeTypeForFileName(fileName)
-                                    fs.createFile(parentUri, fileName, mimeType)
-                                }
-                            if (targetUri != null) {
-                                fs.writeTextFile(targetUri, orig)
-                            }
-                        }
+                    if (orig == null) {
+                        return Result.failure(IllegalStateException("Missing original content for ${change.filePath}"))
                     }
+                    val parentUri = resolveOrCreateParent(fs, rootUri, change.filePath)
+                        ?: return Result.failure(IllegalArgumentException("Cannot resolve or create parent directory for: ${change.filePath}"))
+                    val fileName = change.filePath.substringAfterLast("/")
+                    val targetUri = fs.resolveRelativeUri(rootUri, change.filePath)
+                        ?: run {
+                            val mimeType = mimeTypeForFileName(fileName)
+                            fs.createFile(parentUri, fileName, mimeType)
+                        }
+                        ?: return Result.failure(IOException("Failed to recreate ${change.filePath}"))
+                    fs.writeTextFile(targetUri, orig)
                 }
             }
             pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
             Result.success("Reverted change for ${change.filePath}")
         } catch (e: Exception) {
-            pendingChangeDao.updateStatus(change.id, ChangeStatus.REJECTED.name)
+            // Leave the change PENDING so the user can retry after the rollback failure.
             Result.failure(e)
         }
     }
 
-    suspend fun approveAll(sessionId: String): List<Result<String>> {
+    suspend fun approveAll(sessionId: String): List<PendingChangeActionResult> {
         val entities = pendingChangeDao.getPendingBySession(sessionId).first()
         val changes = entities.map { it.toModel() }
-        return changes.map { approve(it) }
+        return changes.map { change ->
+            PendingChangeActionResult(change, approve(change))
+        }
     }
 
-    suspend fun rejectAll(sessionId: String): List<Result<String>> {
+    suspend fun rejectAll(sessionId: String): List<PendingChangeActionResult> {
         val entities = pendingChangeDao.getPendingBySession(sessionId).first()
-        val changes = entities.map { it.toModel() }
-        return changes.reversed().map { reject(it) }
+        val changes = entities.map { it.toModel() }.reversed()
+        return changes.map { change ->
+            PendingChangeActionResult(change, reject(change))
+        }
     }
 
     private fun PendingChange.toEntity() = PendingChangeEntity(

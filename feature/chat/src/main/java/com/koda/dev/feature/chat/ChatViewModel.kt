@@ -11,6 +11,7 @@ import com.koda.dev.core.agent.ContextEstimator
 import com.koda.dev.core.agent.ContextHygiene
 import com.koda.dev.core.agent.ContextUsageState
 import com.koda.dev.core.agent.HistoryCompactor
+import com.koda.dev.core.agent.PendingChangeActionResult
 import com.koda.dev.core.agent.PendingChangeManager
 import com.koda.dev.core.agent.ToolExecutor
 import com.koda.dev.core.agent.ToolRegistry
@@ -938,39 +939,64 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val result = pendingChangeManager.approve(change)
             if (result.isFailure) {
-                _state.value = _state.value.copy(
-                    error = "Failed to apply change: ${result.exceptionOrNull()?.message}"
-                )
+                _state.update {
+                    it.copy(error = "Failed to apply change: ${result.exceptionOrNull()?.message}")
+                }
             } else {
-                _state.value = _state.value.copy(
-                    pendingChanges = _state.value.pendingChanges.filter { it.id != change.id }
-                )
+                _state.update { state ->
+                    state.copy(pendingChanges = state.pendingChanges.filter { it.id != change.id })
+                }
             }
         }
     }
 
     fun rejectChange(change: PendingChange) {
         viewModelScope.launch {
-            pendingChangeManager.reject(change)
-            _state.value = _state.value.copy(
-                pendingChanges = _state.value.pendingChanges.filter { it.id != change.id }
-            )
+            val result = pendingChangeManager.reject(change)
+            if (result.isFailure) {
+                _state.update {
+                    it.copy(error = "Failed to revert change: ${result.exceptionOrNull()?.message}")
+                }
+            } else {
+                _state.update { state ->
+                    state.copy(pendingChanges = state.pendingChanges.filter { it.id != change.id })
+                }
+            }
         }
     }
 
     fun approveAllChanges() {
         val sessionId = _state.value.sessionId ?: return
         viewModelScope.launch {
-            pendingChangeManager.approveAll(sessionId)
-            _state.value = _state.value.copy(pendingChanges = emptyList())
+            applyBulkChangeResults(pendingChangeManager.approveAll(sessionId), "apply")
         }
     }
 
     fun rejectAllChanges() {
         val sessionId = _state.value.sessionId ?: return
         viewModelScope.launch {
-            pendingChangeManager.rejectAll(sessionId)
-            _state.value = _state.value.copy(pendingChanges = emptyList())
+            applyBulkChangeResults(pendingChangeManager.rejectAll(sessionId), "revert")
+        }
+    }
+
+    private fun applyBulkChangeResults(
+        results: List<PendingChangeActionResult>,
+        action: String
+    ) {
+        val succeededIds = results.filter { it.result.isSuccess }.map { it.change.id }.toSet()
+        val failures = results.filter { it.result.isFailure }
+        _state.update { state ->
+            state.copy(
+                pendingChanges = state.pendingChanges.filterNot { it.id in succeededIds },
+                error = if (failures.isNotEmpty()) {
+                    val first = failures.first()
+                    val reason = first.result.exceptionOrNull()?.message ?: "Unknown error"
+                    val more = if (failures.size > 1) " (+${failures.size - 1} more)" else ""
+                    "Failed to $action ${first.change.filePath}: $reason$more"
+                } else {
+                    state.error
+                }
+            )
         }
     }
 
