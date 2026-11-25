@@ -50,7 +50,8 @@ class TermuxSessionManager @Inject constructor(
 
         if (isUbuntu) {
             try {
-                val prootExec = nativeBinaryManager?.resolvePRootExecutable() ?: "/system/bin/sh"
+                val prootExec = nativeBinaryManager?.resolvePRootExecutable()
+                    ?: throw IllegalStateException("PRoot is not available")
                 val nativeDir = try { context?.applicationInfo?.nativeLibraryDir?.let { File(it) } } catch (_: Exception) { null }
                 val ubuntuDir = ubuntuBootstrapManager?.ubuntuDir ?: File(rootDir, "ubuntu")
                 val tmpDir = ubuntuBootstrapManager?.tmpDir ?: File(rootDir, "tmp")
@@ -167,7 +168,8 @@ class TermuxSessionManager @Inject constructor(
 
         if (isAlpine) {
             try {
-                val prootExec = nativeBinaryManager?.resolvePRootExecutable() ?: "/system/bin/sh"
+                val prootExec = nativeBinaryManager?.resolvePRootExecutable()
+                    ?: throw IllegalStateException("PRoot is not available")
                 val nativeDir = try { context?.applicationInfo?.nativeLibraryDir?.let { File(it) } } catch (_: Exception) { null }
                 val alpineDir = alpineBootstrapManager?.alpineDir ?: File(rootDir, "alpine")
                 val tmpDir = alpineBootstrapManager?.tmpDir ?: File(rootDir, "tmp")

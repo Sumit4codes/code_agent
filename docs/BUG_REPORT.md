@@ -17,6 +17,7 @@
 | BUG-003 | S3 | Fixed | Sync-vault PBKDF2 CPU denial of service |
 | BUG-004 | S2 | Fixed | Duplicate persisted user message on task start |
 | BUG-005 | S3 | Fixed | Deferred message write can land in the wrong session |
+| BUG-006 | S1 | Fixed | Commands run on the Android host shell when PRoot is missing |
 
 ---
 
@@ -358,3 +359,71 @@ Pre-fix the row was written to the active session's UUID; post-fix it is written
 
 - When the target session row does not exist yet, it is still created with the active project's ID and title. A project switch during the deferred `/goal` path can therefore create the session under the wrong project even though the message's session ID is correct.
 - The main send path is still fire-and-forget: a failed insert is only logged, and the optimistic UI is not reconciled with the database.
+
+---
+
+## BUG-006: Commands silently run on the Android host shell when PRoot is missing
+
+- Severity: S1
+- Status: fixed
+- Area: `core/terminal` command execution
+- Files:
+  - `core/terminal/src/main/java/com/koda/dev/core/terminal/PosixTerminalExecutor.kt`
+  - `core/terminal/src/main/java/com/koda/dev/core/terminal/TermuxSessionManager.kt`
+  - `core/terminal/src/test/java/com/koda/dev/core/terminal/PosixTerminalExecutorTest.kt`
+
+### Repro
+
+1. Run Koda Dev on a build where the PRoot native libraries are unavailable (`NativeBinaryManager.resolvePRootExecutable()` returns null).
+2. Execute a command through the agent's terminal tool, for example `echo host-fallback-marker`.
+3. Before the fix, the executor returned `Success(output=host-fallback-marker)` by running `/system/bin/sh -c ...` on the Android host.
+
+The regression test constructs exactly that state with a `NativeBinaryManager` whose native library directory is null.
+
+### Expected
+
+- Production command execution never leaves the Linux userland.
+- If PRoot is unavailable, return a clear error instead of silently using Android Toybox.
+- The interactive terminal keeps showing its Ubuntu setup notice rather than launching a broken PRoot command.
+
+### Actual
+
+- `PosixTerminalExecutor.execute` fell back to `executeHostProcess` whenever no distro was active and PRoot was unavailable.
+- `executeUbuntuProcess` and `executeAlpineProcess` did the same when `resolvePRootExecutable()` returned null.
+- `buildProcessBuilder`, `buildUbuntuProcessBuilder`, and `buildAlpineProcessBuilder` returned host-shell builders, so background tasks launched by `ManagedTaskManager` also ran outside Linux.
+- `TermuxSessionManager` passed `/system/bin/sh` as the `prootExec` executable while still supplying PRoot arguments.
+
+This directly contradicts D16 ("completely eliminate the Android Toybox shell fallback").
+
+### Root cause
+
+The host shell was treated as a universal fallback for every missing-PRoot condition. That fallback is useful for JVM tests and legacy callers without Android context, but it was not restricted to them.
+
+### Fix
+
+- Add `allowsHostShellFallback()`: true only when both `context` and `nativeBinaryManager` are null (unit tests / legacy lightweight instances).
+- Add `linuxUnavailable()` returning `TerminalResult.Error("Linux environment is unavailable: PRoot was not found...", 127)`.
+- `execute`, `executeUbuntuProcess`, and `executeAlpineProcess` now return that error in production instead of running host commands.
+- `buildProcessBuilder` and the distro builders throw `IllegalStateException` instead of returning a host builder; `ManagedTaskManager` already converts launch failures into `TaskLaunchResult.Error`.
+- `TermuxSessionManager` throws when PRoot is missing, so its existing catch falls through to the intentional Ubuntu setup notice instead of starting `/system/bin/sh` with PRoot arguments.
+
+### Regression test
+
+`PosixTerminalExecutorTest.execute refuses host shell when PRoot is unavailable`
+
+Pre-fix it returned the host `echo` output with exit code 0. Post-fix it returns a Linux-unavailable error and never exposes the host command output.
+
+### Verification
+
+```text
+./test.sh -c PosixTerminalExecutorTest  -> 11 passed
+./test.sh -m core:terminal              -> 35 passed
+./test.sh                               -> 260 passed, 0 failed
+./build.sh                              -> BUILD SUCCESSFUL
+```
+
+### Residual risk
+
+- Instances created without Android context and without a `NativeBinaryManager` still use the host shell by design; this is limited to JVM tests and legacy lightweight callers.
+- The interactive terminal's setup notice still runs `/system/bin/sh` to render the "install Ubuntu" message. It ignores input and exits, so it cannot execute user commands.
+- `CliGitOperations` still resolves `git` from the process `PATH` rather than routing through the Linux userland or the bundled native git. This is a separate candidate.

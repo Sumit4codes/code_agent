@@ -106,6 +106,19 @@ class PosixTerminalExecutor(
         }
     }
 
+    /**
+     * The host shell is only a test/legacy fallback for instances created without Android
+     * context and native binaries. Production instances must never run commands outside Linux.
+     */
+    private fun allowsHostShellFallback(): Boolean = context == null && nativeBinaryManager == null
+
+    private fun linuxUnavailable(onOutput: ((String) -> Unit)?): TerminalResult {
+        val message = "Linux environment is unavailable: PRoot was not found. " +
+            "Reinstall Koda Dev or install Ubuntu from the Terminal."
+        onOutput?.invoke(message)
+        return TerminalResult.Error(message, 127)
+    }
+
     private fun buildPathEnvironment(): String {
         val pathEntries = mutableListOf<String>()
         val nativeDir = try { context?.applicationInfo?.nativeLibraryDir } catch (_: Exception) { null }
@@ -177,8 +190,10 @@ class PosixTerminalExecutor(
             } else {
                 bootResult
             }
-        } else {
+        } else if (allowsHostShellFallback()) {
             executeHostProcess(trimmed, workDir, onOutput)
+        } else {
+            linuxUnavailable(onOutput)
         }
     }
 
@@ -287,13 +302,22 @@ class PosixTerminalExecutor(
         return when {
             isUbuntuActive() -> buildUbuntuProcessBuilder(trimmed, workDir)
             isAlpineActive() -> buildAlpineProcessBuilder(trimmed, workDir)
-            else -> buildHostProcessBuilder(trimmed, workDir)
+            allowsHostShellFallback() -> buildHostProcessBuilder(trimmed, workDir)
+            else -> throw IllegalStateException(
+                "Linux environment is unavailable: PRoot was not found."
+            )
         }
     }
 
     fun buildUbuntuProcessBuilder(command: String, workingDir: File): ProcessBuilder {
         val prootExec = nativeBinaryManager?.resolvePRootExecutable()
-            ?: return buildHostProcessBuilder(command, workingDir)
+            ?: return if (allowsHostShellFallback()) {
+                buildHostProcessBuilder(command, workingDir)
+            } else {
+                throw IllegalStateException(
+                    "Linux environment is unavailable: PRoot was not found."
+                )
+            }
 
         val mgr = ubuntuBootstrapManager ?: nativeBinaryManager.ubuntuBootstrapManager
         val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
@@ -437,7 +461,11 @@ class PosixTerminalExecutor(
         }
 
         if (nativeBinaryManager?.resolvePRootExecutable() == null) {
-            return@withContext executeHostProcess(command, workingDir, onOutput, effectiveTimeoutMs)
+            return@withContext if (allowsHostShellFallback()) {
+                executeHostProcess(command, workingDir, onOutput, effectiveTimeoutMs)
+            } else {
+                linuxUnavailable(onOutput)
+            }
         }
 
         try {
@@ -461,7 +489,13 @@ class PosixTerminalExecutor(
 
     fun buildAlpineProcessBuilder(command: String, workingDir: File): ProcessBuilder {
         val prootExec = nativeBinaryManager?.resolvePRootExecutable()
-            ?: return buildHostProcessBuilder(command, workingDir)
+            ?: return if (allowsHostShellFallback()) {
+                buildHostProcessBuilder(command, workingDir)
+            } else {
+                throw IllegalStateException(
+                    "Linux environment is unavailable: PRoot was not found."
+                )
+            }
 
         val nativeDir = context?.applicationInfo?.nativeLibraryDir?.let { File(it) }
         val rootDir = alpineBootstrapManager?.rootDir
@@ -613,7 +647,11 @@ class PosixTerminalExecutor(
         timeoutMs: Long = 120_000L
     ): TerminalResult = withContext(ioDispatcher) {
         if (nativeBinaryManager?.resolvePRootExecutable() == null) {
-            return@withContext executeHostProcess(command, workingDir, onOutput, timeoutMs)
+            return@withContext if (allowsHostShellFallback()) {
+                executeHostProcess(command, workingDir, onOutput, timeoutMs)
+            } else {
+                linuxUnavailable(onOutput)
+            }
         }
 
         try {

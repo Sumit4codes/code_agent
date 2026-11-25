@@ -113,6 +113,29 @@ class PosixTerminalExecutorTest {
     }
 
     @Test
+    fun `execute refuses host shell when PRoot is unavailable`() = runTest {
+        val nativeBinaryManager = NativeBinaryManager(
+            context = null,
+            alpineBootstrapManager = AlpineBootstrapManager(null),
+            ubuntuBootstrapManager = UbuntuBootstrapManager(null)
+        )
+        val noProotExecutor = PosixTerminalExecutor(
+            context = null,
+            nativeBinaryManager = nativeBinaryManager,
+            alpineBootstrapManager = nativeBinaryManager.alpineBootstrapManager,
+            ubuntuBootstrapManager = nativeBinaryManager.ubuntuBootstrapManager
+        )
+        noProotExecutor.bind(fileSystem, FakeUri("file://${tempDir.absolutePath}"), tempDir)
+
+        val result = noProotExecutor.execute("echo host-fallback-marker")
+
+        assertTrue("Expected a Linux-unavailable error, got $result", result is TerminalResult.Error)
+        val error = result as TerminalResult.Error
+        assertFalse(error.message.contains("host-fallback-marker"))
+        assertTrue(error.message.contains("Linux environment", ignoreCase = true))
+    }
+
+    @Test
     fun `setup-alpine command handles bootstrap execution`() = runTest {
         val root = File(tempDir, "root").apply { mkdirs() }
         File(root, "alpine.tar.gz").createNewFile()
