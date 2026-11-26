@@ -64,7 +64,7 @@ data class ChatState(
     val activeTool: ActiveToolExecution? = null,
     val pendingChanges: List<PendingChange> = emptyList(),
     val error: String? = null,
-    val model: String = "gpt-4o",
+    val model: String = "",
     val projectUri: Uri? = null,
     val projectName: String = "",
     val projectId: String = "",
@@ -114,13 +114,11 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             settingsRepository.getActiveProviderFlow().collect { config ->
-                if (config != null) {
-                    _state.update {
-                        it.copy(
-                            activeProvider = config,
-                            model = config.model.ifBlank { it.model }
-                        )
-                    }
+                _state.update {
+                    it.copy(
+                        activeProvider = config,
+                        model = config?.model ?: ""
+                    )
                 }
             }
         }

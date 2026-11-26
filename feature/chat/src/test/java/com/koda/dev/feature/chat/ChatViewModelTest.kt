@@ -38,6 +38,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -122,11 +123,17 @@ private class ChatTestProjectDao : ProjectDao {
 }
 
 private class ChatTestProviderConfigDao : ProviderConfigDao {
-    override fun getAll(): Flow<List<ProviderConfigEntity>> = flowOf(emptyList())
-    override suspend fun getAllList(): List<ProviderConfigEntity> = emptyList()
-    override suspend fun getDefault(): ProviderConfigEntity? = null
-    override fun getDefaultFlow(): Flow<ProviderConfigEntity?> = flowOf(null)
-    override suspend fun getById(id: String): ProviderConfigEntity? = null
+    private val defaultProvider = MutableStateFlow<ProviderConfigEntity?>(null)
+
+    fun setDefaultProvider(config: ProviderConfigEntity?) {
+        defaultProvider.value = config
+    }
+
+    override fun getAll(): Flow<List<ProviderConfigEntity>> = flowOf(listOfNotNull(defaultProvider.value))
+    override suspend fun getAllList(): List<ProviderConfigEntity> = listOfNotNull(defaultProvider.value)
+    override suspend fun getDefault(): ProviderConfigEntity? = defaultProvider.value
+    override fun getDefaultFlow(): Flow<ProviderConfigEntity?> = defaultProvider
+    override suspend fun getById(id: String): ProviderConfigEntity? = defaultProvider.value?.takeIf { it.id == id }
     override suspend fun upsert(config: ProviderConfigEntity) = Unit
     override suspend fun delete(config: ProviderConfigEntity) = Unit
     override suspend fun deleteById(id: String) = Unit
@@ -164,6 +171,7 @@ class ChatViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var messageDao: ChatTestMessageDao
+    private lateinit var providerConfigDao: ChatTestProviderConfigDao
     private lateinit var viewModel: ChatViewModel
 
     @Before
@@ -191,12 +199,14 @@ class ChatViewModelTest {
             fileSystem = fileSystem,
             ioDispatcher = testDispatcher
         )
+        val providerConfigDao = ChatTestProviderConfigDao()
         val settingsRepository = SettingsRepository(
-            ChatTestProviderConfigDao(),
+            providerConfigDao,
             ChatTestApiKeyStorage()
         )
 
         this.messageDao = messageDao
+        this.providerConfigDao = providerConfigDao
         viewModel = ChatViewModel(
             agentOrchestrator = orchestrator,
             agentWorkManager = workManager,
@@ -244,5 +254,38 @@ class ChatViewModelTest {
                     it.id == "message-1" && it.sessionId == activeSessionId
                 }
             )
+        }
+
+    @Test
+    fun `model is blank when no provider is configured and clears when active provider is removed`() =
+        runTest(testDispatcher) {
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.activeProvider)
+            assertEquals("", viewModel.state.value.model)
+
+            providerConfigDao.setDefaultProvider(
+                ProviderConfigEntity(
+                    id = "custom",
+                    providerType = "OPENAI_COMPATIBLE",
+                    name = "Custom",
+                    model = "deepseek-chat",
+                    baseUrl = "https://example.com/v1",
+                    temperature = 0.7f,
+                    maxTokens = 4096,
+                    systemPrompt = null,
+                    isDefault = true
+                )
+            )
+            advanceUntilIdle()
+
+            assertEquals("custom", viewModel.state.value.activeProvider?.id)
+            assertEquals("deepseek-chat", viewModel.state.value.model)
+
+            providerConfigDao.setDefaultProvider(null)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.activeProvider)
+            assertEquals("", viewModel.state.value.model)
         }
 }

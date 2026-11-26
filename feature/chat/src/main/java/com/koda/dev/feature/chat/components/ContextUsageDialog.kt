@@ -115,7 +115,7 @@ fun ContextUsageDialog(
                             color = Color(0xFFF0F6FC)
                         )
                         Text(
-                            text = "Model: $modelName",
+                            text = "Model: ${modelName.ifBlank { "None" }}",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.5.sp

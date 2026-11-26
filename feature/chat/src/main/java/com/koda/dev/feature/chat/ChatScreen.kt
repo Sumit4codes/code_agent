@@ -127,6 +127,11 @@ fun ChatScreen(
     val backdropState = rememberBackdropState()
     var inputBarHeightPx by remember { mutableFloatStateOf(0f) }
     var topBarHeightPx by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val defaultTopClearance = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 74.dp
+    val defaultBottomClearance = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 92.dp
+    val topClearance = if (topBarHeightPx > 0f) with(density) { topBarHeightPx.toDp() } + 4.dp else defaultTopClearance
+    val bottomClearance = if (inputBarHeightPx > 0f) with(density) { inputBarHeightPx.toDp() } + 12.dp else defaultBottomClearance
 
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank() && projectId != "none" && state.projectId != projectId) {
@@ -239,7 +244,7 @@ fun ChatScreen(
                             },
                             modifier = Modifier
                                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                                .padding(top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp)
+                                .padding(top = topClearance)
                         )
                     }
 
@@ -250,7 +255,7 @@ fun ChatScreen(
                             onDismiss = { viewModel.clearError() },
                             modifier = Modifier
                                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                                .padding(top = if (state.pendingChanges.isEmpty()) (if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp) else 0.dp)
+                                .padding(top = if (state.pendingChanges.isEmpty()) topClearance else 0.dp)
                         )
                     }
 
@@ -261,8 +266,8 @@ fun ChatScreen(
                                 .fillMaxSize()
                                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                                 .padding(
-                                    top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
-                                    bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
+                                    top = topClearance + 4.dp,
+                                    bottom = bottomClearance
                                 )
                         ) {
                             EmptyChatState(
@@ -285,8 +290,8 @@ fun ChatScreen(
                             contentPadding = PaddingValues(
                                 start = 16.dp + safeInsets.calculateStartPadding(layoutDirection),
                                 end = 16.dp + safeInsets.calculateEndPadding(layoutDirection),
-                                top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 88.dp,
-                                bottom = if (inputBarHeightPx > 0f) with(LocalDensity.current) { inputBarHeightPx.toDp() } + 12.dp else 120.dp
+                                top = topClearance + 4.dp,
+                                bottom = bottomClearance
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
@@ -366,10 +371,20 @@ fun ChatScreen(
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     navigationIcon = {
                         if (onNavigateBack != null) {
-                            IconButton(onClick = onNavigateBack) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 6.dp)
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
+                                    .springPressClickable(onClick = onNavigateBack),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Back",
+                                    modifier = Modifier.size(18.dp),
                                     tint = Color(0xFFF0F6FC)
                                 )
                             }
@@ -444,6 +459,11 @@ fun ChatScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
+                                    val subtitleText = when {
+                                        state.isStreaming && state.isGoalMode -> "Autonomous Goal running…"
+                                        state.isStreaming -> "Working…"
+                                        else -> state.model
+                                    }
                                     if (state.projectName.isNotBlank()) {
                                         Icon(
                                             imageVector = Icons.Default.Folder,
@@ -458,56 +478,84 @@ fun ChatScreen(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                        if (subtitleText.isNotBlank()) {
+                                            Text(
+                                                text = "·",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF8B949E)
+                                            )
+                                        }
+                                    }
+                                    if (subtitleText.isNotBlank()) {
                                         Text(
-                                            text = "·",
+                                            text = subtitleText,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF8B949E)
+                                            color = if (state.isStreaming) Color(0xFF58A6FF) else Color(0xFF8B949E),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
-                                    Text(
-                                        text = when {
-                                            state.isStreaming && state.isGoalMode -> "Autonomous Goal running…"
-                                            state.isStreaming -> "Working…"
-                                            else -> state.model
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (state.isStreaming) Color(0xFF58A6FF) else Color(0xFF8B949E),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 }
                             }
                         }
                     },
                     actions = {
                         if (state.projectUri != null) {
-                            IconButton(
-                                onClick = { showTerminalSheet = true }
+                            Row(
+                                modifier = Modifier.padding(end = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Terminal,
-                                    contentDescription = "Project Terminal",
-                                    tint = Color(0xFFF0F6FC)
-                                )
-                            }
-                            IconButton(
-                                onClick = { viewModel.startNewSession() },
-                                enabled = !state.isStreaming
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "New Chat",
-                                    tint = Color(0xFFF0F6FC)
-                                )
-                            }
-                            IconButton(
-                                onClick = { showHistorySheet = true }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.History,
-                                    contentDescription = "Chat History",
-                                    tint = Color(0xFFF0F6FC)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f), CircleShape)
+                                        .springPressClickable { showTerminalSheet = true },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Terminal,
+                                        contentDescription = "Project Terminal",
+                                        tint = Color(0xFFC9D1D9),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(GlassDesign.microGlassBackground(topAlpha = if (!state.isStreaming) 0.16f else 0.06f, bottomAlpha = 0.05f))
+                                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (!state.isStreaming) 0.32f else 0.14f, bottomAlpha = 0.08f), CircleShape)
+                                        .springPressClickable(enabled = !state.isStreaming) { viewModel.startNewSession() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "New Chat",
+                                        tint = if (!state.isStreaming) Color(0xFFF0F6FC) else Color(0xFF484F58),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f), CircleShape)
+                                        .springPressClickable { showHistorySheet = true },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = "Chat History",
+                                        tint = Color(0xFFC9D1D9),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     },
@@ -699,38 +747,43 @@ private fun ErrorBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        shape = RoundedCornerShape(10.dp),
+    val bannerShape = RoundedCornerShape(14.dp)
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(bannerShape)
+            .background(Color(0xFF281214).copy(alpha = 0.92f))
+            .border(0.75.dp, Color(0x66F85149), bannerShape)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.ErrorOutline,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onErrorContainer,
+                tint = Color(0xFFFF7B72),
                 modifier = Modifier.size(20.dp)
             )
             Text(
                 text = error,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                color = Color(0xFFFFB4AE),
                 modifier = Modifier.weight(1f)
             )
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(24.dp)
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .springPressClickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Dismiss error",
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    tint = Color(0xFFFF7B72),
                     modifier = Modifier.size(16.dp)
                 )
             }

@@ -24,10 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.ThumbDown
-import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material.icons.outlined.ThumbDown
-import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -241,7 +237,6 @@ fun AssistantMessageBubble(
 ) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
-    var userRating by remember { mutableStateOf<Boolean?>(null) } // true: liked, false: disliked, null: none
 
     val relativeTime = remember(message.timestamp) {
         formatRelativeTime(message.timestamp)
@@ -283,7 +278,7 @@ fun AssistantMessageBubble(
             MarkdownText(content = message.content)
         }
 
-        // 4. Clean Turn Footer: Relative timestamp + Copy + Feedback actions
+        // 4. Clean Turn Footer: Relative timestamp + Copy action
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -320,52 +315,6 @@ fun AssistantMessageBubble(
                     contentDescription = "Copy message",
                     modifier = Modifier.size(14.dp),
                     tint = if (copied) Color(0xFF3FB950) else Color(0xFF8B949E)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Thumbs Up button
-            val isLiked = userRating == true
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(GlassDesign.microGlassBackground(topAlpha = if (isLiked) 0.22f else 0.12f, bottomAlpha = 0.04f))
-                    .border(0.5.dp, GlassDesign.microGlassBorder(topAlpha = if (isLiked) 0.50f else 0.25f, bottomAlpha = 0.08f), CircleShape)
-                    .springPressClickable {
-                        userRating = if (isLiked) null else true
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
-                    contentDescription = "Helpful",
-                    modifier = Modifier.size(14.dp),
-                    tint = if (isLiked) Color(0xFF58A6FF) else Color(0xFF8B949E)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Thumbs Down button
-            val isDisliked = userRating == false
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(GlassDesign.microGlassBackground(topAlpha = if (isDisliked) 0.22f else 0.12f, bottomAlpha = 0.04f))
-                    .border(0.5.dp, GlassDesign.microGlassBorder(topAlpha = if (isDisliked) 0.50f else 0.25f, bottomAlpha = 0.08f), CircleShape)
-                    .springPressClickable {
-                        userRating = if (isDisliked) null else false
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (isDisliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
-                    contentDescription = "Not helpful",
-                    modifier = Modifier.size(14.dp),
-                    tint = if (isDisliked) Color(0xFFF85149) else Color(0xFF8B949E)
                 )
             }
         }
