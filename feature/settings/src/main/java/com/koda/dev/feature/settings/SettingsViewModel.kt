@@ -574,7 +574,7 @@ class SettingsViewModel @Inject constructor(
         }
 
         val chosenModel = editor.model.trim().ifBlank {
-            editor.availableModels.firstOrNull() ?: "gpt-4o"
+            editor.availableModels.firstOrNull() ?: ""
         }
 
         viewModelScope.launch {

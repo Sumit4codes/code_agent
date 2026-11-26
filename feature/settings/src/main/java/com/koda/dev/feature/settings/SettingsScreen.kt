@@ -70,9 +70,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var providerToDelete by remember { mutableStateOf<ProviderUiModel?>(null) }
-    var preferencesExpanded by remember { mutableStateOf(false) }
-    var terminalPreferencesExpanded by remember { mutableStateOf(true) }
-    var webSearchExpanded by remember { mutableStateOf(false) }
+    var activeSheet by remember { mutableStateOf<SettingsDetailSheet?>(null) }
     var showQrScanner by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.userMessage) {
@@ -114,20 +112,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 90.dp,
                     bottom = 86.dp + navBarsBottomInset // Dynamic clearance for floating bottom navigation bar
                 ),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // 1. ACTIVE PROVIDER BANNER
-            ActiveProviderBanner(
-                activeProvider = state.activeProvider,
-                onEditClick = { active ->
-                    viewModel.openEditProviderDialog(active)
-                },
-                onQuickModelSelect = { providerId, model ->
-                    viewModel.quickSelectModel(providerId, model)
-                }
-            )
-
-            // 2. CONFIGURED PROVIDERS SECTION
+            // 1. AI PROVIDERS (Unified section)
             ProvidersSection(
                 providers = state.providers,
                 activeProviderId = state.activeProvider?.id,
@@ -139,53 +126,56 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onScanQrCode = { showQrScanner = true }
             )
 
-            // 3. AGENT PREFERENCES (COLLAPSIBLE / ACCORDION)
-            AgentPreferencesCard(
-                isExpanded = preferencesExpanded,
-                onToggleExpand = { preferencesExpanded = !preferencesExpanded },
-                temperature = state.globalTemperature,
-                onTemperatureChange = { viewModel.updateGlobalTemperature(it) },
-                maxTokens = state.globalMaxTokens,
-                onMaxTokensChange = { viewModel.updateGlobalMaxTokens(it) },
-                systemPrompt = state.globalSystemPrompt,
-                onSystemPromptChange = { viewModel.updateGlobalSystemPrompt(it) }
-            )
+            // 2. PREFERENCES & SYNC (Grouped compact rows)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Preferences",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFFF0F6FC)
+                )
 
-            // 4. TERMINAL DISPLAY & FONT SIZE PREFERENCES
-            TerminalPreferencesCard(
-                isExpanded = terminalPreferencesExpanded,
-                onToggleExpand = { terminalPreferencesExpanded = !terminalPreferencesExpanded },
-                fontSizeSp = state.terminalFontSizeSp,
-                onFontSizeChange = { viewModel.updateTerminalFontSize(it) }
-            )
-
-            // 5. WEB SEARCH & LIVE DOCUMENTATION PREFERENCES
-            WebSearchPreferencesCard(
-                isExpanded = webSearchExpanded,
-                onToggleExpand = { webSearchExpanded = !webSearchExpanded },
-                enabled = state.webSearchEnabled,
-                onEnabledChange = { viewModel.updateWebSearchEnabled(it) },
-                currentEngine = state.webSearchEngine,
-                onEngineChange = { viewModel.updateWebSearchEngine(it) },
-                searxngUrl = state.searxngUrl,
-                onSearxngUrlChange = { viewModel.updateSearxngUrl(it) },
-                apiKey = state.searchApiKey,
-                onSaveApiKey = { engine, key -> viewModel.saveSearchApiKey(engine, key) }
-            )
-
-            // 6. CROSS-DEVICE CLOUD SYNC CARD
-            CloudSyncCard(
-                syncAccount = state.syncAccount,
-                isSyncing = state.isSyncing,
-                onConnectClick = { viewModel.openConnectSyncDialog() },
-                onSyncClick = { viewModel.triggerCloudSync() },
-                onRestoreClick = { viewModel.triggerCloudRestore() },
-                onDisconnectClick = { viewModel.disconnectSync() },
-                onBackupClick = { viewModel.openBackupDialog() }
-            )
-
-            // 7. STORAGE & PRIVACY INFO
-            AboutPrivacyCard()
+                LiquidGlassCard(verticalSpacing = 2.dp) {
+                    SettingsPreferenceRow(
+                        icon = Icons.Default.Tune,
+                        iconTint = Color(0xFF58A6FF),
+                        title = "Agent",
+                        value = "Temp ${String.format("%.1f", state.globalTemperature)} · ${state.globalMaxTokens.ifBlank { "4096" }} tokens",
+                        onClick = { activeSheet = SettingsDetailSheet.AGENT }
+                    )
+                    HorizontalDivider(color = Color(0xFF30363D).copy(alpha = 0.45f))
+                    SettingsPreferenceRow(
+                        icon = Icons.Default.Terminal,
+                        iconTint = Color(0xFF58A6FF),
+                        title = "Terminal",
+                        value = "Font size ${state.terminalFontSizeSp} sp",
+                        onClick = { activeSheet = SettingsDetailSheet.TERMINAL }
+                    )
+                    HorizontalDivider(color = Color(0xFF30363D).copy(alpha = 0.45f))
+                    SettingsPreferenceRow(
+                        icon = Icons.Default.Public,
+                        iconTint = Color(0xFF58A6FF),
+                        title = "Web Search",
+                        value = if (state.webSearchEnabled) state.webSearchEngine.displayName else "Disabled",
+                        onClick = { activeSheet = SettingsDetailSheet.WEB_SEARCH }
+                    )
+                    HorizontalDivider(color = Color(0xFF30363D).copy(alpha = 0.45f))
+                    SettingsPreferenceRow(
+                        icon = Icons.Default.CloudSync,
+                        iconTint = if (state.syncAccount.isConnected) Color(0xFF3FB950) else Color(0xFF58A6FF),
+                        title = "Cloud Sync & Backup",
+                        value = if (state.syncAccount.isConnected) "@${state.syncAccount.username} · Connected" else "Not connected",
+                        onClick = { activeSheet = SettingsDetailSheet.SYNC }
+                    )
+                    HorizontalDivider(color = Color(0xFF30363D).copy(alpha = 0.45f))
+                    SettingsPreferenceRow(
+                        icon = Icons.Default.Lock,
+                        iconTint = Color(0xFF8B949E),
+                        title = "Security & Storage",
+                        value = "Encrypted local keys · On-device storage",
+                        onClick = { activeSheet = SettingsDetailSheet.ABOUT }
+                    )
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
         }
@@ -239,97 +229,32 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Frosted Tune Avatar Disc
-                        Box(
-                            modifier = Modifier.size(36.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape)
-                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
-                                    .border(
-                                        width = 0.75.dp,
-                                        brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color(0xFF58A6FF)
-                                )
-                            }
-                        }
-
-                        Column {
-                            Text(
-                                text = "Settings",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = Color(0xFFF0F6FC),
-                                maxLines = 1
-                            )
-                            Text(
-                                text = "Providers · Agent · Sync",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF8B949E),
-                                maxLines = 1
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Quick QR Scanner Button
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
                                 .border(
                                     width = 0.75.dp,
-                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f),
                                     shape = CircleShape
-                                )
-                                .springPressClickable { showQrScanner = true },
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = "Scan QR",
-                                tint = Color(0xFF79C0FF),
-                                modifier = Modifier.size(17.dp)
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp),
+                                tint = Color(0xFF58A6FF)
                             )
                         }
 
-                        // Quick Add Provider Button
-                        Box(
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
-                                .border(
-                                    width = 0.75.dp,
-                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
-                                    shape = CircleShape
-                                )
-                                .springPressClickable { viewModel.openAddProviderDialog(PopularProviders.KILO_FREE) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add Provider",
-                                tint = Color(0xFFF0F6FC),
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
+                        Text(
+                            text = "Settings",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFFF0F6FC),
+                            maxLines = 1
+                        )
                     }
                 }
             )
@@ -341,6 +266,105 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 90.dp)
         )
+    }
+
+    // DETAIL PREFERENCES DIALOGS
+    when (activeSheet) {
+        SettingsDetailSheet.AGENT -> {
+            SettingsDetailDialog(
+                icon = Icons.Default.Tune,
+                iconTint = Color(0xFF58A6FF),
+                title = "Agent Preferences",
+                subtitle = "Sampling, token budget, and instructions",
+                onDismiss = { activeSheet = null }
+            ) {
+                AgentPreferencesDialogContent(
+                    temperature = state.globalTemperature,
+                    onTemperatureChange = { viewModel.updateGlobalTemperature(it) },
+                    maxTokens = state.globalMaxTokens,
+                    onMaxTokensChange = { viewModel.updateGlobalMaxTokens(it) },
+                    systemPrompt = state.globalSystemPrompt,
+                    onSystemPromptChange = { viewModel.updateGlobalSystemPrompt(it) }
+                )
+            }
+        }
+        SettingsDetailSheet.TERMINAL -> {
+            SettingsDetailDialog(
+                icon = Icons.Default.Terminal,
+                iconTint = Color(0xFF58A6FF),
+                title = "Terminal Display",
+                subtitle = "Font size and readability",
+                onDismiss = { activeSheet = null }
+            ) {
+                TerminalPreferencesDialogContent(
+                    fontSizeSp = state.terminalFontSizeSp,
+                    onFontSizeChange = { viewModel.updateTerminalFontSize(it) }
+                )
+            }
+        }
+        SettingsDetailSheet.WEB_SEARCH -> {
+            SettingsDetailDialog(
+                icon = Icons.Default.Public,
+                iconTint = Color(0xFF58A6FF),
+                title = "Web Search & Live Docs",
+                subtitle = "Search provider and API access",
+                onDismiss = { activeSheet = null }
+            ) {
+                WebSearchPreferencesDialogContent(
+                    enabled = state.webSearchEnabled,
+                    onEnabledChange = { viewModel.updateWebSearchEnabled(it) },
+                    currentEngine = state.webSearchEngine,
+                    onEngineChange = { viewModel.updateWebSearchEngine(it) },
+                    searxngUrl = state.searxngUrl,
+                    onSearxngUrlChange = { viewModel.updateSearxngUrl(it) },
+                    apiKey = state.searchApiKey,
+                    onSaveApiKey = { engine, key -> viewModel.saveSearchApiKey(engine, key) }
+                )
+            }
+        }
+        SettingsDetailSheet.SYNC -> {
+            SettingsDetailDialog(
+                icon = Icons.Default.CloudSync,
+                iconTint = if (state.syncAccount.isConnected) Color(0xFF3FB950) else Color(0xFF58A6FF),
+                title = "Cloud Sync & Backup",
+                subtitle = "Zero-knowledge encrypted vault",
+                onDismiss = { activeSheet = null }
+            ) {
+                CloudSyncDialogContent(
+                    syncAccount = state.syncAccount,
+                    isSyncing = state.isSyncing,
+                    onConnectClick = {
+                        activeSheet = null
+                        viewModel.openConnectSyncDialog()
+                    },
+                    onSyncClick = {
+                        activeSheet = null
+                        viewModel.triggerCloudSync()
+                    },
+                    onRestoreClick = {
+                        activeSheet = null
+                        viewModel.triggerCloudRestore()
+                    },
+                    onDisconnectClick = { viewModel.disconnectSync() },
+                    onBackupClick = {
+                        activeSheet = null
+                        viewModel.openBackupDialog()
+                    }
+                )
+            }
+        }
+        SettingsDetailSheet.ABOUT -> {
+            SettingsDetailDialog(
+                icon = Icons.Default.Lock,
+                iconTint = Color(0xFF58A6FF),
+                title = "Security & Storage",
+                subtitle = "How credentials and files are stored",
+                onDismiss = { activeSheet = null }
+            ) {
+                AboutPrivacyDialogContent()
+            }
+        }
+        null -> Unit
     }
 
     // CONNECT SYNC DIALOG
@@ -573,6 +597,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 private fun LiquidGlassCard(
     modifier: Modifier = Modifier,
     shape: RoundedCornerShape = RoundedCornerShape(18.dp),
+    verticalSpacing: androidx.compose.ui.unit.Dp = 14.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
@@ -604,198 +629,9 @@ private fun LiquidGlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(verticalSpacing),
             content = content
         )
-    }
-}
-
-@Composable
-private fun ActiveProviderBanner(
-    activeProvider: ProviderUiModel?,
-    onEditClick: (ProviderUiModel) -> Unit,
-    onQuickModelSelect: (String, String) -> Unit
-) {
-    val bannerShape = RoundedCornerShape(20.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(bannerShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF1B2434).copy(alpha = 0.88f),
-                        Color(0xFF101622).copy(alpha = 0.94f)
-                    )
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
-                shape = bannerShape
-            )
-    ) {
-        // Internal Top Sheen
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp)
-                .background(GlassDesign.internalGlassSheen())
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SmartToy,
-                        contentDescription = null,
-                        tint = Color(0xFF58A6FF),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "Active Provider",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF58A6FF)
-                    )
-                }
-
-                if (activeProvider != null) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
-                            .border(
-                                width = 0.75.dp,
-                                brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .springPressClickable { onEditClick(activeProvider) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = null,
-                                tint = Color(0xFF79C0FF),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                "Edit",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = Color(0xFFF0F6FC)
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (activeProvider != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = activeProvider.name,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFFF0F6FC),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = activeProvider.baseUrl,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF8B949E),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    val isKiloFree = activeProvider.id.startsWith("kilo") || activeProvider.id.startsWith("community") || activeProvider.baseUrl.contains("kilo.ai")
-                    // Key Status Chip
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isKiloFree || activeProvider.hasApiKey) {
-                            Color(0xFF238636).copy(alpha = 0.20f)
-                        } else {
-                            Color(0xFFDA3633).copy(alpha = 0.20f)
-                        }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isKiloFree || activeProvider.hasApiKey) Icons.Default.CheckCircle else Icons.Default.Key,
-                                contentDescription = null,
-                                tint = if (isKiloFree || activeProvider.hasApiKey) Color(0xFF3FB950) else Color(0xFFF85149),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = if (isKiloFree) "Keyless Free" else if (activeProvider.hasApiKey) "Key configured" else "No key set",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isKiloFree || activeProvider.hasApiKey) Color(0xFF3FB950) else Color(0xFFF85149),
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-
-                // Selected Model Pill
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF0D1117).copy(alpha = 0.85f),
-                    border = BorderStroke(0.75.dp, Color(0xFF30363D)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Model:",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color(0xFF8B949E)
-                        )
-                        Text(
-                            text = activeProvider.model.ifBlank { "(None selected)" },
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = Color(0xFFF0F6FC),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = "No active provider selected. Add or select a provider below to enable coding assistance.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }
 
@@ -816,105 +652,119 @@ private fun ProvidersSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            Text(
+                text = "AI Providers",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color(0xFFF0F6FC)
+            )
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "AI Providers",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color(0xFFF0F6FC)
-                )
-                if (providers.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1F6FEB).copy(alpha = 0.20f))
-                            .border(0.75.dp, Color(0xFF388BFD).copy(alpha = 0.40f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                            shape = CircleShape
+                        )
+                        .springPressClickable(onClick = onScanQrCode),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = "Scan Antiroute QR",
+                        tint = Color(0xFF79C0FF),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                        .border(
+                            width = 0.75.dp,
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .springPressClickable(onClick = onAddProvider)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(15.dp))
                         Text(
-                            text = providers.size.toString(),
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFF79C0FF)
+                            "Add",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFFF0F6FC)
                         )
                     }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
-                    .border(
-                        width = 0.75.dp,
-                        brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                    .springPressClickable(onClick = onAddProvider)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(15.dp))
-                    Text(
-                        "Add Provider",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFFF0F6FC)
-                    )
                 }
             }
         }
 
         if (providers.isEmpty()) {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Column(
+            LiquidGlassCard(verticalSpacing = 12.dp) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudQueue,
+                            contentDescription = null,
+                            tint = Color(0xFF58A6FF),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "No provider configured",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFFF0F6FC)
+                        )
+                        Text(
+                            text = "Pick a preset below or scan a QR code",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF8B949E)
+                        )
+                    }
+                }
+
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudQueue,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Text(
-                        text = "No providers configured",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                    Text(
-                        text = "Choose a popular provider to get started quickly:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AssistChip(
-                            onClick = onScanQrCode,
-                            label = { Text("Scan Antiroute QR", style = MaterialTheme.typography.labelSmall) },
-                            leadingIcon = {
-                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(14.dp))
-                            }
-                        )
-                        PopularProviders.allPopular.filterNot { it.isCustom }.forEach { preset ->
-                            AssistChip(
-                                onClick = { onAddSpecificPreset(preset) },
-                                label = { Text(preset.name, style = MaterialTheme.typography.labelSmall) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                                }
+                    PopularProviders.allPopular.filterNot { it.isCustom }.forEach { preset ->
+                        val chipShape = RoundedCornerShape(10.dp)
+                        Box(
+                            modifier = Modifier
+                                .clip(chipShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), chipShape)
+                                .springPressClickable { onAddSpecificPreset(preset) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = preset.name,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                color = Color(0xFFC9D1D9)
                             )
                         }
                     }
@@ -1154,463 +1004,6 @@ private fun ProviderCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun AgentPreferencesCard(
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    temperature: Float,
-    onTemperatureChange: (Float) -> Unit,
-    maxTokens: String,
-    onMaxTokensChange: (String) -> Unit,
-    systemPrompt: String,
-    onSystemPromptChange: (String) -> Unit
-) {
-    LiquidGlassCard {
-        // Header Row (Toggleable)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .springPressClickable { onToggleExpand() },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Column {
-                        Text(
-                            text = "Agent Preferences",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Text(
-                            text = "Temperature, output tokens, system prompt",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(onClick = onToggleExpand) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand"
-                    )
-                }
-            }
-
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    // Temperature Slider
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Temperature",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-                            )
-                            Surface(
-                                shape = MaterialTheme.shapes.extraSmall,
-                                color = MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Text(
-                                    text = String.format("%.2f", temperature),
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Slider(
-                            value = temperature,
-                            onValueChange = onTemperatureChange,
-                            valueRange = 0.0f..1.0f,
-                            steps = 19
-                        )
-                        Text(
-                            text = "0.0 = Deterministic code · 1.0 = Creative reasoning",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Max Tokens
-                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedTextField(
-                            value = maxTokens,
-                            onValueChange = onMaxTokensChange,
-                            label = { Text("Max Output Tokens") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf("2048", "4096", "8192", "16384").forEach { tokens ->
-                                SuggestionChip(
-                                    onClick = { onMaxTokensChange(tokens) },
-                                    label = { Text(tokens, style = MaterialTheme.typography.labelSmall) }
-                                )
-                            }
-                        }
-                    }
-
-                    // Global Instructions / System Prompt
-                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedTextField(
-                            value = systemPrompt,
-                            onValueChange = onSystemPromptChange,
-                            label = { Text("Global System Instructions (optional)") },
-                            placeholder = { Text("e.g. Always write idiomatic Kotlin. Keep diffs concise.") },
-                            minLines = 3,
-                            maxLines = 5,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            SuggestionChip(
-                                onClick = {
-                                    val add = "Follow modern Android architecture with Kotlin, Jetpack Compose, Coroutines, and Hilt."
-                                    onSystemPromptChange(if (systemPrompt.isBlank()) add else "$systemPrompt\n$add")
-                                },
-                                label = { Text("+ Android Expert", style = MaterialTheme.typography.labelSmall) }
-                            )
-                            SuggestionChip(
-                                onClick = {
-                                    val add = "Be concise and accurate. Do not modify comments or delete unchanged code."
-                                    onSystemPromptChange(if (systemPrompt.isBlank()) add else "$systemPrompt\n$add")
-                                },
-                                label = { Text("+ Concise & Safe", style = MaterialTheme.typography.labelSmall) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-@Composable
-private fun TerminalPreferencesCard(
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    fontSizeSp: Int,
-    onFontSizeChange: (Int) -> Unit
-) {
-    LiquidGlassCard {
-        // Header Row (Toggleable)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .springPressClickable { onToggleExpand() },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Terminal,
-                    contentDescription = null,
-                    tint = Color(0xFF58A6FF),
-                    modifier = Modifier.size(20.dp)
-                )
-                Column {
-                    Text(
-                        text = "Terminal Display & Font",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFFF0F6FC)
-                    )
-                    Text(
-                        text = "Text scale, readability & terminal zoom ($fontSizeSp sp)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF8B949E)
-                    )
-                }
-            }
-
-            IconButton(onClick = onToggleExpand) {
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = Color(0xFFC9D1D9)
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = isExpanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                HorizontalDivider(color = Color(0xFF30363D).copy(alpha = 0.5f))
-
-                // Font Size Steppers + Slider
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Font Size",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = Color(0xFFF0F6FC)
-                        )
-                        val label = when {
-                            fontSizeSp <= 11 -> "Compact"
-                            fontSizeSp == 14 -> "Default"
-                            fontSizeSp in 15..17 -> "Medium"
-                            fontSizeSp in 18..21 -> "Large"
-                            else -> "Extra Large"
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF1F6FEB).copy(alpha = 0.20f))
-                                .border(0.75.dp, Color(0xFF388BFD).copy(alpha = 0.40f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "$fontSizeSp sp · $label",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFF79C0FF)
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
-                                .border(
-                                    width = 0.75.dp,
-                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
-                                    shape = CircleShape
-                                )
-                                .springPressClickable(enabled = fontSizeSp > 9) { onFontSizeChange(fontSizeSp - 1) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Remove,
-                                contentDescription = "Decrease font size",
-                                tint = if (fontSizeSp > 9) Color(0xFFC9D1D9) else Color(0xFF484F58),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        Slider(
-                            value = fontSizeSp.toFloat(),
-                            onValueChange = { onFontSizeChange(it.toInt()) },
-                            valueRange = 9f..28f,
-                            steps = 18,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
-                                .border(
-                                    width = 0.75.dp,
-                                    brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
-                                    shape = CircleShape
-                                )
-                                .springPressClickable(enabled = fontSizeSp < 28) { onFontSizeChange(fontSizeSp + 1) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = "Increase font size",
-                                tint = if (fontSizeSp < 28) Color(0xFFC9D1D9) else Color(0xFF484F58),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    // Presets
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(
-                            11 to "Compact",
-                            14 to "Default",
-                            16 to "Medium",
-                            18 to "Large",
-                            22 to "Huge"
-                        ).forEach { (size, presetLabel) ->
-                            val isSelected = fontSizeSp == size
-                            val chipShape = RoundedCornerShape(10.dp)
-                            Box(
-                                modifier = Modifier
-                                    .clip(chipShape)
-                                    .then(
-                                        if (isSelected) Modifier.background(Color(0xFF1F6FEB).copy(alpha = 0.35f))
-                                        else Modifier.background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
-                                    )
-                                    .border(
-                                        width = 0.75.dp,
-                                        brush = if (isSelected) GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.75f, dispersionAlpha = 0.35f)
-                                        else GlassDesign.microGlassBorder(topAlpha = 0.22f, bottomAlpha = 0.06f),
-                                        shape = chipShape
-                                    )
-                                    .springPressClickable { onFontSizeChange(size) }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = "$size sp ($presetLabel)",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium),
-                                    color = if (isSelected) Color(0xFF79C0FF) else Color(0xFFC9D1D9)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Live Interactive Preview Box
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "Live Terminal Preview",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFF8B949E)
-                    )
-                    Surface(
-                        color = Color(0xFF0D1117),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(0.75.dp, Color(0xFF30363D)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "koda:~/workspace$ ",
-                                    color = Color(0xFF39D353),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = fontSizeSp.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "ls -la",
-                                    color = Color.White,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = fontSizeSp.sp
-                                )
-                            }
-                            Text(
-                                text = "drwxr-xr-x 4 user user 4096 Oct 2 17:40 src/\n-rw-r--r-- 1 user user 1820 Oct 2 17:40 main.py",
-                                color = Color(0xFFC9D1D9),
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = fontSizeSp.sp
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "koda:~/workspace$ ",
-                                    color = Color(0xFF39D353),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = fontSizeSp.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "python3 main.py",
-                                    color = Color.White,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = fontSizeSp.sp
-                                )
-                            }
-                            Text(
-                                text = "Ready to code! Terminal render OK.",
-                                color = Color(0xFF58A6FF),
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = fontSizeSp.sp
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = "Tip: Inside the terminal screen, you can also pinch-to-zoom with two fingers or tap the 'TT' text size icon in the top bar to adjust text on the fly.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF8B949E)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AboutPrivacyCard() {
-    LiquidGlassCard {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = null,
-                tint = Color(0xFF58A6FF),
-                modifier = Modifier.size(18.dp)
-            )
-            Text(
-                text = "Security & Storage Overview",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = Color(0xFFF0F6FC)
-            )
-        }
-        Text(
-            text = "• API keys are encrypted via Android EncryptedSharedPreferences (Hardware Keystore).\n• Each provider maintains its own separate API key and endpoint configuration.\n• Projects, code, and chat history remain strictly local on device.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF8B949E)
-        )
     }
 }
 
@@ -2633,363 +2026,6 @@ private fun ModelSelectorDialog(
         }
     }
 }
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun WebSearchPreferencesCard(
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-    currentEngine: WebSearchEngine,
-    onEngineChange: (WebSearchEngine) -> Unit,
-    searxngUrl: String,
-    onSearxngUrlChange: (String) -> Unit,
-    apiKey: String,
-    onSaveApiKey: (WebSearchEngine, String) -> Unit
-) {
-    var keyInput by remember(apiKey, currentEngine) { mutableStateOf(apiKey) }
-    var showPassword by remember { mutableStateOf(false) }
-
-    LiquidGlassCard {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .springPressClickable { onToggleExpand() },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Public,
-                    contentDescription = null,
-                    tint = Color(0xFF58A6FF),
-                    modifier = Modifier.size(20.dp)
-                )
-                Column {
-                    Text(
-                        text = "Web Search & Live Docs",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFFF0F6FC)
-                    )
-                    Text(
-                        text = if (enabled) "${currentEngine.displayName} · Active" else "Disabled",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF8B949E)
-                    )
-                }
-            }
-
-            IconButton(onClick = onToggleExpand) {
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = Color(0xFFC9D1D9)
-                )
-            }
-        }
-
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Enable Web Access",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-                            )
-                            Text(
-                                text = "Allow agent to search online docs and fetch web pages",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = enabled,
-                            onCheckedChange = onEnabledChange
-                        )
-                    }
-
-                    if (enabled) {
-                        Text(
-                            text = "Search Engine Provider",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            WebSearchEngine.entries.forEach { engine ->
-                                FilterChip(
-                                    selected = currentEngine == engine,
-                                    onClick = { onEngineChange(engine) },
-                                    label = { Text(engine.displayName) },
-                                    leadingIcon = if (currentEngine == engine) {
-                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                    } else null
-                                )
-                            }
-                        }
-
-                        when (currentEngine) {
-                            WebSearchEngine.DUCKDUCKGO -> {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = "DuckDuckGo is completely free, privacy-first, and works instantly without needing any API key or subscription.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.padding(12.dp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            WebSearchEngine.TAVILY, WebSearchEngine.BRAVE -> {
-                                OutlinedTextField(
-                                    value = keyInput,
-                                    onValueChange = { keyInput = it },
-                                    label = { Text("${currentEngine.displayName} API Key") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                                    trailingIcon = {
-                                        IconButton(onClick = { showPassword = !showPassword }) {
-                                            Icon(
-                                                imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                contentDescription = if (showPassword) "Hide key" else "Show key"
-                                            )
-                                        }
-                                    }
-                                )
-                                Button(
-                                    onClick = { onSaveApiKey(currentEngine, keyInput) },
-                                    modifier = Modifier.align(Alignment.End),
-                                    enabled = keyInput.isNotBlank()
-                                ) {
-                                    Text("Save Key")
-                                }
-                            }
-                            WebSearchEngine.SEARXNG -> {
-                                OutlinedTextField(
-                                    value = searxngUrl,
-                                    onValueChange = onSearxngUrlChange,
-                                    label = { Text("SearXNG Instance URL") },
-                                    placeholder = { Text("https://searx.example.com") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-@Composable
-private fun CloudSyncCard(
-    syncAccount: SyncAccountInfo,
-    isSyncing: Boolean,
-    onConnectClick: () -> Unit,
-    onSyncClick: () -> Unit,
-    onRestoreClick: () -> Unit,
-    onDisconnectClick: () -> Unit,
-    onBackupClick: () -> Unit
-) {
-    LiquidGlassCard {
-        // Header: Icon + Title + Status Badge
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudSync,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Column {
-                        Text(
-                            text = "Cross-Device Sync",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "Zero-Knowledge E2EE (GitHub Gist)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                if (syncAccount.isConnected) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Text(
-                            text = "Connected",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-            }
-
-            if (syncAccount.isConnected) {
-                // Connected info block
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AccountCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "@${syncAccount.username}",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                            val lastSyncTime = syncAccount.lastSyncedAt
-                            val lastSyncText = if (lastSyncTime != null) {
-                                val diff = System.currentTimeMillis() - lastSyncTime
-                                when {
-                                    diff < 60_000 -> "Just now"
-                                    diff < 3600_000 -> "${diff / 60_000}m ago"
-                                    else -> "${diff / 3600_000}h ago"
-                                }
-                            } else {
-                                "Never"
-                            }
-                            Text(
-                                text = "Last synced: $lastSyncText",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        IconButton(onClick = onDisconnectClick) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = "Disconnect",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                }
-
-                // Action buttons: Sync Now & Restore
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = onSyncClick,
-                        enabled = !isSyncing,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "Sync Now",
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = onRestoreClick,
-                        enabled = !isSyncing,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "Restore",
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-            } else {
-                // Not connected: description & Connect button
-                Text(
-                    text = "Sync your AI providers and API keys securely across devices using your private GitHub Gist. All data is encrypted with AES-256-GCM using your secret passphrase before leaving your device.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Button(
-                    onClick = onConnectClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Connect GitHub Sync")
-                }
-            }
-
-            // Offline Backup / Restore Link
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(onClick = onBackupClick) {
-                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Offline Encrypted Backup", style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-    }
 
 @Composable
 private fun ConnectSyncDialog(
