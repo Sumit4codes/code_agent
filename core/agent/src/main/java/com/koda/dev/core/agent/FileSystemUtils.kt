@@ -8,14 +8,21 @@ internal suspend fun resolveOrCreateParent(fs: ProjectFileSystem, rootUri: Uri, 
     if (segments.size <= 1) return rootUri
     val parentSegments = segments.dropLast(1)
     var currentUri = rootUri
+    val prefix = StringBuilder()
     for (segment in parentSegments) {
+        if (prefix.isNotEmpty()) prefix.append('/')
+        prefix.append(segment)
+        val prefixPath = prefix.toString()
+
         val children = fs.listChildren(currentUri)
         val existing = children.find { it.name == segment }
         if (existing != null) {
             if (!existing.isDirectory) return null
-            currentUri = existing.uri
+            // Ensure existing directory (including symlinks) resolves within project root boundary.
+            currentUri = fs.resolveRelativeUri(rootUri, prefixPath) ?: return null
         } else {
-            currentUri = fs.createDirectory(currentUri, segment) ?: return null
+            fs.createDirectory(currentUri, segment) ?: return null
+            currentUri = fs.resolveRelativeUri(rootUri, prefixPath) ?: return null
         }
     }
     return currentUri

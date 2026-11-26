@@ -5,6 +5,7 @@ import com.koda.dev.core.common.AppDispatchers
 import com.koda.dev.core.common.DefaultAppDispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.file.Files
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -67,6 +68,9 @@ class FileProjectFileSystem(
                 val parent = uriToFile(parentUri)
                 parent.mkdirs()
                 val file = File(parent, name)
+                if (Files.isSymbolicLink(file.toPath())) {
+                    return@withContext null
+                }
                 if (!file.exists()) {
                     val created = file.createNewFile()
                     if (!created && !file.exists()) return@withContext null
@@ -150,6 +154,14 @@ class FileProjectFileSystem(
             if (file.exists()) file.lastModified() else null
         } catch (_: Exception) {
             null
+        }
+    }
+
+    override suspend fun isSymbolicLink(uri: Uri): Boolean = withContext(dispatchers.io) {
+        try {
+            Files.isSymbolicLink(uriToFile(uri).toPath())
+        } catch (_: Exception) {
+            false
         }
     }
 

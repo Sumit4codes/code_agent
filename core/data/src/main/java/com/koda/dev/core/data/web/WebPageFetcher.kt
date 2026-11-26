@@ -2,6 +2,9 @@ package com.koda.dev.core.data.web
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -14,7 +17,7 @@ import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
-import java.net.URI
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,26 +27,29 @@ interface WebPageFetcher {
 }
 
 class DefaultWebPageFetcher(
-    private val httpClient: OkHttpClient = defaultHttpClient()
+    private val httpClient: OkHttpClient = defaultHttpClient(),
+    private val enforceSsrfDns: Boolean = true
 ) : WebPageFetcher {
 
     override suspend fun fetch(url: String, startLine: Int?, endLine: Int?): Result<String> = withContext(Dispatchers.IO) {
         val trimmedUrl = url.trim()
 
-        // 1. Validate URL protocol
+        // 1. Validate URL protocol and parse with OkHttp's HttpUrl so validation and request share one parser.
         if (!trimmedUrl.startsWith("http://", ignoreCase = true) && !trimmedUrl.startsWith("https://", ignoreCase = true)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid URL protocol. Only HTTP and HTTPS are supported: $url"))
         }
+        val parsedUrl = trimmedUrl.toHttpUrlOrNull()
+            ?: return@withContext Result.failure(IllegalArgumentException("Invalid URL: $url"))
 
         // 2. SSRF Protection: Check host
-        val ssrfError = validateSsrfSafety(trimmedUrl)
+        val ssrfError = validateSsrfSafety(parsedUrl)
         if (ssrfError != null) {
             return@withContext Result.failure(SecurityException(ssrfError))
         }
 
         // 3. HTTP Request
         val request = Request.Builder()
-            .url(trimmedUrl)
+            .url(parsedUrl)
             .header("User-Agent", DefaultWebSearchClient.USER_AGENT)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain,text/markdown;q=0.8,*/*;q=0.5")
             .header("Accept-Language", "en-US,en;q=0.9")
@@ -51,10 +57,13 @@ class DefaultWebPageFetcher(
             .build()
 
         try {
-            val client = httpClient.newBuilder()
+            val clientBuilder = httpClient.newBuilder()
                 .followRedirects(false)
                 .followSslRedirects(false)
-                .build()
+            if (enforceSsrfDns) {
+                clientBuilder.dns(validatingDns(httpClient.dns))
+            }
+            val client = clientBuilder.build()
 
             executeFollowingRedirects(client, request).use { response ->
                 if (!response.isSuccessful) {
@@ -170,7 +179,7 @@ class DefaultWebPageFetcher(
                     throw SecurityException("Redirect to unsupported protocol blocked: $nextUrl")
                 }
 
-                val ssrfError = validateSsrfSafety(nextUrl.toString())
+                val ssrfError = validateSsrfSafety(nextUrl)
                 if (ssrfError != null) {
                     throw SecurityException(ssrfError)
                 }
@@ -186,29 +195,52 @@ class DefaultWebPageFetcher(
     private fun isFollowableRedirect(code: Int): Boolean =
         code == 301 || code == 302 || code == 303 || code == 307 || code == 308
 
-    private fun validateSsrfSafety(url: String): String? {
-        return try {
-            val uri = URI(url)
-            val host = uri.host ?: return "Invalid URL host: $url"
-
-            // Disallow cloud metadata endpoints
-            if (host == "169.254.169.254" || host.contains("metadata.google.internal")) {
-                return "Access to cloud metadata endpoints is blocked for security: $host"
+    private fun validatingDns(delegate: Dns): Dns = object : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            val blockedHostReason = blockedHostReason(hostname)
+            if (blockedHostReason != null) {
+                throw SecurityException(blockedHostReason)
             }
-
-            // Resolve host IP
-            val addresses = InetAddress.getAllByName(host)
+            val addresses = delegate.lookup(hostname)
             for (addr in addresses) {
                 val reason = blockedAddressReason(addr)
                 if (reason != null) {
-                    return "Access to $reason ($host) is blocked: ${addr.hostAddress}"
+                    throw SecurityException("Access to $reason ($hostname) is blocked: ${addr.hostAddress}")
                 }
             }
-            null
-        } catch (_: Exception) {
-            // If DNS resolution fails, let OkHttp produce the exact connect error
-            null
+            return addresses
         }
+    }
+
+    private fun blockedHostReason(host: String): String? {
+        val lowerHost = host.lowercase()
+        if (lowerHost == "169.254.169.254" || lowerHost.contains("metadata.google.internal")) {
+            return "Access to cloud metadata endpoints is blocked for security: $host"
+        }
+        return null
+    }
+
+    private fun validateSsrfSafety(url: HttpUrl): String? {
+        val host = url.host
+        val hostReason = blockedHostReason(host)
+        if (hostReason != null) {
+            return hostReason
+        }
+
+        // Resolve host IP; only defer UnknownHostException so parser/security checks never fail open.
+        val addresses = try {
+            InetAddress.getAllByName(host)
+        } catch (_: UnknownHostException) {
+            return null
+        }
+
+        for (addr in addresses) {
+            val reason = blockedAddressReason(addr)
+            if (reason != null) {
+                return "Access to $reason ($host) is blocked: ${addr.hostAddress}"
+            }
+        }
+        return null
     }
 
     private fun blockedAddressReason(addr: InetAddress): String? {

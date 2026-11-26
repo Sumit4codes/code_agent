@@ -87,7 +87,7 @@ class WebPageFetcherTest {
     fun `fetch blocks redirects to loopback addresses`() = runTest {
         val server = startRedirectServer()
         try {
-            val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient())
+            val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient(), enforceSsrfDns = false)
             val result = fetcher.fetch("http://$redirectTestHost:${server.address.port}/redirect")
 
             assertTrue(result.isFailure)
@@ -102,7 +102,7 @@ class WebPageFetcherTest {
     fun `fetch follows redirects to allowed hosts`() = runTest {
         val server = startRedirectServer()
         try {
-            val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient())
+            val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient(), enforceSsrfDns = false)
             val result = fetcher.fetch("http://$redirectTestHost:${server.address.port}/redirect-safe")
 
             assertTrue(result.isSuccess)
@@ -137,6 +137,59 @@ class WebPageFetcherTest {
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is SecurityException)
+    }
+
+    @Test
+    fun `fetch blocks loopback and metadata URLs with characters rejected by java_net_URI`() = runTest {
+        val server = startRedirectServer()
+        try {
+            val fetcher = DefaultWebPageFetcher()
+            val bypassUrls = listOf(
+                "http://127.0.0.1:${server.address.port}/secret?q=|",
+                "http://127.0.0.1:${server.address.port}/secret?q={test}",
+                "http://127.0.0.1:${server.address.port}/secret^test",
+                "http://127.0.0.1:${server.address.port}/secret\\test",
+                "http://169.254.169.254/latest/meta-data/?|"
+            )
+            for (url in bypassUrls) {
+                val result = fetcher.fetch(url)
+                assertTrue("Expected SSRF failure for $url", result.isFailure)
+                assertTrue(
+                    "Expected SecurityException for $url, got ${result.exceptionOrNull()}",
+                    result.exceptionOrNull() is SecurityException
+                )
+                assertFalse(result.getOrNull()?.contains("INTERNAL-SECRET") == true)
+            }
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `fetch blocks case-insensitive cloud metadata hostnames`() = runTest {
+        val fetcher = DefaultWebPageFetcher()
+        val result = fetcher.fetch("http://METADATA.GOOGLE.INTERNAL/computeMetadata/v1/")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SecurityException)
+    }
+
+    @Test
+    fun `fetch blocks loopback addresses returned by a custom DNS resolver`() = runTest {
+        val fetcher = DefaultWebPageFetcher(httpClient = redirectTestClient())
+        val result = fetcher.fetch("http://$redirectTestHost:1/")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SecurityException)
+    }
+
+    @Test
+    fun `fetch rejects malformed HTTP URLs instead of failing open`() = runTest {
+        val fetcher = DefaultWebPageFetcher()
+        val result = fetcher.fetch("http://")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
     }
 
     @Test

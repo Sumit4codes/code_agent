@@ -528,4 +528,89 @@ class ToolExecutorTest {
         assertTrue(result.output.contains("build.sh:2: export GRADLE_OPTS=\"-Dorg.gradle.workers.max=4\""))
         assertFalse(result.output.contains("Main.kt"))
     }
+
+    @Test
+    fun `execute create_file refuses directory symlink escaping project root`() = runTest {
+        val outsideDir = Files.createTempDirectory("outside-target").toFile()
+        try {
+            val outsideExisting = File(outsideDir, "secret.txt").apply { writeText("KEEP") }
+            val outsideNew = File(outsideDir, "new.txt")
+            Files.createSymbolicLink(File(tempDir, "escape").toPath(), outsideDir.toPath())
+
+            val realFs = com.koda.dev.core.files.FileProjectFileSystem(
+                dispatchers = com.koda.dev.core.common.DefaultAppDispatchers,
+                uriFactory = { file -> FakeUri("file://${file.absolutePath}") }
+            )
+            val realExecutor = ToolExecutor()
+            val realRootUri = FakeUri("file://${tempDir.absolutePath}")
+            realExecutor.bind(realFs, realRootUri, tempDir)
+
+            val overwriteAttempt = realExecutor.execute(
+                "create_file",
+                """{"path":"escape/secret.txt","content":"PWNED"}"""
+            )
+            assertFalse(overwriteAttempt.success)
+            assertEquals("KEEP", outsideExisting.readText())
+
+            val createAttempt = realExecutor.execute(
+                "create_file",
+                """{"path":"escape/new.txt","content":"PWNED"}"""
+            )
+            assertFalse(createAttempt.success)
+            assertFalse(outsideNew.exists())
+        } finally {
+            outsideDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `execute create_file refuses leaf symlink escaping project root`() = runTest {
+        val outsideDir = Files.createTempDirectory("outside-leaf").toFile()
+        try {
+            val outsideTarget = File(outsideDir, "secret.txt").apply { writeText("KEEP") }
+            Files.createSymbolicLink(File(tempDir, "leaf_escape.txt").toPath(), outsideTarget.toPath())
+
+            val realFs = com.koda.dev.core.files.FileProjectFileSystem(
+                dispatchers = com.koda.dev.core.common.DefaultAppDispatchers,
+                uriFactory = { file -> FakeUri("file://${file.absolutePath}") }
+            )
+            val realExecutor = ToolExecutor()
+            val realRootUri = FakeUri("file://${tempDir.absolutePath}")
+            realExecutor.bind(realFs, realRootUri, tempDir)
+
+            val result = realExecutor.execute(
+                "create_file",
+                """{"path":"leaf_escape.txt","content":"PWNED"}"""
+            )
+            assertFalse(result.success)
+            assertEquals("KEEP", outsideTarget.readText())
+        } finally {
+            outsideDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `execute search_code skips symlinks escaping project root`() = runTest {
+        val outsideDir = Files.createTempDirectory("outside-search").toFile()
+        try {
+            val outsideSecret = File(outsideDir, "secret.txt").apply { writeText("TOP_SECRET_TOKEN") }
+            Files.createSymbolicLink(File(tempDir, "escape_dir").toPath(), outsideDir.toPath())
+            Files.createSymbolicLink(File(tempDir, "escape_file.txt").toPath(), outsideSecret.toPath())
+            File(tempDir, "safe.txt").writeText("normal code")
+
+            val realFs = com.koda.dev.core.files.FileProjectFileSystem(
+                dispatchers = com.koda.dev.core.common.DefaultAppDispatchers,
+                uriFactory = { file -> FakeUri("file://${file.absolutePath}") }
+            )
+            val realExecutor = ToolExecutor()
+            val realRootUri = FakeUri("file://${tempDir.absolutePath}")
+            realExecutor.bind(realFs, realRootUri, tempDir)
+
+            val result = realExecutor.execute("search_code", """{"query":"TOP_SECRET_TOKEN"}""")
+            assertTrue(result.success)
+            assertEquals("No matches found", result.output)
+        } finally {
+            outsideDir.deleteRecursively()
+        }
+    }
 }

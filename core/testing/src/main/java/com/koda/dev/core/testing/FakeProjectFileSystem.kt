@@ -147,6 +147,8 @@ class FakeProjectFileSystem(
         return null
     }
 
+    override suspend fun isSymbolicLink(uri: Uri): Boolean = false
+
     override suspend fun resolveRelativeUri(rootUri: Uri, relPath: String): Uri? {
         val cleanRel = relPath.trim().removePrefix("/").removeSuffix("/")
         if (cleanRel.isEmpty()) return rootUri

@@ -495,6 +495,51 @@ class PendingChangeManagerTest {
             fs.readTextFile(fs.resolveRelativeUri(rootUri, "old.txt")!!)
         )
     }
+
+    @Test
+    fun `approve create and reject delete refuse symlink directories escaping project root`() = runTest {
+        val projDir = java.nio.file.Files.createTempDirectory("pcm-proj").toFile()
+        val outsideDir = java.nio.file.Files.createTempDirectory("pcm-outside").toFile()
+        try {
+            val outsideSecret = java.io.File(outsideDir, "secret.txt").apply { writeText("KEEP") }
+            val outsideRestored = java.io.File(outsideDir, "restored.txt")
+            java.nio.file.Files.createSymbolicLink(java.io.File(projDir, "escape").toPath(), outsideDir.toPath())
+
+            val realFs = com.koda.dev.core.files.FileProjectFileSystem(
+                dispatchers = com.koda.dev.core.common.DefaultAppDispatchers,
+                uriFactory = { file -> FakeUri("file://${file.absolutePath}") }
+            )
+            val realRootUri = FakeUri("file://${projDir.absolutePath}")
+            manager.bind(realFs, realRootUri)
+
+            val createEscape = PendingChange(
+                id = "c_escape_create",
+                sessionId = "s1",
+                filePath = "escape/secret.txt",
+                changeType = ChangeType.CREATE,
+                originalContent = null,
+                proposedContent = "PWNED",
+                createdAt = 6300L
+            )
+            assertTrue(manager.approve(createEscape).isFailure)
+            assertEquals("KEEP", outsideSecret.readText())
+
+            val deleteRestoreEscape = PendingChange(
+                id = "c_escape_restore",
+                sessionId = "s1",
+                filePath = "escape/restored.txt",
+                changeType = ChangeType.DELETE,
+                originalContent = "PWNED",
+                proposedContent = null,
+                createdAt = 6400L
+            )
+            assertTrue(manager.reject(deleteRestoreEscape).isFailure)
+            assertFalse(outsideRestored.exists())
+        } finally {
+            projDir.deleteRecursively()
+            outsideDir.deleteRecursively()
+        }
+    }
 }
 
 private class RollbackFailingFileSystem(

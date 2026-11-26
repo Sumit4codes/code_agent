@@ -298,7 +298,7 @@ class ToolExecutor @Inject constructor(
             runCatching { Regex(query, RegexOption.IGNORE_CASE) }.getOrNull()
         } else null
 
-        searchRecursive(fs, rootUri, query, queryRegex, filePattern, results, depth = 0, maxDepth = 10, maxResults = 30)
+        searchRecursive(fs, rootUri, rootUri, query, queryRegex, filePattern, results, depth = 0, maxDepth = 10, maxResults = 30)
 
         ToolResult(true, if (results.isEmpty()) "No matches found" else results.joinToString("\n"))
     }.getOrElse { e ->
@@ -307,6 +307,7 @@ class ToolExecutor @Inject constructor(
 
     private suspend fun searchRecursive(
         fs: ProjectFileSystem,
+        rootUri: Uri,
         uri: Uri,
         query: String,
         queryRegex: Regex?,
@@ -325,9 +326,14 @@ class ToolExecutor @Inject constructor(
             if (PathSafety.shouldIgnore(child.name, child.isDirectory)) continue
 
             val childPath = if (currentPath.isEmpty()) child.name else "$currentPath/${child.name}"
+            val entryUri = if (fs.isSymbolicLink(child.uri)) {
+                fs.resolveRelativeUri(rootUri, childPath) ?: continue
+            } else {
+                child.uri
+            }
 
             if (child.isDirectory) {
-                searchRecursive(fs, child.uri, query, queryRegex, filePattern, results, depth + 1, maxDepth, maxResults, childPath)
+                searchRecursive(fs, rootUri, entryUri, query, queryRegex, filePattern, results, depth + 1, maxDepth, maxResults, childPath)
             } else {
                 if (filePattern != null) {
                     val matchesName = globMatch(filePattern, child.name)
@@ -337,7 +343,7 @@ class ToolExecutor @Inject constructor(
                 val childSize = child.size
                 if (childSize != null && childSize > 500_000) continue
 
-                val content = runCatching { fs.readTextFile(child.uri) }.getOrNull() ?: continue
+                val content = runCatching { fs.readTextFile(entryUri) }.getOrNull() ?: continue
                 val lines = content.lines()
                 for ((i, line) in lines.withIndex()) {
                     val isMatch = if (queryRegex != null) {
@@ -569,6 +575,10 @@ class ToolExecutor @Inject constructor(
         val fileName = relPath.substringAfterLast("/")
         val targetUri = fs.createFile(parentUri, fileName, mimeTypeForFileName(fileName))
             ?: return ToolResult(false, "Failed to create file: $rawPath")
+
+        if (fs.resolveRelativeUri(rootUri, relPath) == null) {
+            return ToolResult(false, "Invalid path (outside project root): $rawPath")
+        }
 
         // Write content directly to the file in the workspace
         fs.writeTextFile(targetUri, content)

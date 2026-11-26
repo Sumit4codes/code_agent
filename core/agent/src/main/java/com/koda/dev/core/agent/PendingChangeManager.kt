@@ -85,6 +85,9 @@ class PendingChangeManager @Inject constructor(
                             ?: return Result.failure(IllegalArgumentException("Cannot resolve or create parent directory for: ${change.filePath}"))
                         val targetUri = fs.createFile(parentUri, fileName, mimeTypeForFileName(fileName))
                             ?: return Result.failure(IllegalArgumentException("Failed to create file: ${change.filePath}"))
+                        if (fs.resolveRelativeUri(rootUri, change.filePath) == null) {
+                            return Result.failure(SecurityException("Target path escapes project root: ${change.filePath}"))
+                        }
                         fs.writeTextFile(targetUri, change.proposedContent ?: "")
                     }
                     pendingChangeDao.updateStatus(change.id, ChangeStatus.APPLIED.name)
@@ -155,6 +158,9 @@ class PendingChangeManager @Inject constructor(
                     val fileName = change.filePath.substringAfterLast("/")
                     val targetUri = fs.createFile(parentUri, fileName, mimeTypeForFileName(fileName))
                         ?: return Result.failure(IOException("Failed to recreate deleted file ${change.filePath}"))
+                    if (fs.resolveRelativeUri(rootUri, change.filePath) == null) {
+                        return Result.failure(SecurityException("Target path escapes project root: ${change.filePath}"))
+                    }
                     fs.writeTextFile(targetUri, original)
                 }
             }
