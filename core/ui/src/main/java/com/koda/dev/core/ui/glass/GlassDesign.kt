@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -433,3 +434,9 @@ fun Modifier.springPressClickable(
             onClick = onClick
         )
 }
+
+/**
+ * Exact vertical clearance (in dp, excluding system navigationBar insets) occupied by the
+ * floating bottom navigation bar when visible on top-level tabs.
+ */
+val LocalFloatingNavBarClearance = compositionLocalOf { 0.dp }

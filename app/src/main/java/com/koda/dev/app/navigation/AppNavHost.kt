@@ -1,12 +1,20 @@
 package com.koda.dev.app.navigation
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -25,15 +33,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -45,6 +62,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.koda.dev.core.ui.glass.BackdropState
 import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.LocalFloatingNavBarClearance
 import com.koda.dev.core.ui.glass.captureBackdrop
 import com.koda.dev.core.ui.glass.liquidGlassBackdrop
 import com.koda.dev.core.ui.glass.rememberBackdropState
@@ -66,6 +84,12 @@ object Routes {
     const val DIFF_REVIEW = "diff_review"
 }
 
+private enum class TopLevelTab(val label: String, val icon: ImageVector) {
+    PROJECTS("Projects", Icons.Default.Folder),
+    TERMINAL("Terminal", Icons.Default.Terminal),
+    SETTINGS("Settings", Icons.Default.Settings)
+}
+
 private fun isTopLevel(route: String?): Boolean {
     return route == Routes.PROJECTS || route == Routes.TERMINAL || route == Routes.SETTINGS
 }
@@ -78,22 +102,52 @@ fun AppNavHost(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val isTopLevelRoute = currentRoute == Routes.PROJECTS || currentRoute == Routes.TERMINAL || currentRoute == Routes.SETTINGS
+    val isTopLevelRoute = isTopLevel(currentRoute)
     val isKeyboardOpen = WindowInsets.isImeVisible
+
+    var selectedTabIndex by rememberSaveable {
+        mutableIntStateOf(
+            when (startDestination) {
+                Routes.TERMINAL -> TopLevelTab.TERMINAL.ordinal
+                Routes.SETTINGS -> TopLevelTab.SETTINGS.ordinal
+                else -> TopLevelTab.PROJECTS.ordinal
+            }
+        )
+    }
+    val activeTabIndex = when (currentRoute) {
+        Routes.TERMINAL -> TopLevelTab.TERMINAL.ordinal
+        Routes.SETTINGS -> TopLevelTab.SETTINGS.ordinal
+        else -> selectedTabIndex
+    }
+    // Single shared Transition drives both tab content and bottom-bar sliding pill in lockstep
+    val tabTransition = updateTransition(targetState = activeTabIndex, label = "top_level_tab")
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(activeTabIndex, currentRoute) {
+        if (currentRoute == Routes.PROJECTS && activeTabIndex != TopLevelTab.TERMINAL.ordinal) {
+            keyboardController?.hide()
+        }
+    }
+
+    BackHandler(enabled = currentRoute == Routes.PROJECTS && selectedTabIndex != TopLevelTab.PROJECTS.ordinal) {
+        selectedTabIndex = TopLevelTab.PROJECTS.ordinal
+    }
 
     // Hardware backdrop capture state for floating liquid glass navigation bar
     val navBackdropState = rememberBackdropState()
+    val bottomNavClearance = if (isTopLevelRoute && !isKeyboardOpen) 82.dp else 0.dp
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0B0E14))
-    ) {
-        // Main Screen NavHost with backdrop capture for real-time glass refraction
-        // and fluid physical page & screen transitions
-        NavHost(
+    CompositionLocalProvider(LocalFloatingNavBarClearance provides bottomNavClearance) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0B0E14))
+        ) {
+            // Main Screen NavHost with backdrop capture for real-time glass refraction
+            // and fluid physical page & screen transitions
+            NavHost(
             navController = navController,
-            startDestination = startDestination,
+            startDestination = Routes.PROJECTS,
             modifier = Modifier
                 .fillMaxSize()
                 .captureBackdrop(navBackdropState),
@@ -101,8 +155,7 @@ fun AppNavHost(
                 val fromRoute = initialState.destination.route
                 val toRoute = targetState.destination.route
                 if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
-                    fadeIn(animationSpec = tween(200, easing = LinearOutSlowInEasing)) +
-                        scaleIn(initialScale = 0.985f, animationSpec = tween(200, easing = LinearOutSlowInEasing))
+                    fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing))
                 } else {
                     slideIntoContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.Start,
@@ -114,8 +167,7 @@ fun AppNavHost(
                 val fromRoute = initialState.destination.route
                 val toRoute = targetState.destination.route
                 if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
-                    fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
-                        scaleOut(targetScale = 0.985f, animationSpec = tween(150, easing = FastOutLinearInEasing))
+                    fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing))
                 } else {
                     slideOutOfContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.Start,
@@ -128,8 +180,7 @@ fun AppNavHost(
                 val fromRoute = initialState.destination.route
                 val toRoute = targetState.destination.route
                 if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
-                    fadeIn(animationSpec = tween(200, easing = LinearOutSlowInEasing)) +
-                        scaleIn(initialScale = 0.985f, animationSpec = tween(200, easing = LinearOutSlowInEasing))
+                    fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing))
                 } else {
                     slideIntoContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.End,
@@ -142,8 +193,7 @@ fun AppNavHost(
                 val fromRoute = initialState.destination.route
                 val toRoute = targetState.destination.route
                 if (isTopLevel(fromRoute) && isTopLevel(toRoute)) {
-                    fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
-                        scaleOut(targetScale = 0.985f, animationSpec = tween(150, easing = FastOutLinearInEasing))
+                    fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing))
                 } else {
                     slideOutOfContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.End,
@@ -153,7 +203,9 @@ fun AppNavHost(
             }
         ) {
             composable(Routes.PROJECTS) {
-                ProjectsScreen(
+                TopLevelTabContainer(
+                    selectedTabIndex = activeTabIndex,
+                    tabTransition = tabTransition,
                     onProjectSelected = { project ->
                         navController.navigate("${Routes.EDITOR}/${project.id}")
                     },
@@ -257,15 +309,12 @@ fun AppNavHost(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FloatingLiquidGlassNavBar(
-                currentRoute = currentRoute,
+                tabTransition = tabTransition,
                 backdropState = navBackdropState,
-                onNavigate = { route ->
-                    if (currentRoute != route) {
-                        navController.navigate(route) {
-                            popUpTo(Routes.PROJECTS) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                onSelectTab = { index ->
+                    selectedTabIndex = index
+                    if (currentRoute != Routes.PROJECTS) {
+                        navController.popBackStack(Routes.PROJECTS, inclusive = false)
                     }
                 },
                 modifier = Modifier
@@ -274,21 +323,131 @@ fun AppNavHost(
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             )
         }
+        }
+    }
+}
+
+private val TopLevelTabSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = 700f
+)
+
+private val TopLevelOffsetSpring = spring<androidx.compose.ui.unit.Dp>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = 700f
+)
+
+/**
+ * Keeps the three top-level tab compositions warm so switching tabs never tears down
+ * or re-inflates Views (notably TerminalView), while animating alpha and subtle directional
+ * translation on the RenderNode layer in sync with the bottom bar indicator pill.
+ */
+@Composable
+private fun TopLevelTabContainer(
+    selectedTabIndex: Int,
+    tabTransition: Transition<Int>,
+    onProjectSelected: (com.koda.dev.core.model.Project) -> Unit,
+    onChatWithProject: (com.koda.dev.core.model.Project) -> Unit
+) {
+    val density = LocalDensity.current
+    val composedTabs = remember { mutableStateListOf(true, false, false) }
+
+    // Ensure any directly-selected tab composes immediately
+    LaunchedEffect(selectedTabIndex) {
+        if (selectedTabIndex in composedTabs.indices) {
+            composedTabs[selectedTabIndex] = true
+        }
+    }
+    // Stagger pre-warming of Terminal and Settings right after the initial frame
+    // so the very first tab tap transitions purely on the GPU with zero inflation hitch.
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        composedTabs[TopLevelTab.TERMINAL.ordinal] = true
+        withFrameNanos { }
+        composedTabs[TopLevelTab.SETTINGS.ordinal] = true
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        TopLevelTab.entries.forEach { tab ->
+            val index = tab.ordinal
+            if (!composedTabs[index]) return@forEach
+
+            val isSelected = selectedTabIndex == index
+            val tabAlpha by tabTransition.animateFloat(
+                transitionSpec = { TopLevelTabSpring },
+                label = "tab_alpha_$index"
+            ) { target -> if (target == index) 1f else 0f }
+
+            val tabOffsetDp by tabTransition.animateDp(
+                transitionSpec = { TopLevelOffsetSpring },
+                label = "tab_offset_$index"
+            ) { target ->
+                when {
+                    target == index -> 0.dp
+                    index < target -> (-18).dp
+                    else -> 18.dp
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(if (isSelected) 1f else 0f)
+                    .graphicsLayer {
+                        alpha = tabAlpha
+                        translationX = with(density) { tabOffsetDp.toPx() }
+                    }
+                    .focusProperties { canFocus = isSelected }
+                    .then(
+                        if (!isSelected) {
+                            Modifier
+                                .clearAndSetSemantics { }
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            event.changes.forEach { it.consume() }
+                                        }
+                                    }
+                                }
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                when (tab) {
+                    TopLevelTab.PROJECTS -> ProjectsScreen(
+                        onProjectSelected = onProjectSelected,
+                        onChatWithProject = onChatWithProject
+                    )
+                    TopLevelTab.TERMINAL -> TerminalScreen()
+                    TopLevelTab.SETTINGS -> SettingsScreen()
+                }
+            }
+        }
     }
 }
 
 /**
  * Floating Liquid Glass Navigation Bar with 26dp curved corners,
- * real-time physical backdrop blur, AGSL lens refraction, and spring-press tactile tabs.
+ * real-time physical backdrop blur, AGSL lens refraction, and a spring-animated sliding pill
+ * synchronized with [tabTransition].
  */
 @Composable
 private fun FloatingLiquidGlassNavBar(
-    currentRoute: String?,
+    tabTransition: Transition<Int>,
     backdropState: BackdropState?,
-    onNavigate: (String) -> Unit,
+    onSelectTab: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val navBarShape = RoundedCornerShape(26.dp)
+    val navItems = TopLevelTab.entries
+    val density = LocalDensity.current
+
+    val indicatorPosition by tabTransition.animateFloat(
+        transitionSpec = { TopLevelTabSpring },
+        label = "nav_pill_position"
+    ) { target -> target.toFloat() }
 
     Box(
         modifier = modifier
@@ -320,71 +479,85 @@ private fun FloatingLiquidGlassNavBar(
                 .background(GlassDesign.internalGlassSheen())
         )
 
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            val navItems = listOf(
-                Triple(Routes.PROJECTS, "Projects", Icons.Default.Folder),
-                Triple(Routes.TERMINAL, "Terminal", Icons.Default.Terminal),
-                Triple(Routes.SETTINGS, "Settings", Icons.Default.Settings)
+            val itemWidth = maxWidth / navItems.size
+            val itemShape = RoundedCornerShape(20.dp)
+
+            // Single sliding Liquid Glass selection pill driven by the shared tabTransition
+            Box(
+                modifier = Modifier
+                    .width(itemWidth)
+                    .fillMaxHeight()
+                    .graphicsLayer {
+                        translationX = with(density) { (itemWidth * indicatorPosition).toPx() }
+                    }
+                    .clip(itemShape)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFF1F6FEB).copy(alpha = 0.35f),
+                                Color(0xFF238636).copy(alpha = 0.25f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 0.75.dp,
+                        brush = GlassDesign.liquidGlassBorder(
+                            topSpecularAlpha = 0.70f,
+                            dispersionAlpha = 0.35f
+                        ),
+                        shape = itemShape
+                    )
             )
 
-            navItems.forEach { (route, label, icon) ->
-                val isSelected = currentRoute == route
-                val itemShape = RoundedCornerShape(20.dp)
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                navItems.forEachIndexed { index, tab ->
+                    val iconTint by tabTransition.animateColor(
+                        transitionSpec = { spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 700f) },
+                        label = "nav_icon_tint_$index"
+                    ) { target ->
+                        if (target == index) Color(0xFF79C0FF) else Color(0xFF7D8590)
+                    }
+                    val labelColor by tabTransition.animateColor(
+                        transitionSpec = { spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 700f) },
+                        label = "nav_label_color_$index"
+                    ) { target ->
+                        if (target == index) Color(0xFFF0F6FC) else Color(0xFF7D8590)
+                    }
 
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(itemShape)
-                        .then(
-                            if (isSelected) {
-                                Modifier
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(
-                                                Color(0xFF1F6FEB).copy(alpha = 0.35f),
-                                                Color(0xFF238636).copy(alpha = 0.25f)
-                                            )
-                                        )
-                                    )
-                                    .border(
-                                        width = 0.75.dp,
-                                        brush = GlassDesign.liquidGlassBorder(
-                                            topSpecularAlpha = 0.70f,
-                                            dispersionAlpha = 0.35f
-                                        ),
-                                        shape = itemShape
-                                    )
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .springPressClickable { onNavigate(route) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(itemShape)
+                            .springPressClickable { onSelectTab(index) },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            modifier = Modifier.size(19.dp),
-                            tint = if (isSelected) Color(0xFF79C0FF) else Color(0xFF7D8590)
-                        )
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
-                            ),
-                            color = if (isSelected) Color(0xFFF0F6FC) else Color(0xFF7D8590)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label,
+                                modifier = Modifier.size(19.dp),
+                                tint = iconTint
+                            )
+                            Text(
+                                text = tab.label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = labelColor
+                            )
+                        }
                     }
                 }
             }

@@ -1,6 +1,5 @@
 package com.koda.dev.core.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -100,7 +99,7 @@ object KodaTheme {
 
 @Composable
 fun KodaDevTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) KodaDarkColorScheme else KodaLightColorScheme
