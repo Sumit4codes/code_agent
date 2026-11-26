@@ -260,51 +260,40 @@ fun WorkspaceTerminalSheet(
                                     color = Color(0xFFF0F6FC)
                                 )
 
-                                // Environment status badge
-                                val isUbuntu = uiState.isUbuntuReady
-                                val isAlpine = uiState.isAlpineReady
-                                val chipBg = when {
-                                    isUbuntu -> Color(0xFF2E170C)
-                                    isAlpine -> Color(0xFF152A1E)
-                                    else -> Color(0xFF2E170C)
-                                }
-                                val chipBorder = when {
-                                    isUbuntu -> Color(0xFFE95420).copy(alpha = 0.45f)
-                                    isAlpine -> Color(0xFF2EA043).copy(alpha = 0.45f)
-                                    else -> Color(0xFFE95420).copy(alpha = 0.45f)
-                                }
-                                val chipLabel = when {
-                                    uiState.isBootstrapping -> "Installing..."
-                                    isUbuntu -> "Ubuntu 24.04"
-                                    isAlpine -> "Alpine"
-                                    else -> "Ubuntu 24.04"
-                                }
+                                // Environment status badge (only shown during bootstrap or Alpine fallback)
+                                val isAlpine = !uiState.isUbuntuReady && uiState.isAlpineReady
+                                if (uiState.isBootstrapping || isAlpine) {
+                                    val isInstalling = uiState.isBootstrapping
+                                    val chipBg = if (isInstalling) Color(0xFF2E170C) else Color(0xFF152A1E)
+                                    val chipBorder = if (isInstalling) Color(0xFFE95420).copy(alpha = 0.45f) else Color(0xFF2EA043).copy(alpha = 0.45f)
+                                    val chipLabel = if (isInstalling) "Installing..." else "Alpine"
 
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = chipBg,
-                                    border = BorderStroke(1.dp, chipBorder),
-                                    modifier = Modifier.height(18.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = chipBg,
+                                        border = BorderStroke(1.dp, chipBorder),
+                                        modifier = Modifier.height(18.dp)
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(5.dp)
-                                                .background(
-                                                    color = if (isUbuntu || !isAlpine) Color(0xFFE95420) else Color(0xFF3FB950),
-                                                    shape = RoundedCornerShape(2.5.dp)
-                                                )
-                                        )
-                                        Text(
-                                            text = chipLabel,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (isUbuntu || !isAlpine) Color(0xFFFF8A50) else Color(0xFF56D364)
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .background(
+                                                        color = if (isInstalling) Color(0xFFE95420) else Color(0xFF3FB950),
+                                                        shape = RoundedCornerShape(2.5.dp)
+                                                    )
+                                            )
+                                            Text(
+                                                text = chipLabel,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (isInstalling) Color(0xFFFF8A50) else Color(0xFF56D364)
+                                            )
+                                        }
                                     }
                                 }
                             }

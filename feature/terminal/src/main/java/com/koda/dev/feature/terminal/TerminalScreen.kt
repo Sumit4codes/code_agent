@@ -48,6 +48,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koda.dev.core.ui.glass.BackdropState
 import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.LocalFloatingNavBarClearance
 import com.koda.dev.core.ui.glass.captureBackdrop
 import com.koda.dev.core.ui.glass.liquidGlassBackdrop
 import com.koda.dev.core.ui.glass.rememberBackdropState
@@ -74,6 +75,9 @@ fun TerminalScreen(
 
     // Hardware backdrop capture state for optical lens blur and refraction
     val backdropState = rememberBackdropState()
+    val floatingNavClearance = LocalFloatingNavBarClearance.current
+    val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val defaultTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 74.dp
 
     LaunchedEffect(projectId) {
         if (!projectId.isNullOrBlank()) {
@@ -108,7 +112,7 @@ fun TerminalScreen(
             // Dynamic top spacing so terminal output clears the floating top bar
             Spacer(
                 modifier = Modifier.height(
-                    if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else 88.dp
+                    if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 4.dp else defaultTopInset
                 )
             )
 
@@ -122,14 +126,14 @@ fun TerminalScreen(
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color(0xFF2E170C).copy(alpha = 0.85f),
-                                    Color(0xFF1E1008).copy(alpha = 0.90f)
+                                    Color(0xFF161B22).copy(alpha = 0.90f),
+                                    Color(0xFF0D1117).copy(alpha = 0.95f)
                                 )
                             )
                         )
                         .border(
                             width = 1.dp,
-                            brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.12f),
                             shape = RoundedCornerShape(16.dp)
                         )
                         .padding(12.dp)
@@ -143,24 +147,24 @@ fun TerminalScreen(
                             Text(
                                 text = "Ubuntu 24.04 LTS (glibc)",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFE95420)
+                                color = Color(0xFF58A6FF)
                             )
                             Text(
                                 text = "Enable apt for GCC, Python 3, OpenJDK 21, Node.js, Rust, Go, and build tools.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AccessoryKeyContent
+                                color = Color(0xFF8B949E)
                             )
                         }
                         Spacer(Modifier.width(8.dp))
                         Button(
                             onClick = { viewModel.installUbuntuEnvironment() },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFE95420),
+                                containerColor = Color(0xFF1F6FEB),
                                 contentColor = Color.White
                             ),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.height(30.dp)
+                            modifier = Modifier.height(32.dp)
                         ) {
                             Text("Setup Ubuntu", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
@@ -178,14 +182,14 @@ fun TerminalScreen(
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color(0xFF2E170C).copy(alpha = 0.85f),
-                                    Color(0xFF1E1008).copy(alpha = 0.90f)
+                                    Color(0xFF161B22).copy(alpha = 0.90f),
+                                    Color(0xFF0D1117).copy(alpha = 0.95f)
                                 )
                             )
                         )
                         .border(
                             width = 1.dp,
-                            brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f),
+                            brush = GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.12f),
                             shape = RoundedCornerShape(16.dp)
                         )
                         .padding(12.dp)
@@ -199,13 +203,13 @@ fun TerminalScreen(
                             Text(
                                 text = "Bootstrapping Ubuntu 24.04 LTS...",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFE95420)
+                                color = Color(0xFF58A6FF)
                             )
                             if (uiState.bootstrapProgress >= 0f) {
                                 Text(
                                     text = "${(uiState.bootstrapProgress * 100).toInt()}%",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFE95420)
+                                    color = Color(0xFF79C0FF)
                                 )
                             }
                         }
@@ -216,15 +220,15 @@ fun TerminalScreen(
                                 .fillMaxWidth()
                                 .height(4.dp)
                                 .clip(RoundedCornerShape(2.dp)),
-                            color = Color(0xFFE95420),
-                            trackColor = Color(0xFF3B1F0E)
+                            color = Color(0xFF58A6FF),
+                            trackColor = Color(0xFF21262D)
                         )
                         if (uiState.bootstrapMessage.isNotBlank()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 text = uiState.bootstrapMessage,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AccessoryKeyContent
+                                color = Color(0xFF8B949E)
                             )
                         }
                     }
@@ -308,12 +312,18 @@ fun TerminalScreen(
             )
 
             // Dynamic bottom spacing so terminal output clears the floating accessory dock and bottom nav bar
-            val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val defaultDockHeight = 46.dp + navBarsBottomInset + when {
+                isKeyboardOpen -> 6.dp
+                floatingNavClearance > 0.dp -> floatingNavClearance
+                else -> 10.dp
+            }
             Spacer(
                 modifier = Modifier.height(
                     if (bottomDockHeightPx > 0f) {
-                        with(LocalDensity.current) { bottomDockHeightPx.toDp() } + (if (isKeyboardOpen) 10.dp else if (projectId.isNullOrBlank()) (80.dp + navBarsBottomInset) else (14.dp + navBarsBottomInset))
-                    } else 80.dp
+                        with(LocalDensity.current) { bottomDockHeightPx.toDp() } + 2.dp
+                    } else {
+                        defaultDockHeight
+                    }
                 )
             )
         }
@@ -417,54 +427,47 @@ fun TerminalScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
 
-                                // Environment status badge
-                                val isUbuntu = uiState.isUbuntuReady
-                                val isAlpine = uiState.isAlpineReady
-                                val chipDot = when {
-                                    isUbuntu -> Color(0xFFE95420)
-                                    isAlpine -> Color(0xFF3FB950)
-                                    else -> Color(0xFFE95420)
-                                }
-                                val chipLabel = when {
-                                    uiState.isBootstrapping -> "Installing..."
-                                    isUbuntu -> "Ubuntu 24.04"
-                                    isAlpine -> "Alpine"
-                                    else -> "Ubuntu 24.04"
-                                }
+                                // Environment status badge (only shown during bootstrap or Alpine fallback)
+                                val isAlpine = !uiState.isUbuntuReady && uiState.isAlpineReady
+                                if (uiState.isBootstrapping || isAlpine) {
+                                    val isInstalling = uiState.isBootstrapping
+                                    val chipDot = if (isInstalling) Color(0xFF58A6FF) else Color(0xFF3FB950)
+                                    val chipLabel = if (isInstalling) "Installing..." else "Alpine"
 
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.06f))
-                                        .border(
-                                            width = 0.75.dp,
-                                            brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    if (uiState.isBootstrapping) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(8.dp),
-                                            strokeWidth = 1.5.dp,
-                                            color = Color(0xFFE95420)
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(chipDot)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.06f))
+                                            .border(
+                                                width = 0.75.dp,
+                                                brush = GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        if (isInstalling) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(8.dp),
+                                                strokeWidth = 1.5.dp,
+                                                color = Color(0xFF58A6FF)
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(chipDot)
+                                            )
+                                        }
+                                        Text(
+                                            text = chipLabel,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isInstalling) Color(0xFF79C0FF) else Color(0xFF56D364)
                                         )
                                     }
-                                    Text(
-                                        text = chipLabel,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = if (isUbuntu || !isAlpine) Color(0xFFFF8A50) else Color(0xFF56D364)
-                                    )
                                 }
                             }
 
@@ -487,13 +490,13 @@ fun TerminalScreen(
                 },
                 actions = {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Font size adjuster
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
                                 .border(
@@ -508,14 +511,14 @@ fun TerminalScreen(
                                 imageVector = Icons.Default.FormatSize,
                                 contentDescription = "Adjust Font Size",
                                 tint = Color(0xFFC9D1D9),
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         // Soft keyboard toggle
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .then(
                                     if (isKeyboardOpen) Modifier.background(Color(0xFF1F6FEB).copy(alpha = 0.40f))
@@ -547,14 +550,14 @@ fun TerminalScreen(
                                 imageVector = Icons.Default.Keyboard,
                                 contentDescription = "Toggle Keyboard",
                                 tint = if (isKeyboardOpen) Color(0xFF79C0FF) else Color(0xFFC9D1D9),
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         // Restart session
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
                                 .border(
@@ -569,17 +572,17 @@ fun TerminalScreen(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = "Restart Session",
                                 tint = Color(0xFFC9D1D9),
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
-                        Spacer(Modifier.width(2.dp))
+                        Spacer(Modifier.width(4.dp))
                     }
                 }
             )
         }
 
-        // Floating Accessory Dock: 24dp curved Liquid Glass capsule floating over terminal
-        val bottomDockShape = RoundedCornerShape(24.dp)
+        // Floating Accessory Dock: 20dp curved Liquid Glass capsule floating cleanly above nav bar
+        val bottomDockShape = RoundedCornerShape(20.dp)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -593,11 +596,15 @@ fun TerminalScreen(
                 .padding(
                     start = 12.dp,
                     end = 12.dp,
-                    top = 4.dp,
-                    bottom = if (isKeyboardOpen) 6.dp else if (projectId.isNullOrBlank()) 76.dp else 10.dp
+                    top = 2.dp,
+                    bottom = when {
+                        isKeyboardOpen -> 6.dp
+                        floatingNavClearance > 0.dp -> floatingNavClearance
+                        else -> 10.dp
+                    }
                 )
                 .shadow(
-                    elevation = 18.dp,
+                    elevation = 16.dp,
                     shape = bottomDockShape,
                     ambientColor = Color(0x40000000),
                     spotColor = Color(0x800F172A)
@@ -618,7 +625,7 @@ fun TerminalScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(28.dp)
+                    .height(18.dp)
                     .background(GlassDesign.internalGlassSheen())
             )
 
