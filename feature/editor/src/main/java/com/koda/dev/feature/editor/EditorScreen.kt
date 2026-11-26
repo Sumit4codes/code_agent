@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
@@ -29,9 +30,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,7 +46,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koda.dev.core.files.FileNode
+import com.koda.dev.core.ui.glass.BackdropState
 import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.captureBackdrop
+import com.koda.dev.core.ui.glass.liquidGlassBackdrop
+import com.koda.dev.core.ui.glass.rememberBackdropState
 import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.feature.terminal.WorkspaceTerminalSheet
 import kotlinx.coroutines.launch
@@ -67,6 +75,9 @@ fun EditorScreen(
     var userSplitPreference by remember { mutableStateOf<Boolean?>(null) }
     var showTerminalSheet by remember { mutableStateOf(false) }
     var terminalInitialCommand by remember { mutableStateOf<String?>(null) }
+    var topBarHeightPx by remember { mutableFloatStateOf(0f) }
+    val backdropState = rememberBackdropState()
+    val density = LocalDensity.current
 
     // Surface user notifications in snackbar
     LaunchedEffect(state.userMessage) {
@@ -84,25 +95,29 @@ fun EditorScreen(
         }
     }
 
-    // Back handling: close drawer if open, otherwise check for unsaved active tab
-    BackHandler {
+    val handleBackNavigation = {
         if (drawerState.isOpen) {
             coroutineScope.launch { drawerState.close() }
         } else if (state.activeTab?.isDirty == true) {
             viewModel.closeActiveTab(force = false)
-        } else if (state.openTabs.isNotEmpty()) {
-            viewModel.closeActiveTab(force = true)
         } else if (onNavigateBack != null) {
             onNavigateBack()
         }
     }
+
+    // Back handling: close drawer -> prompt on dirty tab -> exit to Projects
+    BackHandler(onBack = { handleBackNavigation() })
 
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
     val isWideScreen = screenWidth >= 600.dp
     val isSplitView = userSplitPreference ?: isWideScreen
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B0E14))
+    ) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             gesturesEnabled = !isSplitView,
@@ -114,7 +129,7 @@ fun EditorScreen(
                         .fillMaxHeight()
                         .shadow(elevation = 20.dp, shape = drawerShape)
                         .clip(drawerShape)
-                        .background(GlassDesign.liquidGlassBackground(topAlpha = 0.94f, midAlpha = 0.90f, bottomAlpha = 0.84f))
+                        .background(GlassDesign.liquidGlassBackground(topAlpha = 0.96f, midAlpha = 0.94f, bottomAlpha = 0.90f))
                         .border(1.dp, GlassDesign.liquidGlassBorder(0.65f, 0.25f), drawerShape),
                     drawerContainerColor = Color.Transparent,
                     drawerShape = drawerShape
@@ -149,30 +164,173 @@ fun EditorScreen(
                             onCloseDrawer = {
                                 coroutineScope.launch { drawerState.close() }
                             },
-                            showDrawerHeader = true
+                            showDrawerHeader = true,
+                            modifier = Modifier.statusBarsPadding().navigationBarsPadding()
                         )
                     }
                 }
             }
         ) {
             Scaffold(
-                snackbarHost = { SnackbarHost(snackbarHostState) },
-                topBar = {
+                containerColor = Color(0xFF0B0E14),
+                contentWindowInsets = WindowInsets.navigationBars,
+                snackbarHost = { SnackbarHost(snackbarHostState) }
+            ) { padding ->
+                val defaultTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 74.dp
+                val topClearance = if (topBarHeightPx > 0f) {
+                    with(density) { topBarHeightPx.toDp() }
+                } else {
+                    defaultTopInset
+                }
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = padding.calculateBottomPadding())
+                            .consumeWindowInsets(PaddingValues(bottom = padding.calculateBottomPadding()))
+                            .imePadding()
+                            .captureBackdrop(backdropState)
+                    ) {
+                        if (state.projectUri == null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = topClearance),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (projectId.isNotBlank() && projectId != "none") {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(28.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = Color(0xFF58A6FF)
+                                    )
+                                } else {
+                                    Text(
+                                        "Open a project to browse files",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color(0xFF8B949E)
+                                    )
+                                }
+                            }
+                        } else if (isSplitView) {
+                            // Split View: Explorer Sidebar + Code Editor
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = topClearance)
+                            ) {
+                                val sidebarWidth = if (isWideScreen) 270.dp else (screenWidth * 0.42f).coerceIn(180.dp, 300.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .width(sidebarWidth)
+                                        .fillMaxHeight()
+                                        .background(Color(0xFF0D1117))
+                                ) {
+                                    FileExplorerPane(
+                                        state = state,
+                                        searchQuery = searchQuery,
+                                        onSearchQueryChange = { searchQuery = it },
+                                        onNavigateInto = { viewModel.navigateInto(it) },
+                                        onNavigateUp = { viewModel.navigateUp() },
+                                        onBreadcrumbClick = { viewModel.navigateToBreadcrumb(it) },
+                                        onFileSelect = { viewModel.selectFile(it) },
+                                        onNewFileClick = { parentUri -> viewModel.openCreateFileDialog(parentUri) },
+                                        onNewFolderClick = { parentUri -> viewModel.openCreateFolderDialog(parentUri) },
+                                        onRenameClick = { node -> viewModel.openRenameDialog(node) },
+                                        onDeleteClick = { node -> viewModel.openDeleteDialog(node) },
+                                        onRefreshClick = { viewModel.refresh() },
+                                        onCopyPath = { path ->
+                                            clipboardManager.setText(AnnotatedString(path))
+                                            coroutineScope.launch { snackbarHostState.showSnackbar("Copied path to clipboard") }
+                                        },
+                                        onCloseDrawer = null,
+                                        showDrawerHeader = false
+                                    )
+                                }
+
+                                VerticalDivider(thickness = 0.5.dp, color = Color(0xFF30363D))
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                ) {
+                                    EditorCanvasPane(
+                                        state = state,
+                                        wrapLines = wrapLines,
+                                        isSplitView = true,
+                                        onContentChange = { viewModel.updateActiveContent(it) },
+                                        onSave = { viewModel.saveActiveFile() },
+                                        onUndo = { viewModel.undoActiveTab() },
+                                        onRedo = { viewModel.redoActiveTab() },
+                                        onSelectTab = { viewModel.switchTab(it.uri) },
+                                        onCloseTab = { viewModel.closeTab(it.uri) },
+                                        onOpenDrawer = {
+                                            coroutineScope.launch { drawerState.open() }
+                                        },
+                                        onNewFile = { viewModel.openCreateFileDialog() }
+                                    )
+                                }
+                            }
+                        } else {
+                            // Mobile View (Full Screen):
+                            // If tabs are open, show EditorCanvas in full width.
+                            // If no tabs are open, show FileExplorer in full width.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = topClearance)
+                            ) {
+                                if (state.openTabs.isNotEmpty()) {
+                                    EditorCanvasPane(
+                                        state = state,
+                                        wrapLines = wrapLines,
+                                        isSplitView = false,
+                                        onContentChange = { viewModel.updateActiveContent(it) },
+                                        onSave = { viewModel.saveActiveFile() },
+                                        onUndo = { viewModel.undoActiveTab() },
+                                        onRedo = { viewModel.redoActiveTab() },
+                                        onSelectTab = { viewModel.switchTab(it.uri) },
+                                        onCloseTab = { viewModel.closeTab(it.uri) },
+                                        onOpenDrawer = {
+                                            coroutineScope.launch { drawerState.open() }
+                                        },
+                                        onNewFile = { viewModel.openCreateFileDialog() }
+                                    )
+                                } else {
+                                    FileExplorerPane(
+                                        state = state,
+                                        searchQuery = searchQuery,
+                                        onSearchQueryChange = { searchQuery = it },
+                                        onNavigateInto = { viewModel.navigateInto(it) },
+                                        onNavigateUp = { viewModel.navigateUp() },
+                                        onBreadcrumbClick = { viewModel.navigateToBreadcrumb(it) },
+                                        onFileSelect = { viewModel.selectFile(it) },
+                                        onNewFileClick = { parentUri -> viewModel.openCreateFileDialog(parentUri) },
+                                        onNewFolderClick = { parentUri -> viewModel.openCreateFolderDialog(parentUri) },
+                                        onRenameClick = { node -> viewModel.openRenameDialog(node) },
+                                        onDeleteClick = { node -> viewModel.openDeleteDialog(node) },
+                                        onRefreshClick = { viewModel.refresh() },
+                                        onCopyPath = { path ->
+                                            clipboardManager.setText(AnnotatedString(path))
+                                            coroutineScope.launch { snackbarHostState.showSnackbar("Copied path to clipboard") }
+                                        },
+                                        onCloseDrawer = null,
+                                        showDrawerHeader = false
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Floating Liquid Glass Top App Bar
                     EditorTopAppBar(
                         state = state,
                         isSplitView = isSplitView,
                         wrapLines = wrapLines,
-                        onNavigateBack = {
-                            if (drawerState.isOpen) {
-                                coroutineScope.launch { drawerState.close() }
-                            } else if (state.activeTab?.isDirty == true) {
-                                viewModel.closeActiveTab(force = false)
-                            } else if (state.openTabs.isNotEmpty()) {
-                                viewModel.closeActiveTab(force = true)
-                            } else if (onNavigateBack != null) {
-                                onNavigateBack()
-                            }
-                        },
+                        backdropState = backdropState,
+                        onNavigateBack = if (onNavigateBack != null) ({ handleBackNavigation() }) else null,
                         onToggleDrawer = {
                             coroutineScope.launch {
                                 if (drawerState.isOpen) drawerState.close() else drawerState.open()
@@ -209,143 +367,13 @@ fun EditorScreen(
                                     snackbarHostState.showSnackbar("Copied ${state.activeTab?.name ?: "file"} to clipboard")
                                 }
                             }
-                        }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .onGloballyPositioned { coords ->
+                                topBarHeightPx = coords.size.height.toFloat()
+                            }
                     )
-                }
-            ) { padding ->
-                if (state.projectUri == null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (projectId.isNotBlank() && projectId != "none") {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(28.dp),
-                                strokeWidth = 2.5.dp,
-                                color = Color(0xFF58A6FF)
-                            )
-                        } else {
-                            Text(
-                                "Open a project to browse files",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                } else if (isSplitView) {
-                    // Split View: Explorer Sidebar + Code Editor
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            .consumeWindowInsets(padding)
-                            .imePadding()
-                    ) {
-                        val sidebarWidth = if (isWideScreen) 270.dp else (screenWidth * 0.42f).coerceIn(180.dp, 300.dp)
-                        Surface(
-                            modifier = Modifier
-                                .width(sidebarWidth)
-                                .fillMaxHeight(),
-                            tonalElevation = 1.dp
-                        ) {
-                            FileExplorerPane(
-                                state = state,
-                                searchQuery = searchQuery,
-                                onSearchQueryChange = { searchQuery = it },
-                                onNavigateInto = { viewModel.navigateInto(it) },
-                                onNavigateUp = { viewModel.navigateUp() },
-                                onBreadcrumbClick = { viewModel.navigateToBreadcrumb(it) },
-                                onFileSelect = { viewModel.selectFile(it) },
-                                onNewFileClick = { parentUri -> viewModel.openCreateFileDialog(parentUri) },
-                                onNewFolderClick = { parentUri -> viewModel.openCreateFolderDialog(parentUri) },
-                                onRenameClick = { node -> viewModel.openRenameDialog(node) },
-                                onDeleteClick = { node -> viewModel.openDeleteDialog(node) },
-                                onRefreshClick = { viewModel.refresh() },
-                                onCopyPath = { path ->
-                                    clipboardManager.setText(AnnotatedString(path))
-                                    coroutineScope.launch { snackbarHostState.showSnackbar("Copied path to clipboard") }
-                                },
-                                onCloseDrawer = null,
-                                showDrawerHeader = false
-                            )
-                        }
-
-                        VerticalDivider(thickness = 0.5.dp, color = Color(0xFF30363D))
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        ) {
-                            EditorCanvasPane(
-                                state = state,
-                                wrapLines = wrapLines,
-                                isSplitView = true,
-                                onContentChange = { viewModel.updateActiveContent(it) },
-                                onSave = { viewModel.saveActiveFile() },
-                                onUndo = { viewModel.undoActiveTab() },
-                                onRedo = { viewModel.redoActiveTab() },
-                                onSelectTab = { viewModel.switchTab(it.uri) },
-                                onCloseTab = { viewModel.closeTab(it.uri) },
-                                onOpenDrawer = {
-                                    coroutineScope.launch { drawerState.open() }
-                                },
-                                onNewFile = { viewModel.openCreateFileDialog() }
-                            )
-                        }
-                    }
-                } else {
-                    // Mobile View (Full Screen):
-                    // If tabs are open, show EditorCanvas in full width.
-                    // If no tabs are open, show FileExplorer in full width.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            .consumeWindowInsets(padding)
-                            .imePadding()
-                    ) {
-                        if (state.openTabs.isNotEmpty()) {
-                            EditorCanvasPane(
-                                state = state,
-                                wrapLines = wrapLines,
-                                isSplitView = false,
-                                onContentChange = { viewModel.updateActiveContent(it) },
-                                onSave = { viewModel.saveActiveFile() },
-                                onUndo = { viewModel.undoActiveTab() },
-                                onRedo = { viewModel.redoActiveTab() },
-                                onSelectTab = { viewModel.switchTab(it.uri) },
-                                onCloseTab = { viewModel.closeTab(it.uri) },
-                                onOpenDrawer = {
-                                    coroutineScope.launch { drawerState.open() }
-                                },
-                                onNewFile = { viewModel.openCreateFileDialog() }
-                            )
-                        } else {
-                            FileExplorerPane(
-                                state = state,
-                                searchQuery = searchQuery,
-                                onSearchQueryChange = { searchQuery = it },
-                                onNavigateInto = { viewModel.navigateInto(it) },
-                                onNavigateUp = { viewModel.navigateUp() },
-                                onBreadcrumbClick = { viewModel.navigateToBreadcrumb(it) },
-                                onFileSelect = { viewModel.selectFile(it) },
-                                onNewFileClick = { parentUri -> viewModel.openCreateFileDialog(parentUri) },
-                                onNewFolderClick = { parentUri -> viewModel.openCreateFolderDialog(parentUri) },
-                                onRenameClick = { node -> viewModel.openRenameDialog(node) },
-                                onDeleteClick = { node -> viewModel.openDeleteDialog(node) },
-                                onRefreshClick = { viewModel.refresh() },
-                                onCopyPath = { path ->
-                                    clipboardManager.setText(AnnotatedString(path))
-                                    coroutineScope.launch { snackbarHostState.showSnackbar("Copied path to clipboard") }
-                                },
-                                onCloseDrawer = null,
-                                showDrawerHeader = false
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -402,6 +430,7 @@ private fun EditorTopAppBar(
     state: EditorState,
     isSplitView: Boolean,
     wrapLines: Boolean,
+    backdropState: BackdropState?,
     onNavigateBack: (() -> Unit)?,
     onToggleDrawer: () -> Unit,
     onToggleSplitView: () -> Unit,
@@ -409,14 +438,15 @@ private fun EditorTopAppBar(
     onSave: () -> Unit,
     onRunInTerminal: () -> Unit,
     onOpenTerminal: () -> Unit,
-    onCopyContent: () -> Unit
+    onCopyContent: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val activeTab = state.activeTab
     val barShape = RoundedCornerShape(22.dp)
     var moreMenuExpanded by remember { mutableStateOf(false) }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -427,12 +457,13 @@ private fun EditorTopAppBar(
                 ambientColor = Color(0x33000000),
                 spotColor = Color(0x660F172A)
             )
-            .clip(barShape)
-            .background(GlassDesign.liquidGlassBackground())
-            .border(
-                width = 1.dp,
-                brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
-                shape = barShape
+            .liquidGlassBackdrop(
+                backdropState = backdropState,
+                shape = barShape,
+                blurRadius = 24.dp,
+                tintColor = Color(0xC410141E),
+                specularBorder = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
+                borderWidth = 1.dp
             )
     ) {
         // Internal top refractive sheen
@@ -449,8 +480,8 @@ private fun EditorTopAppBar(
                 if (onNavigateBack != null) {
                     Box(
                         modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(36.dp)
+                            .padding(start = 6.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
                             .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.38f, bottomAlpha = 0.10f), CircleShape)
@@ -501,34 +532,18 @@ private fun EditorTopAppBar(
                                 text = currentTitle,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                                 fontFamily = if (activeTab != null) FontFamily.Monospace else FontFamily.Default,
+                                color = Color(0xFFF0F6FC),
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             if (activeTab?.isDirty == true) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0x2639D353))
-                                        .border(0.75.dp, Color(0x6639D353), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(5.dp)
-                                                .background(Color(0xFF39D353), CircleShape)
-                                        )
-                                        Text(
-                                            text = "MODIFIED",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF39D353)
-                                        )
-                                    }
-                                }
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF39D353))
+                                )
                             }
                         }
 
@@ -551,29 +566,11 @@ private fun EditorTopAppBar(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Save Button (Active when file is open)
+                    // Run in Terminal Button (Save lives prominently in ProgrammingAccessoryBar + More menu)
                     if (activeTab != null) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(GlassDesign.microGlassBackground(topAlpha = if (activeTab.isDirty) 0.28f else 0.14f, bottomAlpha = 0.05f))
-                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (activeTab.isDirty) 0.60f else 0.30f, bottomAlpha = 0.10f), CircleShape)
-                                .springPressClickable(onClick = onSave),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = "Save file",
-                                tint = if (activeTab.isDirty) Color(0xFF39D353) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        // Run in Terminal Button
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
                                 .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape)
@@ -584,7 +581,7 @@ private fun EditorTopAppBar(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = "Run in Terminal",
                                 tint = Color(0xFF58A6FF),
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -593,7 +590,7 @@ private fun EditorTopAppBar(
                     Box {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(GlassDesign.microGlassBackground(topAlpha = if (moreMenuExpanded) 0.28f else 0.14f, bottomAlpha = 0.05f))
                                 .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (moreMenuExpanded) 0.50f else 0.30f, bottomAlpha = 0.10f), CircleShape)
@@ -604,7 +601,7 @@ private fun EditorTopAppBar(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = "More options",
                                 tint = if (moreMenuExpanded) Color(0xFF58A6FF) else Color(0xFFC9D1D9),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
@@ -618,6 +615,24 @@ private fun EditorTopAppBar(
                                 brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f)
                             )
                         ) {
+                            if (activeTab != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Save File", color = Color(0xFFF0F6FC)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Save,
+                                            contentDescription = null,
+                                            tint = if (activeTab.isDirty) Color(0xFF39D353) else Color(0xFF8B949E),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        onSave()
+                                    }
+                                )
+                            }
+
                             // File Explorer Drawer toggle
                             DropdownMenuItem(
                                 text = { Text("File Explorer", color = Color(0xFFF0F6FC)) },
@@ -797,13 +812,14 @@ private fun EditorCanvasPane(
                 Text(
                     "No file open",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFF0F6FC)
                 )
                 Text(
                     if (isSplitView) "Select a file from the explorer, or create a new file."
                     else "Select a file from the explorer to edit, or create a new file.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFF8B949E),
                     textAlign = TextAlign.Center
                 )
                 BoxWithConstraints {
@@ -1002,169 +1018,175 @@ fun FileExplorerPane(
 ) {
     val currentFolderUri = state.breadcrumbs.lastOrNull()?.uri
 
-    Column(modifier = modifier.fillMaxSize()) {
-        if (showDrawerHeader) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = state.projectName.ifBlank { "Project Explorer" },
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (onCloseDrawer != null) {
-                    IconButton(onClick = onCloseDrawer) {
-                        Icon(Icons.Default.Close, contentDescription = "Close Drawer")
-                    }
-                }
-            }
-            HorizontalDivider()
-        }
-
-        // Explorer Action Toolbar (+ File, + Folder, Refresh)
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF0D1117))
+    ) {
+        // Unified Explorer Header Row (merges drawer title/close with +File, +Folder, Refresh)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(GlassDesign.liquidGlassBackground(topAlpha = 0.85f, midAlpha = 0.80f, bottomAlpha = 0.75f))
-                .border(width = 0.5.dp, brush = GlassDesign.liquidGlassBorder(0.40f, 0.15f), shape = androidx.compose.ui.graphics.RectangleShape)
+                .background(Color(0xFF10141E))
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "EXPLORER",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-                    color = Color(0xFF8B949E)
+                    text = if (showDrawerHeader) state.projectName.ifBlank { "EXPLORER" } else "EXPLORER",
+                    style = if (showDrawerHeader) {
+                        MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                    } else {
+                        MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    },
+                    color = if (showDrawerHeader) Color(0xFFF0F6FC) else Color(0xFF8B949E),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.05f))
-                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
-                            .springPressClickable { onNewFileClick(currentFolderUri) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.NoteAdd,
-                            contentDescription = "New File",
-                            modifier = Modifier.size(15.dp),
-                            tint = Color(0xFF58A6FF)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.05f))
-                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
-                            .springPressClickable { onNewFolderClick(currentFolderUri) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CreateNewFolder,
-                            contentDescription = "New Folder",
-                            modifier = Modifier.size(15.dp),
-                            tint = Color(0xFF58A6FF)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.05f))
-                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
-                            .springPressClickable { onRefreshClick() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            modifier = Modifier.size(15.dp),
-                            tint = Color(0xFFC9D1D9)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ExplorerHeaderActionButton(
+                        icon = Icons.AutoMirrored.Filled.NoteAdd,
+                        contentDescription = "New File",
+                        tint = Color(0xFF58A6FF),
+                        onClick = { onNewFileClick(currentFolderUri) }
+                    )
+                    ExplorerHeaderActionButton(
+                        icon = Icons.Default.CreateNewFolder,
+                        contentDescription = "New Folder",
+                        tint = Color(0xFF58A6FF),
+                        onClick = { onNewFolderClick(currentFolderUri) }
+                    )
+                    ExplorerHeaderActionButton(
+                        icon = Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        tint = Color(0xFFC9D1D9),
+                        onClick = onRefreshClick
+                    )
+                    if (showDrawerHeader && onCloseDrawer != null) {
+                        ExplorerHeaderActionButton(
+                            icon = Icons.Default.Close,
+                            contentDescription = "Close Drawer",
+                            tint = Color(0xFF8B949E),
+                            onClick = onCloseDrawer
                         )
                     }
                 }
             }
         }
+        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFF21262D))
 
-        // Search bar
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchQueryChange,
-            placeholder = { Text("Filter files...", style = MaterialTheme.typography.bodySmall) },
-            leadingIcon = {
-                Icon(
-                    Icons.Default.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { onSearchQueryChange("") }) {
-                        Icon(
-                            Icons.Default.Clear,
-                            contentDescription = "Clear search",
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            },
-            singleLine = true,
+        // Compact Obsidian Glass Search Capsule
+        val searchShape = RoundedCornerShape(12.dp)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            textStyle = MaterialTheme.typography.bodySmall
-        )
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .heightIn(min = 38.dp)
+                .clip(searchShape)
+                .background(Color(0xFF161B22))
+                .border(0.75.dp, Color(0xFF30363D), searchShape)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = Color(0xFF8B949E)
+            )
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (searchQuery.isEmpty()) {
+                    Text(
+                        text = "Filter files...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF6E7681)
+                    )
+                }
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFF0F6FC)),
+                    cursorBrush = SolidColor(Color(0xFF58A6FF)),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (searchQuery.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .clickable { onSearchQueryChange("") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Clear,
+                        contentDescription = "Clear search",
+                        modifier = Modifier.size(14.dp),
+                        tint = Color(0xFF8B949E)
+                    )
+                }
+            }
+        }
 
         // Breadcrumbs
         if (state.breadcrumbs.isNotEmpty()) {
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 items(state.breadcrumbs) { crumb ->
                     val isLast = crumb == state.breadcrumbs.last()
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isLast) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.clickable { onBreadcrumbClick(crumb) }
+                    val crumbShape = RoundedCornerShape(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .clip(crumbShape)
+                            .background(
+                                if (isLast) Color(0xFF1F6FEB).copy(alpha = 0.25f)
+                                else Color(0xFF161B22)
+                            )
+                            .border(
+                                width = 0.5.dp,
+                                color = if (isLast) Color(0xFF58A6FF).copy(alpha = 0.45f) else Color(0xFF30363D),
+                                shape = crumbShape
+                            )
+                            .clickable { onBreadcrumbClick(crumb) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = crumb.name,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isLast) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal
+                            ),
+                            color = if (isLast) Color(0xFF79C0FF) else Color(0xFF8B949E)
                         )
                     }
                     if (!isLast) {
                         Text(
-                            " / ",
+                            text = "/",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(horizontal = 2.dp)
+                            color = Color(0xFF484F58),
+                            modifier = Modifier.padding(horizontal = 5.dp)
                         )
                     }
                 }
             }
-            HorizontalDivider(thickness = 0.5.dp)
+            HorizontalDivider(thickness = 0.5.dp, color = Color(0xFF21262D))
         }
 
         if (state.error != null) {
@@ -1177,7 +1199,7 @@ fun FileExplorerPane(
                 Text(
                     text = state.error ?: "",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    color = Color(0xFFF85149),
                     textAlign = TextAlign.Center
                 )
             }
@@ -1187,35 +1209,34 @@ fun FileExplorerPane(
                 else state.fileTree.filter { it.name.contains(searchQuery.trim(), ignoreCase = true) }
             }
 
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 4.dp)
+            ) {
                 if (state.breadcrumbs.size > 1 && searchQuery.isBlank()) {
                     item {
-                        Surface(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onNavigateUp() },
-                            color = Color.Transparent
+                                .clickable { onNavigateUp() }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Up",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                val parentName = state.breadcrumbs.getOrNull(state.breadcrumbs.size - 2)?.name ?: "parent"
-                                Text(
-                                    text = ".. ($parentName)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Up",
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF58A6FF)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            val parentName = state.breadcrumbs.getOrNull(state.breadcrumbs.size - 2)?.name ?: "parent"
+                            Text(
+                                text = ".. ($parentName)",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = Color(0xFF58A6FF)
+                            )
                         }
-                        HorizontalDivider(thickness = 0.5.dp)
+                        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFF21262D))
                     }
                 }
 
@@ -1245,7 +1266,7 @@ fun FileExplorerPane(
                             Text(
                                 text = if (searchQuery.isNotBlank()) "No files match \"$searchQuery\"" else "Folder is empty",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFF8B949E)
                             )
                         }
                     }
@@ -1274,6 +1295,31 @@ fun FileExplorerPane(
     }
 }
 
+@Composable
+private fun ExplorerHeaderActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.05f))
+            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
+            .springPressClickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(16.dp),
+            tint = tint
+        )
+    }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FileItemRow(
@@ -1289,22 +1335,24 @@ fun FileItemRow(
     var showMenu by remember { mutableStateOf(false) }
     val (icon, iconTint) = getFileIconAndColor(node.name, node.isDirectory)
     val backgroundColor = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        Color(0xFF1F6FEB).copy(alpha = 0.16f)
     } else {
         Color.Transparent
     }
 
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
+            .background(backgroundColor)
             .combinedClickable(
                 onClick = onSelect,
                 onLongClick = { showMenu = true }
-            ),
-        color = backgroundColor
+            )
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -1313,14 +1361,14 @@ fun FileItemRow(
                 modifier = Modifier.size(18.dp),
                 tint = iconTint
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = node.name,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                     ),
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    color = if (isSelected) Color(0xFF79C0FF) else Color(0xFFF0F6FC),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1329,7 +1377,7 @@ fun FileItemRow(
                     Text(
                         text = formatFileSize(nodeSize),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF8B949E)
                     )
                 }
             }
@@ -1338,32 +1386,38 @@ fun FileItemRow(
             Box {
                 IconButton(
                     onClick = { showMenu = true },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "Options for ${node.name}",
                         modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = Color(0xFF8B949E)
                     )
                 }
 
                 DropdownMenu(
                     expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
+                    onDismissRequest = { showMenu = false },
+                    containerColor = Color(0xFF161B22),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.45f, dispersionAlpha = 0.20f)
+                    )
                 ) {
                     if (node.isDirectory) {
                         DropdownMenuItem(
-                            text = { Text("New File Here") },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null) },
+                            text = { Text("New File Here", color = Color(0xFFF0F6FC)) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, tint = Color(0xFF58A6FF)) },
                             onClick = {
                                 showMenu = false
                                 onNewFileInside()
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("New Folder Here") },
-                            leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
+                            text = { Text("New Folder Here", color = Color(0xFFF0F6FC)) },
+                            leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null, tint = Color(0xFF58A6FF)) },
                             onClick = {
                                 showMenu = false
                                 onNewFolderInside()
@@ -1372,8 +1426,8 @@ fun FileItemRow(
                     }
 
                     DropdownMenuItem(
-                        text = { Text("Rename") },
-                        leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null) },
+                        text = { Text("Rename", color = Color(0xFFF0F6FC)) },
+                        leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFFC9D1D9)) },
                         onClick = {
                             showMenu = false
                             onRename()
@@ -1381,19 +1435,19 @@ fun FileItemRow(
                     )
 
                     DropdownMenuItem(
-                        text = { Text("Copy Name") },
-                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                        text = { Text("Copy Name", color = Color(0xFFF0F6FC)) },
+                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFFC9D1D9)) },
                         onClick = {
                             showMenu = false
                             onCopyPath()
                         }
                     )
 
-                    HorizontalDivider()
+                    HorizontalDivider(color = Color(0xFF21262D))
 
                     DropdownMenuItem(
-                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                        text = { Text("Delete", color = Color(0xFFF85149)) },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFF85149)) },
                         onClick = {
                             showMenu = false
                             onDelete()
@@ -1422,10 +1476,9 @@ fun buildRunCommand(fileName: String, relativePath: String): String {
     }
 }
 
-@Composable
 private fun getFileIconAndColor(fileName: String, isDirectory: Boolean): Pair<ImageVector, Color> {
     if (isDirectory) {
-        return Icons.Default.Folder to MaterialTheme.colorScheme.primary
+        return Icons.Default.Folder to Color(0xFF58A6FF)
     }
     val ext = fileName.substringAfterLast('.', "").lowercase()
     return when (ext) {
@@ -1434,11 +1487,11 @@ private fun getFileIconAndColor(fileName: String, isDirectory: Boolean): Pair<Im
         "py" -> Icons.Default.Code to Color(0xFF3572A5)
         "js", "mjs", "cjs" -> Icons.Default.Code to Color(0xFFF1E05A)
         "ts", "tsx" -> Icons.Default.Code to Color(0xFF2B7489)
-        "c", "h" -> Icons.Default.Code to Color(0xFF555555)
+        "c", "h" -> Icons.Default.Code to Color(0xFF8B949E)
         "cpp", "hpp" -> Icons.Default.Code to Color(0xFFF34B7D)
-        "md", "txt" -> Icons.Default.Description to MaterialTheme.colorScheme.secondary
-        "json", "xml", "yaml", "yml", "gradle" -> Icons.Default.Settings to MaterialTheme.colorScheme.tertiary
-        else -> Icons.Default.Description to MaterialTheme.colorScheme.onSurfaceVariant
+        "md", "txt" -> Icons.Default.Description to Color(0xFFA371F7)
+        "json", "xml", "yaml", "yml", "gradle" -> Icons.Default.Settings to Color(0xFF79C0FF)
+        else -> Icons.Default.Description to Color(0xFF8B949E)
     }
 }
 

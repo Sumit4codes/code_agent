@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -33,6 +35,9 @@ import com.koda.dev.core.model.DiffLine
 import com.koda.dev.core.model.DiffLineType
 import com.koda.dev.core.model.PendingChange
 import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.captureBackdrop
+import com.koda.dev.core.ui.glass.liquidGlassBackdrop
+import com.koda.dev.core.ui.glass.rememberBackdropState
 import com.koda.dev.core.ui.glass.springPressClickable
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,147 +51,24 @@ fun DiffReviewScreen(
     onNavigateBack: (() -> Unit)? = null
 ) {
     val barShape = RoundedCornerShape(22.dp)
+    val backdropState = rememberBackdropState()
+    var topBarHeightPx by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val defaultTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 74.dp
+    val topClearance = if (topBarHeightPx > 0f) with(density) { topBarHeightPx.toDp() } else defaultTopInset
+    val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    Scaffold(
-        containerColor = Color(0xFF0B0E14),
-        topBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                    .shadow(
-                        elevation = 16.dp,
-                        shape = barShape,
-                        ambientColor = Color(0x33000000),
-                        spotColor = Color(0x660F172A)
-                    )
-                    .clip(barShape)
-                    .background(GlassDesign.liquidGlassBackground())
-                    .border(
-                        width = 1.dp,
-                        brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
-                        shape = barShape
-                    )
-            ) {
-                // Internal top refractive sheen
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(28.dp)
-                        .background(GlassDesign.internalGlassSheen())
-                )
-
-                TopAppBar(
-                    windowInsets = WindowInsets(0, 0, 0, 0),
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    navigationIcon = {
-                        if (onNavigateBack != null) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 8.dp)
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
-                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.38f, bottomAlpha = 0.10f), CircleShape)
-                                    .springPressClickable(onClick = onNavigateBack),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color(0xFFF0F6FC)
-                                )
-                            }
-                        }
-                    },
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
-                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Difference,
-                                    contentDescription = null,
-                                    tint = Color(0xFF58A6FF),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            Column {
-                                Text(
-                                    text = "Pending Changes",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = Color(0xFFF0F6FC)
-                                )
-                                Text(
-                                    text = "${pendingChanges.size} ${if (pendingChanges.size == 1) "file" else "files"} to review",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF8B949E)
-                                )
-                            }
-                        }
-                    },
-                    actions = {
-                        if (pendingChanges.isNotEmpty()) {
-                            Row(
-                                modifier = Modifier.padding(end = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Reject All
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
-                                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), RoundedCornerShape(12.dp))
-                                        .springPressClickable(onClick = onRejectAll)
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        "Reject All",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                        color = Color(0xFFF85149)
-                                    )
-                                }
-
-                                // Apply All
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFF238636).copy(alpha = 0.35f))
-                                        .border(0.75.dp, Color(0xFF39D353).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                                        .springPressClickable(onClick = onApproveAll)
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        "Apply All",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = Color(0xFF39D353)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                )
-            }
-        }
-    ) { padding ->
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B0E14))
+    ) {
         if (pendingChanges.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
+                    .captureBackdrop(backdropState)
+                    .padding(top = topClearance, bottom = navBottomInset),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -222,10 +104,61 @@ fun DiffReviewScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .captureBackdrop(backdropState),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = topClearance + 8.dp,
+                    bottom = 18.dp + navBottomInset
+                ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (pendingChanges.size > 1) {
+                    item(key = "bulk_actions") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
+                                    .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), RoundedCornerShape(12.dp))
+                                    .springPressClickable(onClick = onRejectAll)
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    "Reject All",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = Color(0xFFF85149)
+                                )
+                            }
+
+                            Spacer(Modifier.width(10.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF238636).copy(alpha = 0.35f))
+                                    .border(0.75.dp, Color(0xFF39D353).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                    .springPressClickable(onClick = onApproveAll)
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    "Apply All (${pendingChanges.size})",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color(0xFF39D353)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 items(pendingChanges, key = { it.id }) { change ->
                     PendingChangeCard(
                         change = change,
@@ -234,6 +167,104 @@ fun DiffReviewScreen(
                     )
                 }
             }
+        }
+
+        // Floating Liquid Glass Top Bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .onGloballyPositioned { coords ->
+                    topBarHeightPx = coords.size.height.toFloat()
+                }
+                .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .shadow(
+                    elevation = 16.dp,
+                    shape = barShape,
+                    ambientColor = Color(0x33000000),
+                    spotColor = Color(0x660F172A)
+                )
+                .liquidGlassBackdrop(
+                    backdropState = backdropState,
+                    shape = barShape,
+                    blurRadius = 24.dp,
+                    tintColor = Color(0xC410141E),
+                    specularBorder = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.65f, dispersionAlpha = 0.28f),
+                    borderWidth = 1.dp
+                )
+        ) {
+            // Internal top refractive sheen
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .background(GlassDesign.internalGlassSheen())
+            )
+
+            TopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                navigationIcon = {
+                    if (onNavigateBack != null) {
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.38f, bottomAlpha = 0.10f), CircleShape)
+                                .springPressClickable(onClick = onNavigateBack),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFFF0F6FC)
+                            )
+                        }
+                    }
+                },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.20f, bottomAlpha = 0.08f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Difference,
+                                contentDescription = null,
+                                tint = Color(0xFF58A6FF),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "Pending Changes",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color(0xFFF0F6FC),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${pendingChanges.size} ${if (pendingChanges.size == 1) "file" else "files"} to review",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF8B949E)
+                            )
+                        }
+                    }
+                }
+            )
         }
     }
 }
@@ -344,6 +375,14 @@ private fun PendingChangeCard(
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp)
+                            )
+                        }
+                        if (lines.size > 50) {
+                            Text(
+                                text = "Showing first 50 of ${lines.size} lines",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                color = Color(0xFF8B949E),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                             )
                         }
                     }

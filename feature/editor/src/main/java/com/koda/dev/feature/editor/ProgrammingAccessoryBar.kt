@@ -88,12 +88,12 @@ fun ProgrammingAccessoryBar(
 
             Box(
                 modifier = Modifier
-                    .height(32.dp)
+                    .height(36.dp)
                     .clip(saveShape)
                     .background(saveBackground)
                     .border(1.dp, saveBorder, saveShape)
                     .springPressClickable(onClick = onSave)
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
                     .focusProperties { canFocus = false },
                 contentAlignment = Alignment.Center
             ) {
@@ -126,7 +126,7 @@ fun ProgrammingAccessoryBar(
             // Undo
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(GlassDesign.microGlassBackground(topAlpha = if (canUndo) 0.16f else 0.06f, bottomAlpha = 0.04f))
                     .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (canUndo) 0.35f else 0.15f, bottomAlpha = 0.06f), CircleShape)
@@ -145,7 +145,7 @@ fun ProgrammingAccessoryBar(
             // Redo
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(GlassDesign.microGlassBackground(topAlpha = if (canRedo) 0.16f else 0.06f, bottomAlpha = 0.04f))
                     .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (canRedo) 0.35f else 0.15f, bottomAlpha = 0.06f), CircleShape)
@@ -165,12 +165,12 @@ fun ProgrammingAccessoryBar(
             val keyShape = RoundedCornerShape(8.dp)
             Box(
                 modifier = Modifier
-                    .height(32.dp)
+                    .height(36.dp)
                     .clip(keyShape)
                     .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
                     .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), keyShape)
                     .springPressClickable(onClick = onIndent)
-                    .padding(horizontal = 10.dp)
+                    .padding(horizontal = 11.dp)
                     .focusProperties { canFocus = false },
                 contentAlignment = Alignment.Center
             ) {
@@ -187,12 +187,12 @@ fun ProgrammingAccessoryBar(
             symbols.forEach { sym ->
                 Box(
                     modifier = Modifier
-                        .height(32.dp)
+                        .height(36.dp)
                         .clip(keyShape)
                         .background(GlassDesign.microGlassBackground(topAlpha = 0.12f, bottomAlpha = 0.04f))
                         .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.28f, bottomAlpha = 0.08f), keyShape)
                         .springPressClickable { onInsertSymbol(sym) }
-                        .padding(horizontal = 11.dp)
+                        .padding(horizontal = 12.dp)
                         .focusProperties { canFocus = false },
                     contentAlignment = Alignment.Center
                 ) {
