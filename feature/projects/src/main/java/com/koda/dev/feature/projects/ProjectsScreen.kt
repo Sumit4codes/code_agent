@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koda.dev.core.model.Project
 import com.koda.dev.core.ui.glass.BackdropState
 import com.koda.dev.core.ui.glass.GlassDesign
+import com.koda.dev.core.ui.glass.LocalFloatingNavBarClearance
 import com.koda.dev.core.ui.glass.captureBackdrop
 import com.koda.dev.core.ui.glass.liquidGlassBackdrop
 import com.koda.dev.core.ui.glass.rememberBackdropState
@@ -123,6 +125,8 @@ fun ProjectsScreen(
         val layoutDirection = LocalLayoutDirection.current
         val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
         val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val floatingNavClearance = LocalFloatingNavBarClearance.current
+        val defaultTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 76.dp
 
         // Scrolling Project Content Stream (captured into backdrop state for real-time glass refraction)
         LazyColumn(
@@ -132,8 +136,8 @@ fun ProjectsScreen(
             contentPadding = PaddingValues(
                 start = 14.dp + safeInsets.calculateStartPadding(layoutDirection),
                 end = 14.dp + safeInsets.calculateEndPadding(layoutDirection),
-                top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else 90.dp,
-                bottom = 86.dp + navBarsBottomInset // Dynamic clearance for floating bottom navigation bar
+                top = if (topBarHeightPx > 0f) with(LocalDensity.current) { topBarHeightPx.toDp() } + 8.dp else defaultTopInset,
+                bottom = (if (floatingNavClearance > 0.dp) floatingNavClearance else 82.dp) + 6.dp + navBarsBottomInset
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -326,7 +330,7 @@ fun ProjectsScreen(
                     Box(
                         modifier = Modifier
                             .padding(end = 6.dp)
-                            .size(36.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.08f))
                             .border(
@@ -347,7 +351,7 @@ fun ProjectsScreen(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Open project folder",
                             tint = Color(0xFFF0F6FC),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
@@ -705,13 +709,13 @@ private fun LiquidGlassProjectItem(
 
             // Action Buttons (Browse & Delete)
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Browse Files Button
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
                         .border(
@@ -726,14 +730,14 @@ private fun LiquidGlassProjectItem(
                         imageVector = Icons.Default.Folder,
                         contentDescription = "Browse files",
                         tint = Color(0xFFC9D1D9),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 // Delete Project Button
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(GlassDesign.microGlassBackground(topAlpha = 0.14f, bottomAlpha = 0.05f))
                         .border(
@@ -748,7 +752,7 @@ private fun LiquidGlassProjectItem(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete project",
                         tint = Color(0xFFF85149).copy(alpha = 0.85f),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -892,6 +896,7 @@ private fun EmptyProjectsState(
                 text = "Tap Open Folder below or + to select a project directory on your device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF8B949E),
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
