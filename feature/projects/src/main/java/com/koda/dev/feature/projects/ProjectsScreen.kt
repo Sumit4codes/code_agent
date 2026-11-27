@@ -227,8 +227,14 @@ fun ProjectsScreen(
                 items(projects, key = { it.id }) { project ->
                     LiquidGlassProjectItem(
                         project = project,
-                        onBrowse = { onProjectSelected?.invoke(project) },
-                        onChat = { onChatWithProject?.invoke(project) ?: onProjectSelected?.invoke(project) },
+                        onBrowse = {
+                            viewModel.markProjectOpened(project)
+                            onProjectSelected?.invoke(project)
+                        },
+                        onChat = {
+                            viewModel.markProjectOpened(project)
+                            onChatWithProject?.invoke(project) ?: onProjectSelected?.invoke(project)
+                        },
                         onDelete = { projectToDelete = project }
                     )
                 }
