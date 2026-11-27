@@ -1,12 +1,12 @@
 package com.koda.dev.app
 
 import com.koda.dev.core.ai.AiProvider
+import com.koda.dev.core.ai.AnthropicAiProvider
 import com.koda.dev.core.ai.ChatRequest
 import com.koda.dev.core.ai.ChatStreamEvent
 import com.koda.dev.core.ai.FakeAiProvider
 import com.koda.dev.core.ai.ModelInfo
 import com.koda.dev.core.ai.OpenAiCompatibleProvider
-import com.koda.dev.core.ai.UnsupportedAiProvider
 import com.koda.dev.core.data.SettingsRepository
 import com.koda.dev.core.model.ProviderConfig
 import com.koda.dev.core.model.ProviderType
@@ -57,8 +57,11 @@ internal fun createAiProvider(
         client = client,
         sseFactory = sseFactory
     )
-    ProviderType.ANTHROPIC -> UnsupportedAiProvider(
-        "Anthropic chat protocol is not implemented yet. Choose an OpenAI-compatible provider or proxy in Settings."
+    ProviderType.ANTHROPIC -> AnthropicAiProvider(
+        baseUrl = config.baseUrl,
+        apiKey = apiKey,
+        client = client,
+        sseFactory = sseFactory
     )
 }
 
