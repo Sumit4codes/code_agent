@@ -63,11 +63,15 @@ import com.koda.dev.core.ui.glass.liquidGlassBackdrop
 import com.koda.dev.core.ui.glass.rememberBackdropState
 import com.koda.dev.core.ui.glass.springPressClickable
 import com.koda.dev.feature.settings.qr.QrScannerDialog
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var providerToDelete by remember { mutableStateOf<ProviderUiModel?>(null) }
     var activeSheet by remember { mutableStateOf<SettingsDetailSheet?>(null) }
@@ -256,6 +260,29 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             maxLines = 1
                         )
                     }
+                },
+                actions = {
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                            .border(
+                                width = 0.75.dp,
+                                brush = GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .springPressClickable { activeSheet = SettingsDetailSheet.REPO_INFO },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Repository info",
+                            tint = Color(0xFF79C0FF),
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
             )
         }
@@ -362,6 +389,34 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 onDismiss = { activeSheet = null }
             ) {
                 AboutPrivacyDialogContent()
+            }
+        }
+        SettingsDetailSheet.REPO_INFO -> {
+            SettingsDetailDialog(
+                icon = Icons.Default.Code,
+                iconTint = Color(0xFF58A6FF),
+                title = "Source Repository",
+                subtitle = "GitHub repository & build details",
+                onDismiss = { activeSheet = null }
+            ) {
+                RepoInfoDialogContent(
+                    onOpenUrl = { url ->
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        } catch (_: Exception) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Unable to open browser for $url")
+                            }
+                        }
+                    },
+                    onCopyUrl = { url ->
+                        clipboardManager.setText(AnnotatedString(url))
+                        activeSheet = null
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Copied repository URL")
+                        }
+                    }
+                )
             }
         }
         null -> Unit

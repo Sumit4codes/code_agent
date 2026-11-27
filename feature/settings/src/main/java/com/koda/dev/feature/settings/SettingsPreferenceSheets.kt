@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,7 +44,8 @@ internal enum class SettingsDetailSheet {
     TERMINAL,
     WEB_SEARCH,
     SYNC,
-    ABOUT
+    ABOUT,
+    REPO_INFO
 }
 
 @Composable
@@ -769,6 +771,131 @@ internal fun AboutPrivacyDialogContent() {
         color = Color(0xFFC9D1D9),
         lineHeight = 20.sp
     )
+}
+
+internal const val KODA_REPO_SLUG = "Sumit4codes/code_agent"
+internal const val KODA_REPO_URL = "https://github.com/Sumit4codes/code_agent"
+internal const val KODA_RELEASES_URL = "https://github.com/Sumit4codes/code_agent/releases/latest"
+
+@Composable
+internal fun RepoInfoDialogContent(
+    onOpenUrl: (String) -> Unit,
+    onCopyUrl: (String) -> Unit
+) {
+    val cardShape = RoundedCornerShape(14.dp)
+
+    Text(
+        text = "Android-native self-hosting AI coding agent and on-device Linux development environment.",
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFFC9D1D9),
+        lineHeight = 19.sp
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(Color(0xFF0D1117).copy(alpha = 0.85f))
+            .border(0.75.dp, Color(0xFF30363D), cardShape)
+            .padding(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = KODA_REPO_SLUG,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = Color(0xFFF0F6FC),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = KODA_REPO_URL,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = Color(0xFF58A6FF),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                        .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.30f, bottomAlpha = 0.08f), CircleShape)
+                        .springPressClickable { onCopyUrl(KODA_REPO_URL) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy repository URL",
+                        tint = Color(0xFFC9D1D9),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("v1.1.0", "GPL-3.0", "Android 8.0+", "Kotlin & Compose").forEach { badge ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1F6FEB).copy(alpha = 0.16f))
+                            .border(0.75.dp, Color(0xFF388BFD).copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = badge,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                            color = Color(0xFF79C0FF)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        OutlinedButton(
+            onClick = { onOpenUrl(KODA_RELEASES_URL) },
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.NewReleases, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Releases", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+        }
+
+        Button(
+            onClick = { onOpenUrl(KODA_REPO_URL) },
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF1F6FEB),
+                contentColor = Color.White
+            )
+        ) {
+            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("GitHub", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+        }
+    }
 }
 
 @Composable
