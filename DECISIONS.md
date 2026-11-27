@@ -189,6 +189,29 @@
 2. **Monospace Legibility:** JetBrains Mono is purpose-designed for developers, offering clear character distinctions (e.g. `0` vs `O`, `1` vs `l` vs `I`), distinct programming ligatures, and optimal vertical metrics for high-density mobile screens.
 3. **Visual Cohesion:** Unifies the design language across the project explorer, interactive terminal tabs, AI chat stream, and diff review screens.
 
+## D23: Native Anthropic Messages API Provider (`AnthropicAiProvider`)
+**Decision:** Replace the `UnsupportedAiProvider` stub for `ProviderType.ANTHROPIC` in `app/AppModule.kt` with a native `AnthropicAiProvider` targeting `/v1/messages` (`x-api-key`, `anthropic-version: 2023-06-01`, `stream = true`) and `/v1/models`.
+
+**Rationale:**
+1. **End-to-End Preset Support:** `PopularProviders.ANTHROPIC` is built into Settings; routing it to a native client completes Claude support without requiring external proxies.
+2. **Protocol Compliance:** Extracts `Role.SYSTEM` messages into top-level `system`, maps `ToolSpec` definitions to `input_schema`, parses `tool_use` inputs as JSON objects, clamps `temperature` to `0.0–1.0`, merges consecutive `Role.USER` / `Role.TOOL` turns to satisfy Anthropic's strict role-alternation rule, and degrades orphaned post-compaction tool results to plain text.
+3. **Accurate Streaming & Accounting:** Parses `message_start`, `content_block_start/delta/stop`, `message_delta`, `message_stop`, and `error` SSE frames, emitting `ToolCallStart`/`ToolCallArgsDelta`/`ToolCallComplete` events and a single aggregated `Usage` event (including cache token counts) without double-counting.
+
+## D24: Removal of Unused `:core:git` Module (Supersedes `CliGitOperations` in D9)
+**Decision:** Remove the unused `:core:git` module (`GitOperations`, `CliGitOperations`, `GitModule`) from `settings.gradle.kts`, `core/agent`, and `core/terminal`, keeping Git workflows inside the Ubuntu PRoot terminal (`apt install git`) and agent `execute_command`.
+
+**Rationale:**
+1. **Zero Dead Weight:** No screen, ViewModel, or agent component outside `:core:git` injected or called `GitOperations`.
+2. **PRoot Reality:** `CliGitOperations` executed `git` directly via `ProcessBuilder` against Android's host `PATH`, ignoring user-installed `git` inside the Ubuntu PRoot environment (`apt install git`). Removing the unused wrapper simplifies the module graph and eliminates redundant KSP/Hilt build tasks.
+
+## D25: Warm Top-Level Tab Transitions, Dark-First Theme Default, and Workspace Flow Polish
+**Decision:** Host top-level bottom-bar tabs (`Projects`, `Terminal`, `Settings`) inside a warm `TopLevelTabContainer` synchronized with `FloatingLiquidGlassNavBar` via a shared `Transition`; default `KodaDevTheme(darkTheme = true)` in `core/ui`; normalize and deduplicate project directories in `ProjectsViewModel`; and wire direct bidirectional `Editor ↔ Chat` navigation in `AppNavHost`.
+
+**Rationale:**
+1. **Zero-Jank Tab Switching:** Keeping all three root tabs composed in `AppNavHost` prevents `NavHost` from tearing down and re-inflating `AndroidView(TerminalView)` on every tap, while driving both screen fade/translation and the bottom pill from one critically damped spring `Transition`.
+2. **Consistent Dark Obsidian Chrome:** Defaulting `KodaDevTheme` to `darkTheme = true` and unifying `EditorScreen` (`FileExplorerPane`, compact search capsule, `EditorTopAppBar`), `DiffReviewScreen`, `TerminalScreen` (using `LocalFloatingNavBarClearance`), and `ChatScreen` eliminates light-theme Material bleed-through and layout clearance drift.
+3. **Faster Workspace Iteration:** Direct `Editor ↔ Chat` top-bar buttons reuse adjacent backstack entries for the active project, and `ProjectsViewModel` preserves existing project IDs (and linked chat sessions) while refreshing recency when a folder is re-added or opened.
+
 
 
 

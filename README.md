@@ -101,13 +101,13 @@
 
 ### 🌐 Antiroute Tunnel & Web Intelligence
 - **Antiroute Tunnel Provider**: Built-in 1-tap CameraX QR code scanner to instantly connect to local/remote Antiroute LLM tunnels without typing keys or URLs.
-- **Multi-Provider & Live Model Discovery**: OpenAI-compatible providers, OpenRouter, DeepSeek, Ollama, Antiroute, and custom proxies support dynamic `/models` queries. Anthropic chat is not yet implemented; selecting Anthropic returns a clear unsupported-provider error rather than simulated responses.
+- **Multi-Provider & Live Model Discovery**: OpenAI-compatible providers, Anthropic Messages API (`/v1/messages`), OpenRouter, DeepSeek, Ollama, Antiroute, and custom proxies support streaming tool calls and dynamic `/models` queries.
 - **Agent Web Intelligence**: Jsoup-powered `web_search` and `fetch_web_page` tools allow the agent to look up real-time documentation and debugging solutions.
 
 ### 💎 Liquid Glass Design System & Typography
 - **Liquid Glass Optics**: Hardware-accelerated RenderEffect backdrop blur, AGSL signed distance field (SDF) lens refraction, and internal specular highlight sheens.
 - **Floating Capsule UI**: Floating TopAppBar, unified input capsule with circular context usage gauge, and bottom navigation dock with responsive micro-glass cards.
-- **Obsidian Dark Palette & Physics**: High-contrast dark IDE palette (`#0B0F19`, `#111726`, `#161E31`) with tactile Apple-inspired spring-press animations.
+- **Obsidian Dark Palette & Physics**: Dark-first Material3 theme (`KodaDevTheme(darkTheme = true)`), high-contrast obsidian surfaces (`#0B0E14`, `#0D1117`, `#161B22`), and Apple-inspired spring-press animations with synchronized top-level tab transitions.
 - **JetBrains Mono Typography**: First-class monospace developer typography across all editor, terminal, chat, and status surfaces.
 
 ### 🔐 Zero-Knowledge Cloud Sync ($0 Infrastructure)
@@ -127,10 +127,10 @@
 │  feature/  │  feature/  │  feature/  │  feature/  │  feature/    │
 │  projects  │   chat     │   editor   │  terminal  │  settings    │
 ├────────────┴────────────┴────────────┴────────────┴──────────────┤
-│ core/agent  core/terminal  core/git   core/ai   core/files       │
-│ AgentOrch.  TermuxSession  CliGitOps  AiProv.   File FS          │
-│ ToolExec.   PosixExecutor  Git CLI    SSE/Fetch PathSafe / Diff  │
-│ TaskManager PRoot Userland W^X Pream. ModelFetch                 │
+│ core/agent      core/terminal     core/ai         core/files       │
+│ AgentOrch.      TermuxSession     AiProvider      File FS          │
+│ ToolExec.       PosixExecutor     SSE/Fetch       PathSafe / Diff  │
+│ TaskManager     PRoot Userland    ModelFetch                       │
 ├───────────────────────────────────────┬──────────────────────────┤
 │              core/data                │         core/ui          │
 │   Room DB · EncryptedKeyStore         │    Theme · MarkdownView  │
@@ -146,17 +146,16 @@
 
 | Module | Responsibility |
 |---|---|
-| `app` | Navigation (`AppNavHost`), Hilt application entry point, dependency injection bindings |
-| `feature/projects` | Directory browser, project creation, recent workspaces |
-| `feature/chat` | AI chat interface with streaming text deltas, tool-call event chips, active background task pills, diff banners |
-| `feature/editor` | Responsive split view / full-screen code viewer, compact file search bar, breadcrumbs, terminal shortcut |
-| `feature/terminal` | Dedicated Linux terminal screen, Termux `TerminalView` canvas, soft keyboard toggle, accessory bar |
-| `feature/settings` | Multi-provider manager (OpenAI, Anthropic, Antiroute QR scanner), live dynamic model discovery, Zero-Knowledge E2EE cloud sync, web search toggle |
+| `app` | Navigation (`AppNavHost` with warm top-level tabs & synchronized glass nav bar), Hilt entry point, `DynamicAiProvider` bindings |
+| `feature/projects` | Directory browser, deduplicated recent workspaces (`ProjectsViewModel`), quick launch to Editor or Chat |
+| `feature/chat` | AI chat interface with streaming text deltas, tool-call cards, background task pills, diff review banners, and quick Editor switch |
+| `feature/editor` | Responsive split view / full-screen code editor, dark glass file explorer & search capsule, breadcrumbs, diff review, terminal & AI chat shortcuts |
+| `feature/terminal` | Dedicated Linux terminal screen, Termux `TerminalView` canvas, soft keyboard toggle, compact accessory bar |
+| `feature/settings` | Multi-provider manager (OpenAI, Anthropic, Gemini, Antiroute QR scanner), live dynamic model discovery, simplified preferences, repo info dialog, Zero-Knowledge E2EE cloud sync |
 | `core/model` | Domain entities (`Project`, `Session`, `Message`, `PendingChange`, `ToolSpec`, `PopularProviders`) |
-| `core/ai` | `AiProvider` interface, OpenAI-compatible SSE streaming, dynamic `ModelFetcher` |
+| `core/ai` | `AiProvider` interface, `OpenAiCompatibleProvider` & `AnthropicAiProvider` (`/v1/messages`) SSE streaming, dynamic `ModelFetcher`, `ModelCatalogResolver` |
 | `core/agent` | Unbounded `AgentOrchestrator` loop, `TaskManager` (background concurrency & stall watchdog), `ToolExecutor`, `ToolRegistry`, `EditResolver` |
 | `core/terminal` | `TermuxSessionManager` (PTY & Termux bridge), `UbuntuBootstrapManager` & `AlpineBootstrapManager` (PRoot), `PosixTerminalExecutor` |
-| `core/git` | Native CLI Git operations (`CliGitOperations`), repository status, branch tracking |
 | `core/files` | Direct file filesystem (`FileProjectFileSystem`), path safety guards, diff engine |
 | `core/data` | Room database, `VaultCrypto` (AES-256-GCM + PBKDF2), `CloudSyncManager`, `GitHubGistSyncClient`, `SyncAccountStorage` |
 | `core/ui` | Koda Obsidian theme, JetBrains Mono monospace styling, Markdown rendering composable |
