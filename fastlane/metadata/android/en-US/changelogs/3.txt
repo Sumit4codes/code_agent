@@ -1,0 +1,5 @@
+• Native Anthropic API (/v1/messages) with SSE & tool calling
+• Synchronized top-level tab transitions & dark-first theme
+• Unified dark glass Editor & Explorer, slimmer Terminal dock
+• Direct Editor <-> Chat switching & duplicate-free workspace list
+• Simplified Settings with repository info & security hardening

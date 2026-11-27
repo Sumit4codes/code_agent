@@ -849,7 +849,7 @@ internal fun RepoInfoDialogContent(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf("v1.1.0", "GPL-3.0", "Android 8.0+", "Kotlin & Compose").forEach { badge ->
+                listOf("v1.1.1", "GPL-3.0", "Android 8.0+", "Kotlin & Compose").forEach { badge ->
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))

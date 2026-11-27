@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Sumit4codes/code_agent/releases/latest"><b>Download APK (v1.1.0)</b></a> •
+  <a href="https://github.com/Sumit4codes/code_agent/releases/latest"><b>Download APK (v1.1.1)</b></a> •
   <a href="#-screenshots--ui-tour">Screenshots</a> •
   <a href="#-key-features">Key Features</a> •
   <a href="#-on-device-self-hosting-milestone">Self-Hosting</a> •
@@ -186,7 +186,7 @@ export JAVA_HOME=~/.local/opt/jdk-21
 ./gradlew assembleRelease
 ```
 
-Release APK output: `app/build/outputs/apk/release/app-release-unsigned.apk` (or signed `koda-dev-v1.1.0.apk`).
+Release APK output: `app/build/outputs/apk/release/app-release-unsigned.apk` (or signed `koda-dev-v1.1.1.apk`).
 
 ### Run Unit Tests
 
@@ -226,6 +226,7 @@ Koda Dev can build itself inside its own Ubuntu terminal on an ARM64 Android dev
 
 - [x] **v1.0.0 Core Scaffold & Multi-Module Architecture**
 - [x] **v1.1.0 Full IDE Code Editor & Apple Liquid Glass Design System**
+- [x] **v1.1.1 Anthropic Native Provider, UI Polish & Workspace Hardening**
 - [x] **Full Device Storage Access (`MANAGE_EXTERNAL_STORAGE`)**
 - [x] **Autonomous Tool-Calling Agent Loop (Unbounded with Safety Pagination)**
 - [x] **Terminal Engine & Ubuntu 24.04 LTS (Noble) PRoot Userland**
