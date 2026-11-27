@@ -26,7 +26,6 @@ kotlin {
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:files"))
-    implementation(project(":core:git"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.commons.compress)
     api(libs.termux.terminal.view)
