@@ -230,6 +230,20 @@ fun AppNavHost(
                         } else {
                             navController.navigate(Routes.TERMINAL)
                         }
+                    },
+                    onOpenChat = {
+                        if (projectId.isNotBlank()) {
+                            val prev = navController.previousBackStackEntry
+                            if (prev?.destination?.route == "${Routes.CHAT}/{projectId}" &&
+                                prev.arguments?.getString("projectId") == projectId
+                            ) {
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate("${Routes.CHAT}/$projectId") {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
                     }
                 )
             }
@@ -264,6 +278,20 @@ fun AppNavHost(
                     onReviewDiffs = {
                         val sid = chatState.sessionId ?: "active"
                         navController.navigate("${Routes.DIFF_REVIEW}/$sid")
+                    },
+                    onOpenEditor = {
+                        if (projectId.isNotBlank()) {
+                            val prev = navController.previousBackStackEntry
+                            if (prev?.destination?.route == "${Routes.EDITOR}/{projectId}" &&
+                                prev.arguments?.getString("projectId") == projectId
+                            ) {
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate("${Routes.EDITOR}/$projectId") {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
                     },
                     onNavigateBack = { navController.popBackStack() }
                 )

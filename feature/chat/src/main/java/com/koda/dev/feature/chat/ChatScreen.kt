@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
@@ -95,6 +96,7 @@ fun ChatScreen(
     projectId: String = "",
     viewModel: ChatViewModel = hiltViewModel(),
     onReviewDiffs: (() -> Unit)? = null,
+    onOpenEditor: (() -> Unit)? = null,
     onNavigateBack: (() -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -503,12 +505,31 @@ fun ChatScreen(
                         if (state.projectUri != null) {
                             Row(
                                 modifier = Modifier.padding(end = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (onOpenEditor != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                            .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f), CircleShape)
+                                            .springPressClickable(onClick = onOpenEditor),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Code,
+                                            contentDescription = "Open Code Editor",
+                                            tint = Color(0xFF79C0FF),
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+                                }
+
                                 Box(
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(36.dp)
                                         .clip(CircleShape)
                                         .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
                                         .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f), CircleShape)
@@ -519,13 +540,13 @@ fun ChatScreen(
                                         imageVector = Icons.Default.Terminal,
                                         contentDescription = "Project Terminal",
                                         tint = Color(0xFFC9D1D9),
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
 
                                 Box(
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(36.dp)
                                         .clip(CircleShape)
                                         .background(GlassDesign.microGlassBackground(topAlpha = if (!state.isStreaming) 0.16f else 0.06f, bottomAlpha = 0.05f))
                                         .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (!state.isStreaming) 0.32f else 0.14f, bottomAlpha = 0.08f), CircleShape)
@@ -536,13 +557,13 @@ fun ChatScreen(
                                         imageVector = Icons.Default.Add,
                                         contentDescription = "New Chat",
                                         tint = if (!state.isStreaming) Color(0xFFF0F6FC) else Color(0xFF484F58),
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
 
                                 Box(
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(36.dp)
                                         .clip(CircleShape)
                                         .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
                                         .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.32f, bottomAlpha = 0.08f), CircleShape)
@@ -553,7 +574,7 @@ fun ChatScreen(
                                         imageVector = Icons.Default.History,
                                         contentDescription = "Chat History",
                                         tint = Color(0xFFC9D1D9),
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
                             }

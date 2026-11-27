@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.automirrored.filled.WrapText
 import androidx.compose.material.icons.filled.*
@@ -62,7 +63,8 @@ fun EditorScreen(
     projectId: String = "",
     viewModel: EditorViewModel = hiltViewModel(),
     onNavigateBack: (() -> Unit)? = null,
-    onOpenTerminal: (() -> Unit)? = null
+    onOpenTerminal: (() -> Unit)? = null,
+    onOpenChat: (() -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -360,6 +362,7 @@ fun EditorScreen(
                             terminalInitialCommand = null
                             showTerminalSheet = true
                         },
+                        onOpenChat = onOpenChat,
                         onCopyContent = {
                             state.activeTab?.currentContent?.let { content ->
                                 clipboardManager.setText(AnnotatedString(content))
@@ -438,6 +441,7 @@ private fun EditorTopAppBar(
     onSave: () -> Unit,
     onRunInTerminal: () -> Unit,
     onOpenTerminal: () -> Unit,
+    onOpenChat: (() -> Unit)? = null,
     onCopyContent: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -563,14 +567,34 @@ private fun EditorTopAppBar(
             actions = {
                 Row(
                     modifier = Modifier.padding(end = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Direct switch to AI Chat for this workspace
+                    if (onOpenChat != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GlassDesign.microGlassBackground(topAlpha = 0.16f, bottomAlpha = 0.06f))
+                                .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.35f, bottomAlpha = 0.10f), CircleShape)
+                                .springPressClickable(onClick = onOpenChat),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Chat,
+                                contentDescription = "Open AI Chat",
+                                tint = Color(0xFF79C0FF),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+
                     // Run in Terminal Button (Save lives prominently in ProgrammingAccessoryBar + More menu)
                     if (activeTab != null) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(GlassDesign.microGlassBackground(topAlpha = 0.18f, bottomAlpha = 0.06f))
                                 .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = 0.40f, bottomAlpha = 0.12f), CircleShape)
@@ -590,7 +614,7 @@ private fun EditorTopAppBar(
                     Box {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(GlassDesign.microGlassBackground(topAlpha = if (moreMenuExpanded) 0.28f else 0.14f, bottomAlpha = 0.05f))
                                 .border(0.75.dp, GlassDesign.microGlassBorder(topAlpha = if (moreMenuExpanded) 0.50f else 0.30f, bottomAlpha = 0.10f), CircleShape)
@@ -615,6 +639,23 @@ private fun EditorTopAppBar(
                                 brush = GlassDesign.liquidGlassBorder(topSpecularAlpha = 0.50f, dispersionAlpha = 0.20f)
                             )
                         ) {
+                            if (onOpenChat != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Open AI Chat", color = Color(0xFFF0F6FC)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Chat,
+                                            contentDescription = null,
+                                            tint = Color(0xFF79C0FF),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        onOpenChat()
+                                    }
+                                )
+                            }
                             if (activeTab != null) {
                                 DropdownMenuItem(
                                     text = { Text("Save File", color = Color(0xFFF0F6FC)) },
